@@ -1,0 +1,13 @@
+node_modules/
+.venv/
+frontend/dist/
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/generated/
+backend/backend.log
+backend/recommendation/__pycache__/
+backend/recommendation/output/
+.DS_Store
+**/.DS_Store
+.impeccable/
+backend/config/config.env
