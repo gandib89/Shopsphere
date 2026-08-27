@@ -29,14 +29,12 @@ Technically, the project is interesting less for its CRUD surface and more for h
 - **Transactional email** — order confirmations, status updates, seller approval/rejection, via Nodemailer/Gmail
 
 **Partially implemented**
-- **Bills** are built and returned in-memory from order data on every request; the `Bill` table exists in the schema but application code never writes to it, so no bill is actually persisted.
-- **Bulk-order revenue records** silently fail to be created (a pre-existing `ReferenceError` on an out-of-scope variable, caught and logged rather than fixed) — noted in [order.js](backend/controller/order.js).
-- **Input validation** with `zod` is only applied to the register/login endpoints; most other controllers trust `req.body` directly.
+- **Pagination** on the four previously-unbounded list endpoints (`getProducts`, `getAllOrder`, `getAllUsers`, `getAllUsersAndSellers`) is opt-in via `?page=&limit=` query params — the response switches from a bare array to `{ items, total, page, pageSize }` only when those params are present, so existing callers that don't pass them keep the old shape (now capped at 1000 rows instead of truly unbounded). No frontend page currently passes those params yet.
+- **Input validation** with `zod` now covers the money-handling and content-creation endpoints (auth, orders, cart, products, promo codes) but not every controller — revenue and user-management routes still do light manual checks rather than full schemas.
 
 **Not currently implemented**
-- Khalti payment gateway — the `khalti-checkout-web` package is installed but unused anywhere in the codebase.
-- Pagination on list endpoints (`getProducts`, `getAllOrder`, `getAllUsers` all return full tables).
-- CI/CD pipeline, application Dockerfiles, and any deployment configuration.
+- CSRF token — the refresh cookie is `SameSite=strict`, which modern browsers already refuse to send cross-site, so a dedicated token would be marginal defense-in-depth rather than closing a real gap.
+- A shared (e.g. Redis-backed) rate-limiter store — `express-rate-limit`'s default in-memory store resets per process, so the auth rate limit isn't actually shared once the API runs as more than one instance.
 
 ## Tech Stack
 
@@ -60,7 +58,8 @@ Technically, the project is interesting less for its CRUD surface and more for h
 | Email | Nodemailer (Gmail SMTP) | Transactional email |
 | Testing | Node.js built-in test runner (`node --test`) | Backend unit tests |
 | Testing | Vitest + React Testing Library | Frontend component tests |
-| Infrastructure | Docker Compose | Local PostgreSQL container only |
+| Infrastructure | Docker Compose | Postgres, backend, and frontend, all three containerized |
+| Infrastructure | GitHub Actions | CI: backend test suite, frontend test suite + build |
 
 ## System Architecture
 
@@ -233,7 +232,8 @@ Key entities:
 
 Notable design details:
 - Every primary key is a 24-character hex string (`generateId()`), matching the shape of the MongoDB ObjectIds the app used to generate — preserved for backward compatibility with existing tokens and client-cached ids.
-- Most multi-step writes (order creation, stock adjustment, revenue record creation) are **sequential, not wrapped in a DB transaction** — an intentional carry-over from the pre-migration behavior rather than a fix applied during the port. The checkout/idempotency path and the eSewa event-recording path are the exceptions and do use `prisma.$transaction`.
+- Stock adjustment + order status change + revenue update are wrapped in `prisma.$transaction` everywhere an order's status flips (confirm, cancel, delete-with-restore) — a failure partway through can't leave stock adjusted with the order still in its old status, or vice versa. Plain order *creation* (before any payment/stock is involved) and revenue-record creation on it remain sequential, non-transactional calls, matching pre-migration behavior.
+- `Bill` rows are created via `prisma.bill.upsert` keyed on a deterministic `billNumber` (`BILL-<orderId>`) rather than a timestamp-based one, so re-requesting the same order's bill is idempotent instead of erroring on the unique constraint or minting duplicates.
 - Indexes exist on the columns actually queried by hot paths: `Order(email)`, `Order(email, createdAt)`, `Order(orderGroupId)`, `Notification(userId, createdAt)`, `PromoCode(code, isActive)`, `PaymentEvent(aggregateId, createdAt)`.
 
 ## API
@@ -307,7 +307,9 @@ Most controllers catch their own errors and respond directly with `{ message }` 
 cd backend
 npm test
 ```
-Covers: password hashing (`password.test.js`), refresh-token rotation and reuse detection (`refreshTokenStore.test.js`), DB connection/seed bootstrapping (`dbConnection.test.js`), admin seeding (`seedAdmin.test.js`), demo data seeding (`seedDemoData.test.js`), and product controller units (`productController.test.js`).
+Covers: password hashing (`password.test.js`), refresh-token rotation and reuse detection (`refreshTokenStore.test.js`), DB connection/seed bootstrapping (`dbConnection.test.js`), admin seeding (`seedAdmin.test.js`), demo data seeding (`seedDemoData.test.js`), product controller units (`productController.test.js`), the pagination helper (`pagination.test.js`), and stock/revenue adjustment units used by the order confirm/cancel/delete transactions (`order.test.js`). Every test injects a fake in-memory Prisma client through the same `client` parameter the production code accepts — no real database is needed to run the suite (including in CI).
+
+**CI** — GitHub Actions ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs the backend suite and the frontend suite + build on every push/PR to `main`. No lint gate yet — the frontend has pre-existing ESLint findings that predate this pipeline.
 
 **Frontend** — Vitest + React Testing Library:
 ```bash
@@ -387,18 +389,23 @@ See [backend/recommendation/README.md](backend/recommendation/README.md) for the
 
 ## Docker
 
-`docker-compose.yml` currently provisions **only** the local PostgreSQL dependency:
+`docker-compose.yml` provisions all three pieces: Postgres, the backend API, and the frontend (built and served by nginx).
 
 ```bash
-docker compose up -d      # start Postgres on :5432 (shopsphere/shopsphere/shopsphere)
-docker compose down       # stop (add -v to also drop the postgres_data volume)
+cp backend/config/config.env.example backend/config/config.env  # fill in secrets first
+docker compose up -d --build
+docker compose down            # stop (add -v to also drop the postgres_data volume)
 ```
 
-There are no Dockerfiles for the backend or frontend applications — running the API and SPA themselves is a plain `npm run dev` / `npm start` process, not currently containerized.
+- **postgres** — `postgres:16-alpine`, exposed on `:5432`, with a healthcheck the backend waits on before starting.
+- **backend** ([backend/Dockerfile](backend/Dockerfile)) — Node 20-alpine; `prisma generate` runs at image build time since the generated client is gitignored; the container entrypoint runs `prisma migrate deploy` before starting the server, so committed migrations apply automatically on every start. Reads `backend/config/config.env` via `env_file`, with `DATABASE_URL` overridden in compose to point at the `postgres` service by name (containers can't reach each other via `localhost`). Exposed on `:4000`; uploaded files persist in the `backend_uploads` volume.
+- **frontend** ([frontend/Dockerfile](frontend/Dockerfile)) — multi-stage: `npm run build` in a Node stage, the resulting `dist/` served by `nginx:alpine` on `:5173→80`. No SPA rewrite rules are needed because the app uses `HashRouter` — every client route is a `#` fragment the browser never sends to the server.
+
+Not verified: no Docker runtime was available in the environment these images were authored in, so `docker compose up --build` has not actually been run end-to-end. The Dockerfiles and compose wiring were reasoned through carefully (multi-stage build, non-root backend user, healthcheck-gated startup, correct in-network hostnames) but treat a first real build as the actual test.
 
 ## Deployment
 
-Not currently implemented. There is no CI/CD workflow, no application Dockerfile, and no hosting/deployment configuration in the repository. `frontend/dist/` (present in the repo but gitignored on rebuild) is a standard Vite static build that could be served by any static host; the backend is a plain long-running Node/Express process that could run on any Node-capable host once `DATABASE_URL` and the other environment variables point at a production database and gateway credentials.
+CI (test + build, see Testing) runs on every push/PR, and the app is now containerized (see Docker), but there is still no configured deployment target, hosting environment, or release process — `docker compose` here is for local/self-hosted use, not a managed deployment pipeline. `frontend/dist/` is a standard Vite static build deployable to any static host; the backend Docker image is deployable to any container-capable host once `DATABASE_URL` and the other environment variables point at a production database and gateway credentials.
 
 ## Engineering Decisions
 
@@ -425,19 +432,18 @@ Not implemented: security-headers middleware (e.g. `helmet`), CSRF tokens (mitig
 - Stateless request handling (JWT bearer + DB-backed refresh state) means Express instances can run behind a load balancer without sticky sessions.
 
 **Current limitations / future scalability considerations:**
-- No pagination on list-heavy endpoints (`getProducts`, `getAllOrder`, `getAllUsers`) — every row is returned and serialized on each call.
+- Pagination on `getProducts`/`getAllOrder`/`getAllUsers`/`getAllUsersAndSellers` is opt-in (see Key Features) — no frontend page passes `page`/`limit` yet, so in practice every row (up to the 1000-row cap) is still returned and serialized on each call until the frontend adopts it.
 - `express-rate-limit`'s default store is in-memory per process, so the auth rate limit resets per instance under horizontal scaling rather than being shared.
-- Most multi-write operations (order creation + stock check, revenue record creation) run as sequential Prisma calls rather than inside a transaction, so a mid-sequence failure can leave partial state.
+- Order *creation* (stock check + order insert + best-effort revenue record) still runs as sequential Prisma calls rather than inside a transaction — this is intentional for now, since the revenue-record write is already best-effort/non-critical and wrapping it would make order creation fail on a revenue-write error it doesn't currently care about. The correctness-critical path (stock deduction tied to a status change) is transactional — see the Database section.
 - No background job queue — the recommendation model is retrained by manually running a script, not on a schedule or in response to new transaction data.
 
 ## Future Improvements
 
-- Add pagination (and ideally filtering) to `getProducts`, `getAllOrder`, and `getAllUsers`.
-- Extend `zod` validation to the order, product, and payment controllers.
-- Actually persist `Bill` rows instead of rebuilding them in-memory per request.
-- Fix the bulk-order revenue-record `ReferenceError` in `createBulkOrderFromCart`.
-- Wrap order creation + stock validation, and order cancellation + stock restoration, in `prisma.$transaction`.
-- Add a CI pipeline (lint + test on push) and application Dockerfiles.
+- Have the frontend list pages (products, admin orders, admin users) actually pass `page`/`limit` to the now-paginated endpoints.
+- Extend `zod` validation to the revenue and user-management controllers (last remaining gap in validation coverage).
+- A CSRF token and/or a shared rate-limiter store, if/when the deployment model actually needs them (see Key Features for why they're currently skipped).
+- Run the new Dockerfiles/`docker compose up --build` end-to-end at least once in an environment with Docker — they were authored and reasoned through carefully but not build-tested (see Docker section).
+- A lint gate in CI once the ~90 pre-existing frontend ESLint findings are triaged.
 
 ## Screenshots / Demo
 

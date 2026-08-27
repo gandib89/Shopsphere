@@ -1,5 +1,6 @@
 import { prisma } from "../database/prismaClient.js";
 import nodemailer from "nodemailer";
+import { parsePagination } from "../utils/pagination.js";
 
 const normalizeEmail = (email = "") => email.trim().toLowerCase();
 
@@ -17,7 +18,15 @@ const getTransporter = () => {
 // Get all users and sellers
 export const getAllUsersAndSellers = async (req, res) => {
   try {
-    const users = await prisma.user.findMany({ omit: { password: true }, take: 1000 });
+    const { paginated, page, pageSize, prismaArgs } = parsePagination(req.query);
+    const [users, total] = await Promise.all([
+      prisma.user.findMany({ omit: { password: true }, ...prismaArgs }),
+      paginated ? prisma.user.count() : Promise.resolve(null),
+    ]);
+
+    if (paginated) {
+      return res.status(200).json({ items: users, total, page, pageSize });
+    }
     res.status(200).json(users);
   } catch (error) {
     console.error("❌ Error fetching users:", error.message);

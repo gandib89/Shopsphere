@@ -2,6 +2,7 @@ import { z } from "zod";
 import { prisma } from "../database/prismaClient.js";
 import { generateId } from "../utils/generateId.js";
 import { sendEmail } from "../utils/emailService.js";
+import { parsePagination } from "../utils/pagination.js";
 import crypto from "crypto";
 
 const deliveryAddressSchema = z.object({
@@ -117,7 +118,7 @@ const withNestedOrderShape = (order) => {
 // selected color/storage variant rows. `client` defaults to the plain prisma client but callers
 // that need this atomic with an order-status change (confirm/cancel/delete) pass a `tx` from
 // prisma.$transaction so a mid-sequence failure can't leave stock adjusted but the order stale.
-const adjustStock = async (productId, quantity, selectedColor, selectedStorage, sign, client = prisma) => {
+export const adjustStock = async (productId, quantity, selectedColor, selectedStorage, sign, client = prisma) => {
   const productDetails = await client.product.findUnique({
     where: { id: productId },
     include: { colorVariants: true, storageVariants: true },
@@ -145,7 +146,7 @@ const adjustStock = async (productId, quantity, selectedColor, selectedStorage, 
 
 // Mirrors Mongoose's Revenue.findOneAndUpdate({ orderId }, data) — updates only the first
 // matching revenue row (there's no unique constraint on orderId in the new schema either).
-const updateFirstRevenueByOrder = async (orderId, data, client = prisma) => {
+export const updateFirstRevenueByOrder = async (orderId, data, client = prisma) => {
   const revenue = await client.revenue.findFirst({ where: { orderId } });
   if (!revenue) return null;
   return client.revenue.update({ where: { id: revenue.id }, data });
@@ -153,23 +154,28 @@ const updateFirstRevenueByOrder = async (orderId, data, client = prisma) => {
 
 export const getAllOrder = async (req, res) => {
   try {
-    const orders = await prisma.order.findMany({
-      include: {
-        product: {
-          select: {
-            name: true,
-            price: true,
-            sellerId: true,
-            seller: { select: { firstName: true, lastName: true, shopName: true, email: true } },
+    const { paginated, page, pageSize, prismaArgs } = parsePagination(req.query);
+    const [orders, total] = await Promise.all([
+      prisma.order.findMany({
+        include: {
+          product: {
+            select: {
+              name: true,
+              price: true,
+              sellerId: true,
+              seller: { select: { firstName: true, lastName: true, shopName: true, email: true } },
+            },
           },
         },
-      },
-      orderBy: { createdAt: "desc" },
-      // ponytail: hard cap instead of real pagination — the frontend consumes this as a bare
-      // array, so paginating for real means changing the response shape and every caller.
-      // Upgrade path: add page/limit query params once the admin orders UI can page through them.
-      take: 1000,
-    });
+        orderBy: { createdAt: "desc" },
+        ...prismaArgs,
+      }),
+      paginated ? prisma.order.count() : Promise.resolve(null),
+    ]);
+
+    if (paginated) {
+      return res.status(200).json({ items: orders.map(withNestedOrderShape), total, page, pageSize });
+    }
     res.status(200).json(orders.map(withNestedOrderShape));
   } catch (error) {
     console.error("Error fetching orders:", error);

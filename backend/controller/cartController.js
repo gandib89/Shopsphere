@@ -1,5 +1,17 @@
+import { z } from "zod";
 import { prisma } from "../database/prismaClient.js";
 import { generateId } from "../utils/generateId.js";
+
+const addToCartSchema = z.object({
+  productId: z.string().min(1),
+  quantity: z.coerce.number().int().positive().optional(),
+  variants: z.record(z.string()).optional(),
+});
+
+const updateCartItemSchema = z.object({
+  productId: z.string().min(1),
+  quantity: z.coerce.number().int(), // <= 0 is a valid "remove item" signal, checked below
+});
 
 const PRODUCT_SELECT = { id: true, name: true, price: true, images: true, category: true, discount: true };
 
@@ -37,7 +49,11 @@ const getCartWithItems = (email) =>
 
 // Add item to cart
 export const addToCart = async (req, res) => {
-  const { productId, quantity, variants } = req.body;
+  const parsed = addToCartSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: parsed.error.issues[0].message });
+  }
+  const { productId, quantity, variants } = parsed.data;
 
   try {
     const user = await prisma.user.findUnique({ where: { id: req.user.id } });
@@ -163,7 +179,11 @@ export const getCart = async (req, res) => {
 
 // Update cart item quantity
 export const updateCartItem = async (req, res) => {
-  const { productId, quantity } = req.body;
+  const parsed = updateCartItemSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: parsed.error.issues[0].message });
+  }
+  const { productId, quantity } = parsed.data;
 
   try {
     const user = await prisma.user.findUnique({ where: { id: req.user.id } });

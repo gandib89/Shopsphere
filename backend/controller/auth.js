@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { prisma } from "../database/prismaClient.js";
 import { generateId } from "../utils/generateId.js";
+import { parsePagination } from "../utils/pagination.js";
 import { hashPassword, verifyPassword, isLegacyHash } from "../utils/password.js";
 import { signAccessToken, REFRESH_TOKEN_TTL_MS } from "../utils/tokens.js";
 import {
@@ -265,7 +266,15 @@ export const getAllUsers = async (req, res) => {
     if (req.user.role !== "admin") {
       return res.status(403).json({ code: "forbidden", message: "Access denied. Admins only." });
     }
-    const users = await prisma.user.findMany({ omit: { password: true }, take: 1000 });
+    const { paginated, page, pageSize, prismaArgs } = parsePagination(req.query);
+    const [users, total] = await Promise.all([
+      prisma.user.findMany({ omit: { password: true }, ...prismaArgs }),
+      paginated ? prisma.user.count() : Promise.resolve(null),
+    ]);
+
+    if (paginated) {
+      return res.status(200).json({ items: users, total, page, pageSize });
+    }
     res.status(200).json(users);
   } catch (err) {
     res.status(500).json({ code: "internal_error", message: err.message });

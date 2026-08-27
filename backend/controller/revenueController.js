@@ -4,9 +4,12 @@ import { sendEmail } from "../utils/emailService.js";
 
 // Create revenue record when order is placed
 export const createRevenueRecord = async (req, res) => {
-  try {
-    const { orderId } = req.body;
+  const orderId = typeof req.body?.orderId === "string" ? req.body.orderId : "";
+  if (!orderId) {
+    return res.status(400).json({ message: "orderId is required" });
+  }
 
+  try {
     // Find the order
     const order = await prisma.order.findUnique({
       where: { id: orderId },

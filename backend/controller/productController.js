@@ -1,5 +1,7 @@
+import { z } from "zod";
 import { prisma } from "../database/prismaClient.js";
 import { generateId } from "../utils/generateId.js";
+import { parsePagination } from "../utils/pagination.js";
 import multer from "multer";
 import path from "path";
 import fs from "fs/promises";
@@ -178,22 +180,33 @@ export const uploadImage = (req, res) => {
   }
 };
 
+const createProductSchema = z.object({
+  name: z.string().min(1),
+  price: z.coerce.number().positive(),
+  description: z.string().optional(),
+  quantity: z.coerce.number().int().nonnegative(),
+  images: z.array(z.string()).min(1),
+  category: z.string().min(1),
+  variants: z.record(z.array(z.string())).optional(),
+  colorVariants: z.array(z.object({
+    color: z.string().optional(),
+    images: z.array(z.string()).optional(),
+    stock: z.coerce.number().int().nonnegative().optional(),
+  })).optional(),
+  storageVariants: z.array(z.object({
+    storage: z.string().optional(),
+    stock: z.coerce.number().int().nonnegative().optional(),
+  })).optional(),
+});
+
 export const createProduct = async (req, res) => {
+  const parsed = createProductSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: parsed.error.issues[0].message });
+  }
+
   try {
-    const { name, price, description, quantity, images, category, variants, colorVariants, storageVariants } = req.body;
-
-    console.log("Request body:", req.body); // Debugging
-    console.log("Color variants received:", colorVariants); // Debugging
-    console.log("Storage variants received:", storageVariants); // Debugging
-
-    if (!images || images.length === 0) {
-      console.error("No images provided"); // Debugging
-      return res.status(400).json({ message: "At least one image is required" });
-    }
-
-    if (!category) {
-      return res.status(400).json({ message: "Category is required" });
-    }
+    const { name, price, description, quantity, images, category, variants, colorVariants, storageVariants } = parsed.data;
 
     const v = variants || {};
     const product = await prisma.product.create({
@@ -264,16 +277,22 @@ export const createProduct = async (req, res) => {
 };
 
 export const getProducts = async (req, res) => {
-  console.log("Fetching products...");
   try {
-    const products = await prisma.product.findMany({
-      include: { seller: { select: SELLER_SELECT }, ...PRODUCT_FULL_INCLUDE },
-      take: 1000, // ponytail: hard cap, not real pagination — see order.js getAllOrder note
-    });
+    const { paginated, page, pageSize, prismaArgs } = parsePagination(req.query);
+    const [products, total] = await Promise.all([
+      prisma.product.findMany({
+        include: { seller: { select: SELLER_SELECT }, ...PRODUCT_FULL_INCLUDE },
+        ...prismaArgs,
+      }),
+      paginated ? prisma.product.count() : Promise.resolve(null),
+    ]);
 
     // Ensure all products have category (for backward compatibility with old data)
     const enrichedProducts = products.map(formatProductResponse);
 
+    if (paginated) {
+      return res.status(200).json({ items: enrichedProducts, total, page, pageSize });
+    }
     res.status(200).json(enrichedProducts);
   } catch (error) {
     console.error("Error fetching products:", error);
@@ -779,12 +798,12 @@ export const retrainProductRecommendations = async (req, res) => {
 export const setProductDiscount = async (req, res) => {
   try {
     const { productId } = req.params;
-    const { discount } = req.body;
     const sellerId = req.user.id;
 
     // Validate discount percentage
-    if (discount < 0 || discount > 100) {
-      return res.status(400).json({ message: "Discount must be between 0 and 100" });
+    const discount = Number(req.body.discount);
+    if (!Number.isFinite(discount) || discount < 0 || discount > 100) {
+      return res.status(400).json({ message: "Discount must be a number between 0 and 100" });
     }
 
     // Find the product and verify seller ownership

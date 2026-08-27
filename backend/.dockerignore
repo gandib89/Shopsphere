@@ -1,0 +1,5 @@
+node_modules
+generated
+uploads
+config/config.env
+*.log

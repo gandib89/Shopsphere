@@ -1,8 +1,25 @@
+import { z } from "zod";
 import { prisma } from "../database/prismaClient.js";
 import { generateId } from "../utils/generateId.js";
 
+const createPromoCodeSchema = z.object({
+  code: z.string().min(1),
+  description: z.string().min(1),
+  discountType: z.enum(["percentage", "fixed"]),
+  discountValue: z.coerce.number().positive(),
+  minPurchase: z.coerce.number().nonnegative().optional(),
+  maxDiscount: z.coerce.number().positive().optional(),
+  usageLimit: z.coerce.number().int().positive().optional(),
+  validFrom: z.string().min(1),
+  validUntil: z.string().min(1),
+});
+
 // Create a new promo code (Admin only)
 export const createPromoCode = async (req, res) => {
+  const parsed = createPromoCodeSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: parsed.error.issues[0].message });
+  }
   try {
     const {
       code,
@@ -14,7 +31,7 @@ export const createPromoCode = async (req, res) => {
       usageLimit,
       validFrom,
       validUntil,
-    } = req.body;
+    } = parsed.data;
 
     // Validate dates
     const fromDate = new Date(validFrom);
@@ -91,15 +108,20 @@ export const createPromoCode = async (req, res) => {
   }
 };
 
+const validatePromoCodeSchema = z.object({
+  code: z.string().min(1),
+  purchaseAmount: z.coerce.number().positive(),
+});
+
 // Validate and apply promo code
 export const validatePromoCode = async (req, res) => {
+  const parsed = validatePromoCodeSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Code and purchase amount are required" });
+  }
+  const { code, purchaseAmount } = parsed.data;
+
   try {
-    const { code, purchaseAmount } = req.body;
-
-    if (!code || !purchaseAmount) {
-      return res.status(400).json({ message: "Code and purchase amount are required" });
-    }
-
     const promoCode = await prisma.promoCode.findUnique({ where: { code: code.toUpperCase() } });
 
     if (!promoCode) {
@@ -190,8 +212,12 @@ export const validatePromoCode = async (req, res) => {
 
 // Apply promo code (increment usage count)
 export const applyPromoCode = async (req, res) => {
+  const code = typeof req.body?.code === "string" ? req.body.code.trim() : "";
+  if (!code) {
+    return res.status(400).json({ message: "Code is required" });
+  }
+
   try {
-    const { code } = req.body;
     const userId = req.user.id;
 
     const promoCode = await prisma.promoCode.findUnique({ where: { code: code.toUpperCase() } });

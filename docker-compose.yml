@@ -11,6 +11,41 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shopsphere"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    container_name: shopsphere-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # backend/config/config.env is gitignored — copy it from config.env.example first
+    # (see README's Local Development section). DATABASE_URL below intentionally overrides
+    # whatever's in that file: containers reach Postgres by service name, not localhost.
+    env_file:
+      - ./backend/config/config.env
+    environment:
+      DATABASE_URL: postgresql://shopsphere:shopsphere@postgres:5432/shopsphere?schema=public
+      PORT: 4000
+    ports:
+      - "4000:4000"
+    volumes:
+      - backend_uploads:/app/uploads
+
+  frontend:
+    build: ./frontend
+    container_name: shopsphere-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
 
 volumes:
   postgres_data:
+  backend_uploads:
