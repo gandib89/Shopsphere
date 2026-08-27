@@ -146,8 +146,13 @@ sequenceDiagram
 
     C->>A: POST /auth/refresh (cookie sent automatically)
     A->>S: rotateRefreshToken(rawToken)
-    S->>DB: lookup by hash; if usedAt already set → revoke whole family, throw
-    S->>DB: mark old token used, insert new token (same family)
+    S->>DB: lookup by hash
+    alt token already used (replay)
+        S->>DB: revoke every token in the family
+        S-->>A: throw RefreshTokenError
+    else
+        S->>DB: mark old token used, insert new token (same family)
+    end
     A-->>C: 200 {new accessToken, rotated refresh cookie}
 ```
 
