@@ -265,7 +265,7 @@ export const getAllUsers = async (req, res) => {
     if (req.user.role !== "admin") {
       return res.status(403).json({ code: "forbidden", message: "Access denied. Admins only." });
     }
-    const users = await prisma.user.findMany({ omit: { password: true } });
+    const users = await prisma.user.findMany({ omit: { password: true }, take: 1000 });
     res.status(200).json(users);
   } catch (err) {
     res.status(500).json({ code: "internal_error", message: err.message });

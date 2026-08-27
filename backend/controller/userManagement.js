@@ -17,7 +17,7 @@ const getTransporter = () => {
 // Get all users and sellers
 export const getAllUsersAndSellers = async (req, res) => {
   try {
-    const users = await prisma.user.findMany({ omit: { password: true } });
+    const users = await prisma.user.findMany({ omit: { password: true }, take: 1000 });
     res.status(200).json(users);
   } catch (error) {
     console.error("❌ Error fetching users:", error.message);

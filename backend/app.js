@@ -1,13 +1,14 @@
 import express from "express";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import{ dbConnection } from "./database/dbConnection.js";
 import { errorMiddleware } from "./middlewares/error.js";
 import authRouter from "./routes/authRoute.js";
 import productRouter from "./routes/productRoute.js";
 import orderRouter from "./routes/orderRoute.js";
+import paymentRouter from "./routes/paymentRoute.js";
 import cartRouter from "./routes/cartRoute.js";
 import revenueRouter from "./routes/revenueRoute.js";
 import userManagementRouter from "./routes/userManagementRoute.js";
@@ -47,11 +48,24 @@ app.use(
 })
 );
 
+// ponytail: hand-rolled instead of pulling in helmet for a handful of static headers.
+app.use((req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("Referrer-Policy", "no-referrer");
+    if (process.env.NODE_ENV === "production") {
+        res.setHeader("Strict-Transport-Security", "max-age=15552000; includeSubDomains");
+    }
+    next();
+});
+
 app.use(express.json());
 app.use(express.urlencoded({extended: true }));
+app.use(cookieParser());
 app.use('/api/v1/auth',authRouter);
 app.use ('/api/v1/product',productRouter);
 app.use('/api/v1/order', orderRouter);
+app.use('/api/v1/payment', paymentRouter);
 app.use('/api/v1/cart', cartRouter);
 app.use('/api/v1/revenue', revenueRouter);
 app.use('/api/v1/users', userManagementRouter);
@@ -61,36 +75,12 @@ app.use('/api/v1/promo', promoRouter);
 app.use('/api/v1/email', testEmailRouter);
 app.use("/uploads", express.static(join(__dirname, "uploads")));
 
-// eSewa payment redirect: eSewa redirects browser here, we redirect to frontend
-app.get('/esewa-success/:orderId', (req, res) => {
-  const { orderId } = req.params;
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-  const userAgent = req.headers['user-agent'] || '';
-  
-  // Check if it's a mobile app (Capacitor) or web browser
-  const isCapacitor = userAgent.includes('Capacitor') || req.headers['x-capacitor'];
-  const redirectUrl = isCapacitor 
-    ? `capacitor://localhost/#/success/${orderId}`
-    : `${frontendUrl}/#/success/${orderId}`;
-  
-  res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Payment Successful</title></head><body><p>Payment successful! Redirecting back to app...</p><script>setTimeout(function(){ window.location.href = '${redirectUrl}'; }, 300);</script></body></html>`);
-});
-
-app.get('/esewa-failure/:orderId', (req, res) => {
-  const { orderId } = req.params;
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-  const userAgent = req.headers['user-agent'] || '';
-  
-  // Check if it's a mobile app (Capacitor) or web browser
-  const isCapacitor = userAgent.includes('Capacitor') || req.headers['x-capacitor'];
-  const redirectUrl = isCapacitor 
-    ? `capacitor://localhost/#/failure/${orderId}`
-    : `${frontendUrl}/#/failure/${orderId}`;
-  
-  res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Payment Failed</title></head><body><p>Payment failed. Redirecting back to app...</p><script>setTimeout(function(){ window.location.href = '${redirectUrl}'; }, 300);</script></body></html>`);
-});
-
-dbConnection();
+// eSewa redirects the browser here after payment. These used to redirect straight to the
+// frontend with zero server-side verification (the frontend then trusted the redirect alone
+// and deducted stock). Real verification now lives in paymentRouter's /esewa/success|failure
+// routes; kept here only as aliases in case an old client build still points at these paths.
+app.get('/esewa-success/:orderId', (req, res) => res.redirect(`/api/v1/payment/esewa/success/${req.params.orderId}?${new URLSearchParams(req.query).toString()}`));
+app.get('/esewa-failure/:orderId', (req, res) => res.redirect(`/api/v1/payment/esewa/failure/${req.params.orderId}?${new URLSearchParams(req.query).toString()}`));
 
 app.use(errorMiddleware)
 

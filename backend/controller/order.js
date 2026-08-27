@@ -1,7 +1,61 @@
+import { z } from "zod";
 import { prisma } from "../database/prismaClient.js";
 import { generateId } from "../utils/generateId.js";
 import { sendEmail } from "../utils/emailService.js";
 import crypto from "crypto";
+
+const deliveryAddressSchema = z.object({
+  street: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  zipCode: z.string().optional(),
+  country: z.string().optional(),
+}).optional();
+
+const variantsSchema = z.object({
+  storage: z.string().optional(),
+  color: z.string().optional(),
+  ram: z.string().optional(),
+  screenSize: z.string().optional(),
+  processor: z.string().optional(),
+}).optional();
+
+const promoCodeSchema = z.object({
+  code: z.string(),
+  discountAmount: z.number().nonnegative(),
+}).optional();
+
+const createOrderSchema = z.object({
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  email: z.string().email(),
+  phone: z.string().optional(),
+  product: z.string().min(1),
+  quantity: z.coerce.number().int().positive(),
+  deliveryDate: z.string().min(1),
+  deliveryAddress: deliveryAddressSchema,
+  size: z.string().optional(),
+  color: z.string().optional(),
+  variants: variantsSchema,
+  promoCode: promoCodeSchema,
+});
+
+const createBulkOrderSchema = z.object({
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  email: z.string().email(),
+  phone: z.string().optional(),
+  deliveryDate: z.string().min(1),
+  deliveryAddress: deliveryAddressSchema,
+  cartItems: z.array(z.object({
+    productId: z.string().min(1),
+    quantity: z.coerce.number().int().positive(),
+    variants: variantsSchema,
+    color: z.string().optional(),
+    size: z.string().optional(),
+  })).min(1),
+  promoCode: promoCodeSchema,
+});
 
 // ─── Branded email wrapper matching ShopSphere purple theme ───────────────────
 const shopSphereEmail = (title, body, { accentColor = '#7c3aed', icon = '' } = {}) => `
@@ -60,42 +114,41 @@ const withNestedOrderShape = (order) => {
 };
 
 // Restores (sign=1) or deducts (sign=-1) stock across the product's base quantity plus its
-// selected color/storage variant rows. The old Mongoose code did this as a single atomic
-// $inc + arrayFilters update; color/storage variants now live in their own tables, so this
-// is three sequential Prisma calls. Not wrapped in a transaction — matches the pre-existing
-// (non-atomic) behavior, which is intentionally preserved rather than fixed here.
-const adjustStock = async (productId, quantity, selectedColor, selectedStorage, sign) => {
-  const productDetails = await prisma.product.findUnique({
+// selected color/storage variant rows. `client` defaults to the plain prisma client but callers
+// that need this atomic with an order-status change (confirm/cancel/delete) pass a `tx` from
+// prisma.$transaction so a mid-sequence failure can't leave stock adjusted but the order stale.
+const adjustStock = async (productId, quantity, selectedColor, selectedStorage, sign, client = prisma) => {
+  const productDetails = await client.product.findUnique({
     where: { id: productId },
     include: { colorVariants: true, storageVariants: true },
   });
   if (!productDetails) return null;
 
   const delta = sign * quantity;
-  await prisma.product.update({ where: { id: productId }, data: { quantity: { increment: delta } } });
+  await client.product.update({ where: { id: productId }, data: { quantity: { increment: delta } } });
 
   if (selectedColor && productDetails.colorVariants.length > 0) {
-    await prisma.productColorVariant.updateMany({
+    await client.productColorVariant.updateMany({
       where: { productId, color: selectedColor },
       data: { stock: { increment: delta } },
     });
   }
   if (selectedStorage && productDetails.storageVariants.length > 0) {
-    await prisma.productStorageVariant.updateMany({
+    await client.productStorageVariant.updateMany({
       where: { productId, storage: selectedStorage },
       data: { stock: { increment: delta } },
     });
   }
 
-  return prisma.product.findUnique({ where: { id: productId } });
+  return client.product.findUnique({ where: { id: productId } });
 };
 
 // Mirrors Mongoose's Revenue.findOneAndUpdate({ orderId }, data) — updates only the first
 // matching revenue row (there's no unique constraint on orderId in the new schema either).
-const updateFirstRevenueByOrder = async (orderId, data) => {
-  const revenue = await prisma.revenue.findFirst({ where: { orderId } });
+const updateFirstRevenueByOrder = async (orderId, data, client = prisma) => {
+  const revenue = await client.revenue.findFirst({ where: { orderId } });
   if (!revenue) return null;
-  return prisma.revenue.update({ where: { id: revenue.id }, data });
+  return client.revenue.update({ where: { id: revenue.id }, data });
 };
 
 export const getAllOrder = async (req, res) => {
@@ -112,6 +165,10 @@ export const getAllOrder = async (req, res) => {
         },
       },
       orderBy: { createdAt: "desc" },
+      // ponytail: hard cap instead of real pagination — the frontend consumes this as a bare
+      // array, so paginating for real means changing the response shape and every caller.
+      // Upgrade path: add page/limit query params once the admin orders UI can page through them.
+      take: 1000,
     });
     res.status(200).json(orders.map(withNestedOrderShape));
   } catch (error) {
@@ -186,6 +243,10 @@ export const getOrderDetails = async (req, res) => {
 };
 
 export const createOrder = async (req, res) => {
+  const parsed = createOrderSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: parsed.error.issues[0].message });
+  }
   const {
     firstName,
     lastName,
@@ -199,7 +260,7 @@ export const createOrder = async (req, res) => {
     color,
     variants,
     promoCode,
-  } = req.body;
+  } = parsed.data;
 
   try {
     // Fetch product details
@@ -356,6 +417,10 @@ export const createOrder = async (req, res) => {
 
 // Create multiple orders from cart items (all items purchased together)
 export const createBulkOrderFromCart = async (req, res) => {
+  const parsed = createBulkOrderSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: parsed.error.issues[0].message });
+  }
   const {
     firstName,
     lastName,
@@ -365,13 +430,9 @@ export const createBulkOrderFromCart = async (req, res) => {
     deliveryAddress,
     cartItems, // Array of items: [{ productId, quantity, variants, color, size }]
     promoCode,
-  } = req.body;
+  } = parsed.data;
 
   try {
-    if (!cartItems || cartItems.length === 0) {
-      return res.status(400).json({ message: "Cart is empty" });
-    }
-
     const userId = req.user?.id;
     const orderGroupId = crypto.randomUUID(); // Unique ID for this checkout session
     const createdOrders = [];
@@ -469,10 +530,7 @@ export const createBulkOrderFromCart = async (req, res) => {
             adminId: null,
             productId: item.productId,
             totalSalePrice: itemTotal,
-            adminCommission: adminCommission, // preexisting bug: `adminCommission` isn't defined
-            // in this function's scope (unlike createOrder). This throws a ReferenceError that
-            // is caught below, so bulk-order revenue records were never actually created before
-            // this migration either — preserved as-is per the like-for-like swap instructions.
+            adminCommission: itemTotal * 0.05,
             sellerRevenue: itemTotal * 0.95,
             transactionDate: now,
             month: now.getMonth() + 1,
@@ -710,24 +768,18 @@ export const userDeleteOrder = async (req, res) => {
         });
     }
 
-    // Restore stock if order was confirmed/paid
-    if (order.status === 'Confirmed' || order.status === 'Processing' || order.status === 'Shipped') {
-      try {
-        const { quantity } = order;
-        const productId = order.product.id;
-
-        const updated = await adjustStock(productId, quantity, order.variantColor, order.variantStorage, 1);
-        if (updated) {
-          console.log(`✅ Stock restored on cancellation: ${quantity} units for order ${id}`);
-        }
-      } catch (stockError) {
-        console.error("Error restoring stock on cancellation:", stockError);
-        // Don't fail the order cancellation if stock restoration fails
+    // Restore stock (if applicable) and delete the order atomically — a failure partway
+    // through must not leave stock restored with the order still present, or vice versa.
+    const restoresStock = ['Confirmed', 'Processing', 'Shipped'].includes(order.status);
+    await prisma.$transaction(async (tx) => {
+      if (restoresStock) {
+        await adjustStock(order.product.id, order.quantity, order.variantColor, order.variantStorage, 1, tx);
       }
+      await tx.order.delete({ where: { id } });
+    });
+    if (restoresStock) {
+      console.log(`✅ Stock restored on cancellation: ${order.quantity} units for order ${id}`);
     }
-
-    // Delete the order
-    await prisma.order.delete({ where: { id } });
 
     // Send delete confirmation email
     const subject = "Order Cancelled – ShopSphere";
@@ -864,24 +916,61 @@ export const generateBill = async (req, res) => {
       return res.status(404).json({ message: "Order not found" });
     }
 
-    // Generate unique bill number
-    const billNumber = `BILL-${Date.now()}-${orderId.substring(orderId.length - 4)}`;
+    // Deterministic (not Date.now()-based) so re-requesting the same order's bill is
+    // idempotent — upsert below returns the same persisted row instead of erroring on
+    // the unique billNumber constraint or silently minting an unpersisted duplicate.
+    const billNumber = `BILL-${orderId}`;
 
-    // Bill data
+    const persisted = await prisma.bill.upsert({
+      where: { billNumber },
+      update: {},
+      create: {
+        id: generateId(),
+        billNumber,
+        orderId: order.id,
+        userId: order.user?.id,
+        productId: order.product.id,
+        firstName: order.firstName,
+        lastName: order.lastName,
+        email: order.email,
+        phone: order.phone, // Order has no phone column (preexisting; see createOrder note)
+        productName: order.product.name,
+        quantity: order.quantity,
+        unitPrice: order.product.price,
+        totalPrice: order.totalPrice,
+        adminCommission: order.adminCommission || (order.totalPrice * 0.05),
+        sellerRevenue: order.totalPrice * 0.95,
+        deliveryStreet: order.deliveryStreet,
+        deliveryCity: order.deliveryCity,
+        deliveryState: order.deliveryState,
+        deliveryZipCode: order.deliveryZipCode,
+        deliveryCountry: order.deliveryCountry,
+        deliveryDate: order.deliveryDate,
+        orderDate: order.createdAt,
+        status: "Generated",
+      },
+    });
+
+    if (!order.billId) {
+      await prisma.order.update({ where: { id: order.id }, data: { billId: persisted.id } });
+    }
+
+    // Keep the response shape the frontend already expects (nested deliveryAddress/variants)
+    // rather than the flat persisted row shape.
     const billData = {
-      billNumber,
+      billNumber: persisted.billNumber,
       orderId: order.id,
       userId: order.user?.id,
       productId: order.product.id,
       customerName: `${order.firstName} ${order.lastName}`,
       customerEmail: order.email,
-      customerPhone: order.phone, // Order has no phone column (preexisting; see createOrder note)
+      customerPhone: order.phone,
       productName: order.product.name,
       quantity: order.quantity,
       unitPrice: order.product.price,
       totalPrice: order.totalPrice,
-      adminCommission: order.adminCommission || (order.totalPrice * 0.05),
-      sellerRevenue: (order.totalPrice * 0.95),
+      adminCommission: persisted.adminCommission,
+      sellerRevenue: persisted.sellerRevenue,
       deliveryAddress: {
         street: order.deliveryStreet,
         city: order.deliveryCity,
@@ -891,7 +980,7 @@ export const generateBill = async (req, res) => {
       },
       deliveryDate: order.deliveryDate,
       orderDate: order.createdAt,
-      status: "Generated",
+      status: persisted.status,
       variants: {
         storage: order.variantStorage,
         color: order.variantColor,
@@ -1099,31 +1188,36 @@ export const confirmOrderCore = async (orderId) => {
       try {
         const { quantity } = order;
         const productId = order.product.id;
+        const orderId = order.id;
 
         // Extract selected variants
         const selectedColor = order.variantColor;
         const selectedStorage = order.variantStorage;
+        const confirmedAt = order.confirmedAt || new Date();
 
-        // Update product stock - decrease quantity by quantity ordered
-        const updatedProduct = await adjustStock(productId, quantity, selectedColor, selectedStorage, -1);
+        // Stock deduction, order status flip, and revenue update happen atomically —
+        // a failure partway through must not leave stock deducted but the order still Pending.
+        const { updatedProduct, updatedOrder } = await prisma.$transaction(async (tx) => {
+          const product = await adjustStock(productId, quantity, selectedColor, selectedStorage, -1, tx);
+          if (!product) return { updatedProduct: null, updatedOrder: null };
+
+          const orderRow = await tx.order.update({
+            where: { id: orderId },
+            data: { status: 'Confirmed', confirmedAt },
+            include: { product: true },
+          });
+
+          await updateFirstRevenueByOrder(orderId, { status: "Completed" }, tx);
+
+          return { updatedProduct: product, updatedOrder: orderRow };
+        });
+
         if (!updatedProduct) {
           errors.push(`Product not found for order ${order.id}`);
           continue;
         }
 
         console.log(`✅ Stock deducted: ${quantity} units for order ${order.id}`);
-
-        // Update order status to Confirmed
-        const confirmedAt = order.confirmedAt || new Date();
-        const updatedOrder = await prisma.order.update({
-          where: { id: order.id },
-          data: { status: 'Confirmed', confirmedAt },
-          include: { product: true },
-        });
-
-        // Update revenue status to Completed
-        await updateFirstRevenueByOrder(order.id, { status: "Completed" });
-
         confirmedOrders.push(updatedOrder);
 
         // Check for low stock and send alert to seller
@@ -1323,22 +1417,18 @@ export const cancelOrder = async (req, res) => {
       });
     }
 
-    // Restore stock
-    try {
-      const { quantity } = order;
-      const updated = await adjustStock(order.product.id, quantity, order.variantColor, order.variantStorage, 1);
-      if (updated) {
-        console.log(`✅ Stock restored: ${quantity} units for order ${orderId}`);
-      }
-    } catch (stockErr) {
-      console.error("Stock restore error (non-fatal):", stockErr);
-    }
-
-    order = await prisma.order.update({
-      where: { id: orderId },
-      data: { status: "Cancelled", cancelledAt: new Date() },
-      include: { product: true },
+    // Restore stock and flip status atomically — a failure partway through must not
+    // leave stock restored but the order still showing as Confirmed/Pending, or vice versa.
+    const { quantity } = order;
+    order = await prisma.$transaction(async (tx) => {
+      await adjustStock(order.product.id, quantity, order.variantColor, order.variantStorage, 1, tx);
+      return tx.order.update({
+        where: { id: orderId },
+        data: { status: "Cancelled", cancelledAt: new Date() },
+        include: { product: true },
+      });
     });
+    console.log(`✅ Stock restored: ${quantity} units for order ${orderId}`);
 
     // Notify customer
     const cancelHtml = shopSphereEmail('Order Cancelled', `

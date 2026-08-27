@@ -268,6 +268,7 @@ export const getProducts = async (req, res) => {
   try {
     const products = await prisma.product.findMany({
       include: { seller: { select: SELLER_SELECT }, ...PRODUCT_FULL_INCLUDE },
+      take: 1000, // ponytail: hard cap, not real pagination — see order.js getAllOrder note
     });
 
     // Ensure all products have category (for backward compatibility with old data)
