@@ -40,8 +40,27 @@ model User {
   promoCodeUsages   PromoCodeUsage[]
   bills             Bill[]
   productReviews    ProductReview[]
+  refreshTokens     RefreshToken[]
 
   @@map("users")
+}
+
+// Rotating refresh tokens, grouped by familyId. Reuse of an already-`usedAt` token
+// revokes every token in its family (stolen-token signal) — see utils/refreshTokenStore.js.
+model RefreshToken {
+  id        String    @id @db.VarChar(24)
+  userId    String    @db.VarChar(24)
+  user      User      @relation(fields: [userId], references: [id])
+  familyId  String    @db.VarChar(24)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([familyId])
+  @@index([userId])
+  @@map("refresh_tokens")
 }
 
 model Product {

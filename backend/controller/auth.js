@@ -1,12 +1,51 @@
-import { response } from "express";
+import { z } from "zod";
 import { prisma } from "../database/prismaClient.js";
 import { generateId } from "../utils/generateId.js";
-import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
+import { hashPassword, verifyPassword, isLegacyHash } from "../utils/password.js";
+import { signAccessToken, REFRESH_TOKEN_TTL_MS } from "../utils/tokens.js";
+import {
+  issueRefreshFamily,
+  rotateRefreshToken,
+  revokeFamilyByToken,
+  RefreshTokenError,
+} from "../utils/refreshTokenStore.js";
 import { OAuth2Client } from "google-auth-library";
 import nodemailer from "nodemailer";
 
-// Normalize emails to avoid case/whitespace mismatches
+export { authorizeAdmin } from "../middlewares/authMiddleware.js";
+
+const REFRESH_COOKIE_NAME = "refresh_token";
+const REFRESH_COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "strict",
+  path: "/api/v1/auth",
+};
+
+const setRefreshCookie = (res, refreshToken) =>
+  res.cookie(REFRESH_COOKIE_NAME, refreshToken, {
+    ...REFRESH_COOKIE_OPTIONS,
+    maxAge: REFRESH_TOKEN_TTL_MS,
+  });
+
+const clearRefreshCookie = (res) => res.clearCookie(REFRESH_COOKIE_NAME, REFRESH_COOKIE_OPTIONS);
+
+// Issues a fresh access token + a new refresh-token family, and sets the cookie.
+const issueSession = async (res, user) => {
+  const refreshToken = await issueRefreshFamily(user.id);
+  setRefreshCookie(res, refreshToken);
+  return signAccessToken({ id: user.id, role: user.role });
+};
+
+const toPublicUser = (user) => ({
+  id: user.id,
+  email: user.email,
+  role: user.role,
+  admin: user.role === "admin",
+  seller: user.role === "seller",
+  sellerVerified: user.role !== "seller" || user.isVerified,
+});
+
 const normalizeEmail = (email = "") => email.trim().toLowerCase();
 
 // Email transporter setup - created dynamically to ensure env vars are loaded
@@ -20,274 +59,217 @@ const getTransporter = () => {
   });
 };
 
-// Helper function to send approval email
 const sendApprovalEmail = async (seller) => {
   try {
-    // Verify env variables are set
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-      console.warn("❌ Email credentials not configured. Skipping approval email.");
-      console.warn("EMAIL_USER:", process.env.EMAIL_USER ? "✅" : "❌");
-      console.warn("EMAIL_PASS:", process.env.EMAIL_PASS ? "✅" : "❌");
+      console.warn("Email credentials not configured. Skipping approval email.");
       return;
     }
-
-    console.log("📧 Sending approval email to:", seller.email);
     const transporter = getTransporter();
-    
-    const mailOptions = {
+    await transporter.sendMail({
       from: process.env.EMAIL_USER,
       to: seller.email,
-      subject: '✅ Your ShopSphere Seller Account Has Been Approved!',
+      subject: 'Your ShopSphere Seller Account Has Been Approved!',
       html: `
         <div style="font-family: Arial, sans-serif; background-color: #f5f5f5; padding: 20px;">
           <div style="background-color: white; padding: 30px; border-radius: 8px; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #27ae60; margin-bottom: 20px;">🎉 Congratulations! Your Account is Approved</h2>
-            
-            <p style="color: #333; font-size: 16px; line-height: 1.6;">
-              Hi ${seller.firstName} ${seller.lastName},
-            </p>
-            
+            <h2 style="color: #27ae60; margin-bottom: 20px;">Congratulations! Your Account is Approved</h2>
+            <p style="color: #333; font-size: 16px; line-height: 1.6;">Hi ${seller.firstName} ${seller.lastName},</p>
             <p style="color: #333; font-size: 16px; line-height: 1.6;">
               Great news! Your seller account for <strong>${seller.shopName}</strong> has been approved by our admin team.
             </p>
-            
-            <p style="color: #333; font-size: 16px; line-height: 1.6;">
-              You can now log in and start selling on ShopSphere!
-            </p>
-            
+            <p style="color: #333; font-size: 16px; line-height: 1.6;">You can now log in and start selling on ShopSphere!</p>
             <div style="background-color: #27ae60; padding: 15px; border-radius: 5px; text-align: center; margin: 20px 0;">
               <a href="http://localhost:5173/seller-auth" style="color: white; text-decoration: none; font-weight: bold; font-size: 16px;">
-                👉 Login to Your Seller Panel
+                Login to Your Seller Panel
               </a>
             </div>
-            
-            <p style="color: #666; font-size: 14px; line-height: 1.6;">
-              <strong>What's Next?</strong><br>
-              1. Upload your products<br>
-              2. Manage your inventory<br>
-              3. Track orders and revenue<br>
-              4. Start earning!
-            </p>
-            
             <p style="color: #999; font-size: 12px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
-              If you did not apply for a seller account, please ignore this email.<br>
-              ShopSphere Team
+              If you did not apply for a seller account, please ignore this email.<br>ShopSphere Team
             </p>
           </div>
         </div>
       `,
-    };
-
-    await transporter.sendMail(mailOptions);
-    console.log("✅ Approval email sent successfully to:", seller.email);
+    });
   } catch (error) {
-    console.error("❌ Error sending approval email:", error.message);
-    console.error("Full error:", error);
-    // Don't throw error, just log it
+    console.error("Error sending approval email:", error.message);
   }
 };
 
-// Helper function to send rejection email
 const sendRejectionEmail = async (seller, reason) => {
   try {
-    // Verify env variables are set
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-      console.warn("❌ Email credentials not configured. Skipping rejection email.");
-      console.warn("EMAIL_USER:", process.env.EMAIL_USER ? "✅" : "❌");
-      console.warn("EMAIL_PASS:", process.env.EMAIL_PASS ? "✅" : "❌");
+      console.warn("Email credentials not configured. Skipping rejection email.");
       return;
     }
-
-    console.log("📧 Sending rejection email to:", seller.email);
     const transporter = getTransporter();
-    
-    const mailOptions = {
+    await transporter.sendMail({
       from: process.env.EMAIL_USER,
       to: seller.email,
-      subject: '❌ Your ShopSphere Seller Application Status',
+      subject: 'Your ShopSphere Seller Application Status',
       html: `
         <div style="font-family: Arial, sans-serif; background-color: #f5f5f5; padding: 20px;">
           <div style="background-color: white; padding: 30px; border-radius: 8px; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #e74c3c; margin-bottom: 20px;">📋 Application Status Update</h2>
-            
-            <p style="color: #333; font-size: 16px; line-height: 1.6;">
-              Hi ${seller.firstName} ${seller.lastName},
-            </p>
-            
+            <h2 style="color: #e74c3c; margin-bottom: 20px;">Application Status Update</h2>
+            <p style="color: #333; font-size: 16px; line-height: 1.6;">Hi ${seller.firstName} ${seller.lastName},</p>
             <p style="color: #333; font-size: 16px; line-height: 1.6;">
               Thank you for applying to become a seller on ShopSphere. After reviewing your application, we have decided not to approve it at this time.
             </p>
-            
             <div style="background-color: #fff3cd; padding: 15px; border-left: 4px solid #e74c3c; margin: 20px 0;">
-              <p style="color: #333; margin: 0;">
-                <strong>Reason for Rejection:</strong><br>
-                ${reason || 'Not specified'}
-              </p>
+              <p style="color: #333; margin: 0;"><strong>Reason for Rejection:</strong><br>${reason || 'Not specified'}</p>
             </div>
-            
             <p style="color: #333; font-size: 16px; line-height: 1.6;">
               You are welcome to apply again after addressing the concerns. If you have any questions, please contact our support team.
             </p>
-            
-            <p style="color: #999; font-size: 12px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
-              ShopSphere Team
-            </p>
+            <p style="color: #999; font-size: 12px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">ShopSphere Team</p>
           </div>
         </div>
       `,
-    };
-
-    await transporter.sendMail(mailOptions);
-    console.log("✅ Rejection email sent successfully to:", seller.email);
+    });
   } catch (error) {
-    console.error("❌ Error sending rejection email:", error.message);
-    console.error("Full error:", error);
-    // Don't throw error, just log it
+    console.error("Error sending rejection email:", error.message);
   }
 };
 
-export const signup = async (req, res) => {
-  console.log("Signup endpoint hit");
-  try {
-    const { firstName, lastName, email, phone, password, role, shopName, shopDescription } = req.body;
+const registerSchema = z.object({
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  email: z.string().email(),
+  password: z.string().min(8),
+  phone: z.string().optional(),
+  role: z.enum(["user", "admin", "seller"]),
+  shopName: z.string().optional(),
+  shopDescription: z.string().optional(),
+});
 
-    const normalizedEmail = normalizeEmail(email);
-    if (!normalizedEmail) {
-      return res.status(400).json({ message: "Email is required" });
-    }
-
-    console.log("Signup request received:", { firstName, lastName, email: normalizedEmail, phone, role });
-
-    if (!['user', 'admin', 'seller'].includes(role)) {
-      console.log("Invalid role:", role);
-      return res.status(400).json({ message: "Invalid role selected" });
-    }
-
-    if (role === 'seller' && !shopName) {
-      return res.status(400).json({ message: "Shop name is required for sellers" });
-    }
-
-    const existingUser = await prisma.user.findUnique({ where: { email: normalizedEmail } });
-    if (existingUser) {
-      console.log("User already exists with email:", email);
-      return res.status(400).json({ message: "User already exists" });
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 12);
-    const userData = { id: generateId(), firstName, lastName, phone, email: normalizedEmail, password: hashedPassword, role };
-
-    if (role === 'seller') {
-      userData.shopName = shopName;
-      userData.shopDescription = shopDescription || "";
-      userData.isVerified = false; // Sellers need verification
-      userData.verificationRequestDate = new Date();
-    } else {
-      userData.isVerified = true; // Regular users are verified by default
-    }
-
-    const newUser = await prisma.user.create({ data: userData });
-
-    console.log("User registered successfully:", newUser);
-    res.status(201).json({ message: "User registered successfully" });
-  } catch (error) {
-    console.error("Signup error:", error.message);
-    if (error?.code === "P2002" && error?.meta?.target?.includes("email")) {
-      return res.status(400).json({ message: "User already exists" });
-    }
-    res.status(500).json({ message: "Server error", error: error.message });
+export const register = async (req, res) => {
+  const parsed = registerSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ code: "invalid_input", message: parsed.error.issues[0].message });
   }
+  const { firstName, lastName, phone, password, role, shopName, shopDescription } = parsed.data;
+  const email = normalizeEmail(parsed.data.email);
+
+  if (role === "seller" && !shopName) {
+    return res.status(400).json({ code: "invalid_input", message: "Shop name is required for sellers" });
+  }
+
+  const existingUser = await prisma.user.findUnique({ where: { email } });
+  if (existingUser) {
+    return res.status(409).json({ code: "email_taken", message: "User already exists" });
+  }
+
+  const userData = {
+    id: generateId(),
+    firstName,
+    lastName,
+    phone,
+    email,
+    password: await hashPassword(password),
+    role,
+  };
+
+  if (role === "seller") {
+    userData.shopName = shopName;
+    userData.shopDescription = shopDescription || "";
+    userData.isVerified = false;
+    userData.verificationRequestDate = new Date();
+  } else {
+    userData.isVerified = true;
+  }
+
+  try {
+    const user = await prisma.user.create({ data: userData });
+    const accessToken = await issueSession(res, user);
+    res.status(201).json({ user: toPublicUser(user), accessToken });
+  } catch (error) {
+    if (error?.code === "P2002" && error?.meta?.target?.includes("email")) {
+      return res.status(409).json({ code: "email_taken", message: "User already exists" });
+    }
+    console.error("Register error:", error.message);
+    res.status(500).json({ code: "internal_error", message: "Server error" });
+  }
+};
+
+const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+});
+
+export const login = async (req, res) => {
+  const parsed = loginSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ code: "invalid_input", message: parsed.error.issues[0].message });
+  }
+  const email = normalizeEmail(parsed.data.email);
+  const { password } = parsed.data;
+
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user || !user.password) {
+    return res.status(401).json({ code: "invalid_credentials", message: "Invalid email or password" });
+  }
+
+  const isMatch = await verifyPassword(user.password, password);
+  if (!isMatch) {
+    return res.status(401).json({ code: "invalid_credentials", message: "Invalid email or password" });
+  }
+
+  // Opportunistic upgrade: this user still had a pre-argon2 (bcrypt) hash.
+  if (isLegacyHash(user.password)) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { password: await hashPassword(password) },
+    });
+  }
+
+  const accessToken = await issueSession(res, user);
+  res.status(200).json({ user: toPublicUser(user), accessToken });
+};
+
+export const refresh = async (req, res) => {
+  const rawToken = req.cookies?.[REFRESH_COOKIE_NAME];
+  if (!rawToken) {
+    return res.status(401).json({ code: "unauthenticated", message: "No refresh token provided" });
+  }
+
+  try {
+    const { userId, refreshToken } = await rotateRefreshToken(rawToken);
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      clearRefreshCookie(res);
+      return res.status(401).json({ code: "unauthenticated", message: "User not found" });
+    }
+
+    setRefreshCookie(res, refreshToken);
+    const accessToken = signAccessToken({ id: user.id, role: user.role });
+    res.status(200).json({ user: toPublicUser(user), accessToken });
+  } catch (error) {
+    if (error instanceof RefreshTokenError) {
+      clearRefreshCookie(res);
+      return res.status(401).json({ code: "unauthenticated", message: error.message });
+    }
+    console.error("Refresh error:", error.message);
+    res.status(500).json({ code: "internal_error", message: "Server error" });
+  }
+};
+
+export const logout = async (req, res) => {
+  const rawToken = req.cookies?.[REFRESH_COOKIE_NAME];
+  if (rawToken) await revokeFamilyByToken(rawToken);
+  clearRefreshCookie(res);
+  res.status(204).send();
 };
 
 export const getAllUsers = async (req, res) => {
   try {
     if (req.user.role !== "admin") {
-      return res.status(403).json({ message: "Access denied. Admins only." });
+      return res.status(403).json({ code: "forbidden", message: "Access denied. Admins only." });
     }
-
     const users = await prisma.user.findMany({ omit: { password: true } });
     res.status(200).json(users);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ code: "internal_error", message: err.message });
   }
-};
-
-export const signin = async (req, res) => {
-  console.log("Signin endpoint hit");
-  try {
-    const { email, password, role } = req.body;
-    const normalizedEmail = normalizeEmail(email);
-    if (!normalizedEmail) {
-      return res.status(400).json({ message: "Email is required" });
-    }
-
-    console.log("Signin request received:", { email: normalizedEmail, role });
-
-    if (!['user', 'admin', 'seller'].includes(role)) {
-      console.log("Invalid role:", role);
-      return res.status(400).json({ message: "Invalid role selected" });
-    }
-
-    const user = await prisma.user.findFirst({ where: { email: normalizedEmail, role } });
-    if (!user) {
-      console.log("User not found:", email);
-      return res.status(400).json({ message: "Invalid email or role" });
-    }
-
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      console.log("Password mismatch for user:", email);
-      return res.status(400).json({ message: "Invalid password" });
-    }
-
-    const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, {
-      expiresIn: "30d",
-    });
-
-    // If seller, check if verified
-    let isSellerVerified = true;
-    if (user.role === "seller" && !user.isVerified) {
-      isSellerVerified = false;
-    }
-
-    res.status(200).json({ 
-      message: "Login successful", 
-      token, 
-      admin: user.role === "admin",
-      seller: user.role === "seller",
-      sellerVerified: isSellerVerified,
-      userId: user.id
-    });
-  } catch (error) {
-    console.error("Signin error:", error.message);
-    res.status(500).json({ message: "Server error", error: error.message });
-  }
-};
-
-export const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-
-  if (!token) return res.status(401).json({ message: "Access denied. No token provided." });
-
-  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
-    if (err) return res.status(403).json({ message: "Invalid token" });
-    req.user = user;
-    next();
-  });
-};
-
-export const authorizeAdmin = (req, res, next) => {
-  if (req.user.role !== 'admin') {
-    return res.status(403).json({ message: "Access denied. Admins only." });
-  }
-  next();
-};
-
-export const authorizeSeller = (req, res, next) => {
-  if (req.user.role !== 'seller') {
-    return res.status(403).json({ message: "Access denied. Sellers only." });
-  }
-  next();
 };
 
 // Get all unverified sellers
@@ -299,8 +281,7 @@ export const getUnverifiedSellers = async (req, res) => {
     });
     res.status(200).json(unverifiedSellers);
   } catch (error) {
-    console.error("Error fetching unverified sellers:", error);
-    res.status(500).json({ message: "Server error while fetching sellers" });
+    res.status(500).json({ code: "internal_error", message: "Server error while fetching sellers" });
   }
 };
 
@@ -308,32 +289,21 @@ export const getUnverifiedSellers = async (req, res) => {
 export const verifySeller = async (req, res) => {
   try {
     const { sellerId } = req.params;
-    console.log("🔄 Attempting to verify seller:", sellerId);
-    
     let seller = await prisma.user.findUnique({ where: { id: sellerId } });
     if (!seller || seller.role !== 'seller') {
-      console.log("❌ Seller not found:", sellerId);
-      return res.status(404).json({ message: "Seller not found" });
+      return res.status(404).json({ code: "not_found", message: "Seller not found" });
     }
 
     seller = await prisma.user.update({
       where: { id: sellerId },
       data: { isVerified: true, verificationApprovedDate: new Date() },
     });
-    console.log("✅ Seller marked as verified in database:", seller.email);
 
-    // Send approval email
-    console.log("📧 Initiating approval email...");
     await sendApprovalEmail(seller);
 
-    res.status(200).json({
-      message: "Seller verified successfully",
-      seller
-    });
+    res.status(200).json({ message: "Seller verified successfully", seller });
   } catch (error) {
-    console.error("❌ Error verifying seller:", error.message);
-    console.error("Full error:", error);
-    res.status(500).json({ message: "Server error while verifying seller", error: error.message });
+    res.status(500).json({ code: "internal_error", message: "Server error while verifying seller" });
   }
 };
 
@@ -342,66 +312,42 @@ export const rejectSeller = async (req, res) => {
   try {
     const { sellerId } = req.params;
     const { reason } = req.body;
-    console.log("🔄 Attempting to reject seller:", sellerId);
-    
+
     let seller = await prisma.user.findUnique({ where: { id: sellerId } });
     if (!seller || seller.role !== 'seller') {
-      console.log("❌ Seller not found:", sellerId);
-      return res.status(404).json({ message: "Seller not found" });
+      return res.status(404).json({ code: "not_found", message: "Seller not found" });
     }
 
     seller = await prisma.user.update({
       where: { id: sellerId },
       data: { verificationRejectionReason: reason || "Not specified" },
     });
-    console.log("✅ Seller rejection saved to database:", seller.email);
 
-    // Send rejection email
-    console.log("📧 Initiating rejection email...");
     await sendRejectionEmail(seller, reason);
 
-    res.status(200).json({
-      message: "Seller rejection noted",
-      seller
-    });
+    res.status(200).json({ message: "Seller rejection noted", seller });
   } catch (error) {
-    console.error("❌ Error rejecting seller:", error.message);
-    console.error("Full error:", error);
-    res.status(500).json({ message: "Server error while rejecting seller", error: error.message });
+    res.status(500).json({ code: "internal_error", message: "Server error while rejecting seller" });
   }
 };
 
 // Google Sign-In Handler
 export const googleSignIn = async (req, res) => {
-  console.log("Google Sign-In endpoint hit");
   try {
     const { token } = req.body;
-
     if (!token) {
-      return res.status(400).json({ message: "Google token is required" });
+      return res.status(400).json({ code: "invalid_input", message: "Google token is required" });
     }
 
-    // Initialize OAuth2 client
     const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
-
-    // Verify token
-    const ticket = await client.verifyIdToken({
-      idToken: token,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
-
+    const ticket = await client.verifyIdToken({ idToken: token, audience: process.env.GOOGLE_CLIENT_ID });
     const payload = ticket.getPayload();
     const { sub: googleId, email, given_name: firstName, family_name: lastName } = payload;
-
     const normalizedEmail = normalizeEmail(email);
 
-    console.log("Google payload verified:", { googleId, email: normalizedEmail, firstName, lastName });
-
-    // Check if user exists by googleId or email
     let user = await prisma.user.findFirst({ where: { OR: [{ googleId }, { email: normalizedEmail }] } });
 
     if (!user) {
-      // Create new user with Google credentials
       user = await prisma.user.create({
         data: {
           id: generateId(),
@@ -410,34 +356,21 @@ export const googleSignIn = async (req, res) => {
           email: normalizedEmail,
           googleId,
           role: "user",
-          isVerified: true, // Regular users are verified by default
+          isVerified: true,
         },
       });
-      console.log("New user created via Google:", user.id);
     } else if (!user.googleId) {
-      // Link Google ID to existing user
       user = await prisma.user.update({ where: { id: user.id }, data: { googleId } });
-      console.log("Google ID linked to existing user:", user.id);
     }
 
-    // Generate JWT token
-    const jwtToken = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, {
-      expiresIn: "30d",
-    });
-
-    res.status(200).json({
-      message: "Google Sign-In successful",
-      token: jwtToken,
-      admin: user.role === "admin",
-      seller: user.role === "seller",
-      userId: user.id,
-    });
+    const accessToken = await issueSession(res, user);
+    res.status(200).json({ user: toPublicUser(user), accessToken });
   } catch (error) {
-    console.error("Google Sign-In error:", error.message);
     if (error?.code === "P2002" && error?.meta?.target?.includes("email")) {
-      return res.status(400).json({ message: "Email already in use" });
+      return res.status(409).json({ code: "email_taken", message: "Email already in use" });
     }
-    res.status(500).json({ message: "Google Sign-In failed", error: error.message });
+    console.error("Google Sign-In error:", error.message);
+    res.status(500).json({ code: "internal_error", message: "Google Sign-In failed" });
   }
 };
 
@@ -445,39 +378,31 @@ export const googleSignIn = async (req, res) => {
 export const updatePassword = async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
-    
+
     if (!currentPassword || !newPassword) {
-      return res.status(400).json({ message: "Both current and new password are required" });
+      return res.status(400).json({ code: "invalid_input", message: "Both current and new password are required" });
+    }
+    if (newPassword.length < 8) {
+      return res.status(400).json({ code: "invalid_input", message: "New password must be at least 8 characters long" });
     }
 
-    if (newPassword.length < 6) {
-      return res.status(400).json({ message: "New password must be at least 6 characters long" });
-    }
-
-    // Find user
     const user = await prisma.user.findUnique({ where: { id: req.user.id } });
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ code: "not_found", message: "User not found" });
     }
-
-    // Check if user signed up with Google (no password set)
     if (!user.password) {
-      return res.status(400).json({ message: "Cannot change password for Google sign-in accounts" });
+      return res.status(400).json({ code: "invalid_input", message: "Cannot change password for Google sign-in accounts" });
     }
 
-    // Verify current password
-    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    const isMatch = await verifyPassword(user.password, currentPassword);
     if (!isMatch) {
-      return res.status(400).json({ message: "Current password is incorrect" });
+      return res.status(400).json({ code: "invalid_credentials", message: "Current password is incorrect" });
     }
 
-    // Hash new password and update
-    const hashedPassword = await bcrypt.hash(newPassword, 12);
-    await prisma.user.update({ where: { id: user.id }, data: { password: hashedPassword } });
-
+    await prisma.user.update({ where: { id: user.id }, data: { password: await hashPassword(newPassword) } });
     res.status(200).json({ message: "Password updated successfully" });
   } catch (error) {
     console.error("Error updating password:", error);
-    res.status(500).json({ message: "Server error while updating password" });
+    res.status(500).json({ code: "internal_error", message: "Server error while updating password" });
   }
 };
