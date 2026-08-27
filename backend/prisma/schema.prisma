@@ -180,12 +180,60 @@ model Order {
   bills    Bill[]          @relation("BillOrder")
   revenues Revenue[]
   reviews  ProductReview[]
+  payments Payment[]
 
   @@index([email])
   @@index([createdAt])
   @@index([email, createdAt])
   @@index([orderGroupId])
   @@map("orders")
+}
+
+// One row per checkout attempt (Idempotency-Key header). Unique constraint on `key` is what
+// makes concurrent duplicate requests safe — see withIdempotency() in utils/idempotency.js.
+model IdempotencyKey {
+  key         String   @id
+  requestHash String
+  status      String   @default("processing") // processing | completed
+  statusCode  Int?
+  response    Json?
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("idempotency_keys")
+}
+
+// Append-only audit trail of every payment state transition. Never updated or deleted by
+// application code. gatewayEventId dedupes redelivered/duplicate gateway callbacks.
+model PaymentEvent {
+  id             String   @id @db.VarChar(24)
+  aggregateId    String   @db.VarChar(24)
+  eventType      String
+  payload        Json
+  gatewayEventId String?  @unique
+  createdAt      DateTime @default(now())
+
+  @@index([aggregateId, createdAt])
+  @@map("payment_events")
+}
+
+// Read-model projection of payment state, kept in sync by inserts into PaymentEvent.
+model Payment {
+  id              String   @id @db.VarChar(24)
+  orderId         String   @db.VarChar(24)
+  order           Order    @relation(fields: [orderId], references: [id])
+  orderGroupId    String?
+  transactionUuid String   @unique
+  productCode     String
+  amount          Float
+  status          String   @default("Initiated") // Initiated | Succeeded | Failed
+  gatewayRefId    String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([orderGroupId])
+  @@map("payments")
 }
 
 model Cart {
