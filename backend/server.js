@@ -2,8 +2,16 @@
 
 import app from "./app.js";
 import { prisma } from "./database/prismaClient.js";
+import { dbConnection } from "./database/dbConnection.js";
 
 const PORT = process.env.PORT || 4000;
+
+try {
+    await dbConnection();
+} catch (error) {
+    console.error(`Database initialization failed: ${error.message}`);
+    process.exit(1);
+}
 
 const server = app.listen(PORT, () => {
     console.log(`Server Running On Port ${PORT}`);

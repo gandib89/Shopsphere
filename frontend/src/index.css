@@ -1,0 +1,231 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Mobile / Capacitor global tweaks ───────────────────────────────────── */
+:root {
+  --sat: env(safe-area-inset-top);
+  --sab: env(safe-area-inset-bottom);
+  --sal: env(safe-area-inset-left);
+  --sar: env(safe-area-inset-right);
+  --color-paper: 247 247 244;
+  --color-surface: 255 255 255;
+  --color-ink: 25 29 27;
+  --color-muted: 99 106 102;
+  --color-graphite: 55 62 58;
+  --color-line: 221 224 219;
+  --color-brand: 14 112 92;
+  --color-brand-strong: 10 88 72;
+  --color-brand-soft: 220 243 236;
+  --color-success: 30 126 76;
+  --color-warning: 174 106 18;
+  --color-danger: 188 55 49;
+  --radius-control: 0.5rem;
+  --radius-surface: 0.75rem;
+  --duration-fast: 140ms;
+  --duration-base: 180ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --container-store: 80rem;
+  --container-read: 48rem;
+  --container-operate: 90rem;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+  /* Give inputs breathing room above the keyboard when scrolled into view */
+  scroll-padding-bottom: 24px;
+}
+
+body {
+  margin: 0;
+  background: rgb(var(--color-paper));
+  color: rgb(var(--color-ink));
+  font-family: Aptos, "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-size: 1rem;
+  line-height: 1.5;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, .font-display {
+  font-family: "Aptos Display", "Segoe UI", system-ui, sans-serif;
+  letter-spacing: -0.025em;
+}
+
+::selection {
+  background: rgb(var(--color-brand));
+  color: white;
+}
+
+:focus-visible {
+  outline: 3px solid rgb(var(--color-brand) / 0.42);
+  outline-offset: 3px;
+}
+
+/* Thin hairline scrollbar, instead of the OS default */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--color-line)) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgb(var(--color-line));
+  border-radius: 4px;
+}
+
+/* Prices, codes, and tabular data read as instrument numerals: fixed-width, aligned */
+.font-mono, .tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Ensure page content doesn't go behind home indicator on iPhone 14 Pro */
+#root {
+  min-height: 100dvh;
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/* Remove tap flash on mobile */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Ensure minimum 44px touch target height for all interactive elements */
+button, a, [role="button"] {
+  touch-action: manipulation;
+}
+
+button, input, select, textarea {
+  font: inherit;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+select,
+textarea {
+  border-radius: var(--radius-control);
+}
+
+.container-store,
+.container-operate,
+.container-read {
+  width: min(100% - 2rem, var(--container-store));
+  margin-inline: auto;
+}
+
+.container-operate { max-width: var(--container-operate); }
+.container-read { max-width: var(--container-read); }
+
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* State changes (stock, status) swap instantly — a reading lights or it doesn't */
+  .state-instant {
+    transition: none !important;
+  }
+
+  /* Void state for a struck-out, unavailable line — not a translucent overlay */
+  .struck {
+    text-decoration: line-through;
+    text-decoration-thickness: 1.5px;
+    opacity: 0.5;
+  }
+}
+
+/* Modal/dialog entrance — plain keyframes for broad WebView support (no @starting-style) */
+@keyframes overlay-in {
+  from { opacity: 0; }
+}
+@keyframes panel-in {
+  from { opacity: 0; transform: scale(0.95); }
+}
+.animate-overlay-in {
+  animation: overlay-in 150ms ease-out;
+}
+.animate-panel-in {
+  animation: panel-in 180ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@layer base {
+  :root {
+    --background: 210 40% 98%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 175 77% 26%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 98%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 214 32% 93%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 38 92% 50%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 175 77% 26%;
+    --chart-1: 175 77% 26%;
+    --chart-2: 0 72% 51%;
+    --chart-3: 215 16% 47%;
+    --chart-4: 38 92% 50%;
+    --chart-5: 222 47% 20%;
+    --radius: 0.375rem
+  }
+  .dark {
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 240 5.9% 10%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 240 4.9% 83.9%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%
+  }
+}
+
+@media (max-width: 640px) {
+  .container-store,
+  .container-operate,
+  .container-read {
+    width: min(100% - 1.25rem, var(--container-store));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
