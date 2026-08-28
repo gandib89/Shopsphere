@@ -16,7 +16,7 @@ class ErrorHandler extends Error {
   
   
     if (err.name === 'ValidationError') {
-      const validationErrors = Object.values(error.errors).map(err => err.message);
+      const validationErrors = Object.values(err.errors).map(e => e.message);
       return next(new ErrorHandler(validationErrors.join(', '), 400));
     }
   

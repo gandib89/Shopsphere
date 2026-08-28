@@ -24,7 +24,7 @@ const variantsSchema = z.object({
 const promoCodeSchema = z.object({
   code: z.string(),
   discountAmount: z.number().nonnegative(),
-}).optional();
+}).nullable().optional();
 
 const createOrderSchema = z.object({
   firstName: z.string().min(1),
