@@ -9,10 +9,10 @@ import { ensureDemoData } from "./seedDemoData.js";
 process.env.DEMO_PASSWORD ||= "TestDemoPassword@123";
 
 const expectedAccounts = [
-  ["seller1@shopsphere", "seller"],
-  ["seller2@shopsphere", "seller"],
-  ["custumer1@shopsphere", "user"],
-  ["custumer2@shopsphere", "user"],
+  ["seller1@shopsphere.test", "seller"],
+  ["seller2@shopsphere.test", "seller"],
+  ["customer1@shopsphere.test", "user"],
+  ["customer2@shopsphere.test", "user"],
 ];
 
 const createMemoryPrisma = ({ initialUsers = [], initialProducts = [] } = {}) => {
@@ -72,8 +72,8 @@ test("creates usable demo accounts and pictured products only once", async () =>
   }
 
   const sellerIds = new Set([
-    prisma.users.get("seller1@shopsphere").id,
-    prisma.users.get("seller2@shopsphere").id,
+    prisma.users.get("seller1@shopsphere.test").id,
+    prisma.users.get("seller2@shopsphere.test").id,
   ]);
   const projectRoot = path.resolve(import.meta.dirname, "../..");
 
@@ -105,7 +105,7 @@ test("preserves an existing seller and assigns products to that seller's actual 
     id: "66afffffffffffffffffffff",
     firstName: "Existing",
     lastName: "Seller",
-    email: "seller1@shopsphere",
+    email: "seller1@shopsphere.test",
     phone: "+9779811111111",
     password: existingPassword,
     role: "seller",
@@ -132,7 +132,7 @@ test("rejects a conflicting account role without modifying it", async () => {
     id: "66aeeeeeeeeeeeeeeeeeeeee",
     firstName: "Existing",
     lastName: "Customer",
-    email: "seller1@shopsphere",
+    email: "seller1@shopsphere.test",
     password: "untouched",
     role: "user",
     isVerified: true,
@@ -141,7 +141,7 @@ test("rejects a conflicting account role without modifying it", async () => {
 
   await assert.rejects(
     ensureDemoData(prisma),
-    /seller1@shopsphere already exists with role user/,
+    /seller1@shopsphere\.test already exists with role user/,
   );
   assert.deepEqual(prisma.users.get(conflict.email), conflict);
   assert.equal(prisma.products.size, 0);

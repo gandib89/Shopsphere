@@ -1,7 +1,6 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: shopsphere-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: shopsphere
@@ -19,7 +18,6 @@ services:
 
   backend:
     build: ./backend
-    container_name: shopsphere-backend
     restart: unless-stopped
     depends_on:
       postgres:
@@ -46,7 +44,6 @@ services:
         VITE_BACKEND_URL: ${VITE_BACKEND_URL:-}
         VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
         VITE_DEMO_MODE: ${VITE_DEMO_MODE:-true}
-    container_name: shopsphere-frontend
     restart: unless-stopped
     depends_on:
       - backend
