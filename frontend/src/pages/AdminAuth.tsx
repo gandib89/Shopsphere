@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Mail, Lock, ArrowLeft, Shield } from 'lucide-react';
 import { login } from '../lib/session';
 
+const isDemo = import.meta.env.VITE_DEMO_MODE !== 'false';
+
 const AdminAuth = () => {
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
@@ -52,17 +54,28 @@ const AdminAuth = () => {
               <h1 className="font-display text-3xl font-bold">Admin Login</h1>
             </div>
             <p className="text-paper/60 text-sm">
-              Platform Administrator Access
+              Platform Administrator Access{isDemo ? ' — Demo Only' : ''}
             </p>
           </div>
 
           {/* Content */}
           <div className="p-8">
-            {/* Warning Note */}
+            {/* Warning / Demo Note */}
             <div className="mb-6 p-4 border border-hairline">
-              <p className="text-sm text-ink-muted">
-                This is an admin-only access zone. Unauthorized access is prohibited.
-              </p>
+              {isDemo ? (
+                <>
+                  <p className="text-sm text-ink-muted">
+                    This admin login is provided for demo purposes only.
+                  </p>
+                  <p className="mt-2 text-sm font-mono text-ink">
+                    shopsphere675@gmail.com / Qwerty@9876
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm text-ink-muted">
+                  This is an admin-only access zone. Unauthorized access is prohibited.
+                </p>
+              )}
             </div>
 
             {/* Error Message */}

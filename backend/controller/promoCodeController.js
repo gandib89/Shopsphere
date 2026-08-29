@@ -7,9 +7,9 @@ const createPromoCodeSchema = z.object({
   description: z.string().min(1),
   discountType: z.enum(["percentage", "fixed"]),
   discountValue: z.coerce.number().positive(),
-  minPurchase: z.coerce.number().nonnegative().optional(),
-  maxDiscount: z.coerce.number().positive().optional(),
-  usageLimit: z.coerce.number().int().positive().optional(),
+  minPurchase: z.coerce.number().nonnegative().nullish(),
+  maxDiscount: z.coerce.number().positive().nullish(),
+  usageLimit: z.coerce.number().int().positive().nullish(),
   validFrom: z.string().min(1),
   validUntil: z.string().min(1),
 });

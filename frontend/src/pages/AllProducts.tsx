@@ -13,7 +13,7 @@ interface Product {
   quantity: number;
   description: string;
   images: string[];
-  sellerId?: {
+  seller?: {
     _id: string;
     shopName?: string;
     firstName?: string;
@@ -166,8 +166,8 @@ function AllProducts() {
                           </span>
                         </td>
                         <td className="p-4">
-                          {product.sellerId?.shopName ? (
-                            <p className="font-semibold text-ink text-sm">{product.sellerId.shopName}</p>
+                          {product.seller?.shopName ? (
+                            <p className="font-semibold text-ink text-sm">{product.seller.shopName}</p>
                           ) : (
                             <span className="text-ink-muted text-sm">—</span>
                           )}

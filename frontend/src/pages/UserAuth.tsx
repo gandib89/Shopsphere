@@ -4,6 +4,8 @@ import { Mail, Lock, Store, ArrowLeft, ShoppingBag } from 'lucide-react';
 import { GoogleLogin } from '@react-oauth/google';
 import { login, register, googleLogin } from '../lib/session';
 
+const isDemo = import.meta.env.VITE_DEMO_MODE !== 'false';
+
 const UserAuth = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -115,6 +117,14 @@ const UserAuth = () => {
 
           {/* Content */}
           <div className="p-5 sm:p-8">
+            {isDemo && !isSignUp && (
+              <div className="mb-4 p-4 border border-hairline text-sm">
+                <p className="font-semibold text-ink">Demo credentials</p>
+                <p className="mt-1 font-mono text-ink-muted">
+                  {isSeller ? 'seller1@shopsphere.test' : 'customer1@shopsphere.test'} / ShopSphereDemo!2026
+                </p>
+              </div>
+            )}
             {error && (
               <div className="mb-4 p-4 border border-seal/40 bg-seal/5 text-seal text-sm">
                 {error}

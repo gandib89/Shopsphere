@@ -11,6 +11,8 @@ const destinations: Record<AccountRole, string> = {
   admin: '/admin-auth',
 };
 
+const isDemo = import.meta.env.VITE_DEMO_MODE !== 'false';
+
 const AuthLanding = () => {
   const navigate = useNavigate();
   const [role, setRole] = useState<AccountRole>('user');
@@ -43,6 +45,18 @@ const AuthLanding = () => {
                 <ArrowRight aria-hidden="true" className="h-4 w-4" />
               </Button>
               <p className="mt-4 text-center text-xs text-ink-muted">New customers and sellers can create an account on the next screen.</p>
+
+              {isDemo && (
+                <div className="mt-6 rounded-[var(--radius-control)] border border-hairline bg-paper p-4 text-xs text-ink-muted">
+                  <p className="font-semibold text-ink">Demo credentials</p>
+                  <p className="mt-1">Admin sign-in is provided for demo purposes only.</p>
+                  <ul className="mt-2 space-y-1 font-mono">
+                    <li>Customer: customer1@shopsphere.test / ShopSphereDemo!2026</li>
+                    <li>Seller: seller1@shopsphere.test / ShopSphereDemo!2026</li>
+                    <li>Admin: shopsphere675@gmail.com / Qwerty@9876</li>
+                  </ul>
+                </div>
+              )}
             </div>
           </section>
 

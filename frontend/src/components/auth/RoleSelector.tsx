@@ -6,7 +6,7 @@ export type AccountRole = 'user' | 'seller' | 'admin';
 const roles: { value: AccountRole; title: string; detail: string; icon: LucideIcon }[] = [
   { value: 'user', title: 'Customer', detail: 'Browse products and manage your orders', icon: UserRound },
   { value: 'seller', title: 'Seller', detail: 'Manage products, inventory, and fulfilment', icon: Store },
-  { value: 'admin', title: 'Admin', detail: 'Oversee sellers, users, and the marketplace', icon: ShieldCheck },
+  { value: 'admin', title: 'Admin (Demo only)', detail: 'Oversee sellers, users, and the marketplace', icon: ShieldCheck },
 ];
 
 export const RoleSelector = ({ value, onChange }: { value: AccountRole; onChange: (role: AccountRole) => void }) => (

@@ -7,7 +7,6 @@ import { ProtectedRoute } from './components/auth/ProtectedRoute';
 
 // Lazy-load every page so only the current route's JS is downloaded on first load
 const Home = lazy(() => import('./pages/Home'));
-const Auth = lazy(() => import('./pages/Auth'));
 const AuthLanding = lazy(() => import('./pages/AuthLanding'));
 const UserAuth = lazy(() => import('./pages/UserAuth'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
@@ -98,7 +97,7 @@ function App() {
       <Router>
         {isDemo && (
           <div className="fixed inset-x-0 top-0 z-[100] bg-brass px-3 py-1.5 text-center text-xs font-semibold text-white shadow-sm">
-            Resume demo · synthetic data · sandbox payments only · no real orders or refunds
+            Demo · synthetic data · sandbox payments only · no real orders or refunds
           </div>
         )}
         <div className={isDemo ? 'pt-8' : ''}>
@@ -111,9 +110,9 @@ function App() {
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/admin-auth" element={<AdminAuth />} />
-          <Route path="/auth" element={<Auth />} />
-          <Route path="/signin" element={<Auth />} />
-          <Route path="/signup" element={<Auth />} />
+          <Route path="/auth" element={<AuthLanding />} />
+          <Route path="/signin" element={<AuthLanding />} />
+          <Route path="/signup" element={<AuthLanding />} />
           <Route path="/add-product" element={<ProtectedRoute role="seller"><AddProduct /></ProtectedRoute>} />
           <Route path="/cart" element={<Cart />} />
           <Route path="/buy-product" element={<BuyProduct />} />

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Package, ClipboardList, RefreshCw, CheckCircle, Users, BarChart2, Tag } from "lucide-react";
+import { Package, ClipboardList, RefreshCw, CheckCircle, Users, BarChart2, Tag } from "lucide-react";
 import axios from "axios";
 import NavBar from "../components/NavBar";
 import { Button } from "../components/ui/Button";
@@ -83,13 +83,6 @@ const AdminPanel = () => {
   };
 
   const panelCards: ActionItem[] = [
-    {
-      key: 'add-product',
-      icon: <Plus className="w-6 h-6" />,
-      title: 'Add Product',
-      description: 'Add new products to the marketplace',
-      onSelect: () => navigate('/add-product'),
-    },
     {
       key: 'all-products',
       icon: <Package className="w-6 h-6" />,

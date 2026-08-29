@@ -15,7 +15,7 @@ interface Product {
   description: string;
   images: string[];
   quantity?: number;
-  sellerId?: {
+  seller?: {
     _id: string;
     shopName: string;
     phone?: string;
@@ -747,11 +747,11 @@ function ProductDetailsPage() {
                 </h1>
 
                 {/* Seller */}
-                {product.sellerId && (
+                {product.seller && (
                   <div className="flex items-center gap-2 mb-4 text-ink-muted">
                     <Store className="w-4 h-4 shrink-0 text-brass" />
-                    <span className="text-sm">{product.sellerId.shopName || `${product.sellerId.firstName} ${product.sellerId.lastName}`}</span>
-                    {product.sellerId.phone && <span className="text-xs">· {product.sellerId.phone}</span>}
+                    <span className="text-sm">{product.seller.shopName || `${product.seller.firstName} ${product.seller.lastName}`}</span>
+                    {product.seller.phone && <span className="text-xs">· {product.seller.phone}</span>}
                   </div>
                 )}
 

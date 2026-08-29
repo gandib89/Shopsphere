@@ -323,7 +323,7 @@ function SellerProductDetails() {
                       {isEditing ? (
                         <select
                           name="category"
-                          value={formData.category || ""}
+                          value={mapCategory(formData.category || "")}
                           onChange={handleInputChange}
                           className="w-full px-4 py-3 border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition"
                         >

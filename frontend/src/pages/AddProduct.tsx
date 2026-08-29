@@ -467,7 +467,6 @@ function AddProduct() {
                   accept="image/*"
                   onChange={handleGeneralImageChange}
                   className="hidden"
-                  required
                 />
               </label>
               {generalImage && (
@@ -561,7 +560,7 @@ function AddProduct() {
                           <label className="flex items-center gap-2 border border-dashed border-hairline hover:border-brass transition p-3 cursor-pointer">
                             <Upload className="w-4 h-4 text-brass" />
                             <span className="text-sm text-ink font-medium">Choose files</span>
-                            <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleColorImageChange(cv.color, e.target.files)} required />
+                            <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleColorImageChange(cv.color, e.target.files)} />
                           </label>
                           {cv.images.length > 0
                             ? <p className="text-xs text-moss font-semibold mt-1.5 flex items-center gap-1"><Check className="w-3 h-3" /> {cv.images.length} image(s) selected</p>

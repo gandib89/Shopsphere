@@ -28,13 +28,18 @@ const credentialsLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-authRouter.post('/register', credentialsLimiter, register);
-authRouter.post('/login', credentialsLimiter, login);
-authRouter.post('/refresh', credentialsLimiter, refresh);
-authRouter.post('/logout', logout);
+// register/login/refresh/logout/resetPassword take an optional `client` param (defaults to
+// prisma) so tests can inject a fake — but that default only applies when the argument is
+// truly absent. Express always calls route handlers with (req, res, next), so registering
+// them directly would bind `client` to `next` instead of letting the default fire. Wrapping
+// each call here keeps it to the (req, res) arity the default param expects.
+authRouter.post('/register', credentialsLimiter, (req, res) => register(req, res));
+authRouter.post('/login', credentialsLimiter, (req, res) => login(req, res));
+authRouter.post('/refresh', credentialsLimiter, (req, res) => refresh(req, res));
+authRouter.post('/logout', (req, res) => logout(req, res));
 authRouter.post('/google-signin', credentialsLimiter, googleSignIn);
 authRouter.post('/forgot-password', credentialsLimiter, forgotPassword);
-authRouter.post('/reset-password', credentialsLimiter, resetPassword);
+authRouter.post('/reset-password', credentialsLimiter, (req, res) => resetPassword(req, res));
 
 authRouter.get('/getUser', authenticate, authorizeAdmin, getAllUsers);
 authRouter.get('/me', authenticate, async (req, res) => {

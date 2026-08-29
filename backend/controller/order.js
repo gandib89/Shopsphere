@@ -118,6 +118,7 @@ const withNestedOrderShape = (order) => {
   } = order;
   return {
     ...rest,
+    _id: rest._id || rest.id,
     deliveryAddress: {
       street: deliveryStreet,
       city: deliveryCity,

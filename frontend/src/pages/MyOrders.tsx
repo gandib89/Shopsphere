@@ -380,9 +380,9 @@ const MyOrders = () => {
                         <h3 className="text-xl font-bold text-ink mb-1">
                           {order.product?.name || "Product"}
                         </h3>
-                        {(order.product as any)?.sellerId && (
+                        {(order.product as any)?.seller && (
                           <p className="text-sm text-brass font-semibold mb-2">
-                            Seller: {(order.product as any).sellerId?.shopName || `${(order.product as any).sellerId?.firstName} ${(order.product as any).sellerId?.lastName}`}
+                            Seller: {(order.product as any).seller?.shopName || `${(order.product as any).seller?.firstName} ${(order.product as any).seller?.lastName}`}
                           </p>
                         )}
                         <p className="text-sm text-ink-muted font-mono tabular-nums">
