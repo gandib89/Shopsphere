@@ -2,23 +2,11 @@ import { z } from "zod";
 import { prisma } from "../database/prismaClient.js";
 import { generateId } from "../utils/generateId.js";
 import { parsePagination } from "../utils/pagination.js";
-import multer from "multer";
 import path from "path";
 import fs from "fs/promises";
 import { fileURLToPath } from "url";
 import { promisify } from "util";
 import { execFile } from "child_process";
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "uploads/"); // Save images in the "uploads" folder
-  },
-  filename: (req, file, cb) => {
-    cb(null, `${Date.now()}-${file.originalname}`);
-  },
-});
-
-const upload = multer({ storage });
 
 let recommendationCache = null;
 let recommendationCacheLoadedAt = 0;
@@ -59,7 +47,8 @@ const buildProductUpdateData = (body) => {
   if (body.description !== undefined) data.description = body.description;
   if (body.images !== undefined) data.images = body.images;
   if (body.category !== undefined) data.category = body.category;
-  if (body.sellerId !== undefined) data.sellerId = body.sellerId;
+  // Product ownership is never client-editable. Administrative reassignment, if ever
+  // needed, should be a dedicated audited operation rather than a generic catalog update.
   if (body.discount !== undefined) data.discount = Number(body.discount);
   if (body.discountUpdatedAt !== undefined) data.discountUpdatedAt = body.discountUpdatedAt;
 
@@ -199,6 +188,10 @@ const createProductSchema = z.object({
   })).optional(),
 });
 
+const updateProductSchema = createProductSchema.partial().extend({
+  discount: z.coerce.number().min(0).max(100).optional(),
+});
+
 export const createProduct = async (req, res) => {
   const parsed = createProductSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -320,7 +313,9 @@ export const updateProduct = async (req, res) => {
 
   try {
     const { id } = req.params;
-    const data = buildProductUpdateData(req.body);
+    const parsed = updateProductSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0].message });
+    const data = buildProductUpdateData(parsed.data);
 
     let updatedProduct;
     try {
@@ -427,7 +422,9 @@ export const updateSellerProduct = async (req, res) => {
       return res.status(403).json({ message: "You can only update your own products" });
     }
 
-    const data = buildProductUpdateData(req.body);
+    const parsed = updateProductSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0].message });
+    const data = buildProductUpdateData(parsed.data);
     const updatedProduct = await prisma.product.update({
       where: { id },
       data,
@@ -472,11 +469,12 @@ export const deleteSellerProduct = async (req, res) => {
 export const addProductReview = async (req, res) => {
   try {
     const { productId } = req.params;
-    const { rating, comment, userName, orderId, userId } = req.body;
+    const { rating, comment, orderId } = req.body;
+    const authenticatedUserId = req.user.id;
 
     // Validate input
-    if (!productId || !rating || !comment || !userName) {
-      return res.status(400).json({ message: "Missing required fields: productId, rating, comment, userName" });
+    if (!productId || !rating || !comment || !orderId) {
+      return res.status(400).json({ message: "A delivered order, rating, and comment are required" });
     }
 
     if (rating < 1 || rating > 5) {
@@ -492,27 +490,32 @@ export const addProductReview = async (req, res) => {
       return res.status(404).json({ message: "Product not found" });
     }
 
-    // Avoid duplicate reviews from the same user/order by updating the existing one when present
-    const existingIndex = product.reviews.findIndex((r) => {
-      // Prefer strict match on userId + orderId when available
-      if (userId && r.userId && r.userId === userId) {
-        if (orderId && r.orderId) {
-          return r.orderId === orderId;
-        }
-        return true;
-      }
-      // Fall back to orderId match
-      if (orderId && r.orderId && r.orderId === orderId) {
-        return true;
-      }
-      // Last resort: userName match to reduce accidental duplicates
-      return r.userName === userName;
-    });
+    const [user, purchasedOrder] = await Promise.all([
+      prisma.user.findUnique({ where: { id: authenticatedUserId } }),
+      prisma.order.findFirst({
+        where: {
+          id: orderId,
+          userId: authenticatedUserId,
+          productId,
+          status: "Delivered",
+        },
+      }),
+    ]);
+    if (!user) return res.status(401).json({ message: "User session is no longer valid" });
+    if (!purchasedOrder) {
+      return res.status(403).json({ message: "Only the buyer of a delivered order can review this product" });
+    }
+    const userName = `${user.firstName} ${user.lastName}`.trim() || "ShopSphere customer";
+
+    // One review per authenticated purchase; never trust identity fields from the body.
+    const existingIndex = product.reviews.findIndex(
+      (review) => review.userId === authenticatedUserId && review.orderId === orderId
+    );
 
     const newReview = {
       userName,
-      userId: userId || null,
-      orderId: orderId || null,
+      userId: authenticatedUserId,
+      orderId,
       rating: Number(rating),
       comment,
       createdAt: new Date(),

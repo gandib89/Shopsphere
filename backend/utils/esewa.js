@@ -31,7 +31,7 @@ export const verifyCallbackSignature = (payload) => {
 // authoritatively confirms a transaction rather than trusting the browser redirect alone.
 export const checkTransactionStatus = async ({ productCode = PRODUCT_CODE, totalAmount, transactionUuid }) => {
   const url = `${STATUS_CHECK_URL}?product_code=${encodeURIComponent(productCode)}&total_amount=${encodeURIComponent(totalAmount)}&transaction_uuid=${encodeURIComponent(transactionUuid)}`;
-  const response = await fetch(url);
+  const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
   if (!response.ok) {
     throw new Error(`eSewa status check failed with HTTP ${response.status}`);
   }

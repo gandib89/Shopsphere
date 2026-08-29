@@ -1,5 +1,7 @@
 import express from "express";
 import multer from "multer";
+import crypto from "crypto";
+import path from "path";
 import {
   createProduct,
   getProducts,
@@ -19,7 +21,24 @@ import {
 } from "../controller/productController.js";
 import { verifyToken, authorizeSeller, checkSellerVerification, authorizeAdmin } from "../middlewares/authMiddleware.js";
 
-const upload = multer({ dest: "uploads/" });
+const IMAGE_MIME_TO_EXTENSION = {
+  "image/jpeg": ".jpg",
+  "image/png": ".png",
+  "image/webp": ".webp",
+};
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, "uploads/"),
+    filename: (_req, file, cb) => cb(null, `product-${crypto.randomUUID()}${IMAGE_MIME_TO_EXTENSION[file.mimetype] || path.extname(file.originalname).toLowerCase()}`),
+  }),
+  limits: { fileSize: 2 * 1024 * 1024, files: 3 },
+  fileFilter: (_req, file, cb) => {
+    if (IMAGE_MIME_TO_EXTENSION[file.mimetype]) return cb(null, true);
+    const error = new Error("Only JPEG, PNG, and WebP images are allowed");
+    error.statusCode = 400;
+    return cb(error);
+  },
+});
 const productRouter = express.Router();
 
 // Public routes (no authentication required)
@@ -32,8 +51,11 @@ productRouter.get("/:productId/recommendations", getProductRecommendations);
 
 // Protected routes (authentication required)
 productRouter.post("/create", verifyToken, authorizeSeller, checkSellerVerification, createProduct);
-productRouter.put("/update/:id", verifyToken, authorizeSeller, checkSellerVerification, updateProduct);
-productRouter.delete("/delete/:id", verifyToken, authorizeSeller, checkSellerVerification, deleteProduct);
+// Admin-only catalog override (ProductDetailsAdmin.tsx) — not seller-scoped, so this must
+// never be reachable with just authorizeSeller: any seller could edit/delete any other
+// seller's product. Sellers manage their own catalog through the /seller/* routes below.
+productRouter.put("/update/:id", verifyToken, authorizeAdmin, updateProduct);
+productRouter.delete("/delete/:id", verifyToken, authorizeAdmin, deleteProduct);
 productRouter.post("/uploadImage", verifyToken, authorizeSeller, checkSellerVerification, upload.array("images", 3), uploadImage);
 productRouter.post("/:productId/reviews", verifyToken, addProductReview);
 

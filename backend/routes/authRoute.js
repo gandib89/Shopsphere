@@ -12,6 +12,8 @@ import {
   rejectSeller,
   googleSignIn,
   updatePassword,
+  forgotPassword,
+  resetPassword,
 } from "../controller/auth.js";
 import { authenticate } from "../middlewares/authMiddleware.js";
 import { prisma } from "../database/prismaClient.js";
@@ -28,9 +30,11 @@ const credentialsLimiter = rateLimit({
 
 authRouter.post('/register', credentialsLimiter, register);
 authRouter.post('/login', credentialsLimiter, login);
-authRouter.post('/refresh', refresh);
+authRouter.post('/refresh', credentialsLimiter, refresh);
 authRouter.post('/logout', logout);
-authRouter.post('/google-signin', googleSignIn);
+authRouter.post('/google-signin', credentialsLimiter, googleSignIn);
+authRouter.post('/forgot-password', credentialsLimiter, forgotPassword);
+authRouter.post('/reset-password', credentialsLimiter, resetPassword);
 
 authRouter.get('/getUser', authenticate, authorizeAdmin, getAllUsers);
 authRouter.get('/me', authenticate, async (req, res) => {
@@ -64,7 +68,7 @@ authRouter.put('/profile', authenticate, async (req, res) => {
 });
 
 // Password update route
-authRouter.put('/update-password', authenticate, updatePassword);
+authRouter.put('/update-password', authenticate, credentialsLimiter, updatePassword);
 
 // Seller verification routes (admin only)
 authRouter.get('/unverified-sellers', authenticate, authorizeAdmin, getUnverifiedSellers);

@@ -210,7 +210,18 @@ const UserAuth = () => {
 
               {/* Password */}
               <div className="mb-4">
-                <label className="block text-ink font-semibold mb-2 text-sm">Password</label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-ink font-semibold text-sm">Password</label>
+                  {!isSignUp && (
+                    <button
+                      type="button"
+                      onClick={() => navigate('/forgot-password')}
+                      className="text-brass hover:text-brass-dark transition text-xs font-semibold"
+                    >
+                      Forgot password?
+                    </button>
+                  )}
+                </div>
                 <div className="relative">
                   <Lock className="absolute left-3 top-3.5 w-5 h-5 text-ink-muted" />
                   <input

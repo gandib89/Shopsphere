@@ -60,3 +60,9 @@ export const revokeFamilyByToken = async (rawToken, client = prisma) => {
   });
   if (record) await revokeFamily(client, record.familyId);
 };
+
+// Revokes every active refresh-token family for a user, across every device/browser —
+// used on password reset, since that's a signal the account may have been compromised and
+// any refresh cookie an attacker holds should stop working immediately.
+export const revokeAllFamiliesForUser = async (userId, client = prisma) =>
+  client.refreshToken.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } });

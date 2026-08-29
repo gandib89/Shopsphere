@@ -1,4 +1,6 @@
 import express from "express";
+import rateLimit from "express-rate-limit";
+import { z } from "zod";
 import Groq from "groq-sdk";
 import { prisma } from "../database/prismaClient.js";
 import { readFileSync, existsSync } from "fs";
@@ -7,6 +9,19 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const chatRouter = express.Router();
+const chatLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 15,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+const chatRequestSchema = z.object({
+  message: z.string().trim().min(1).max(500),
+  history: z.array(z.object({
+    role: z.enum(["user", "bot"]),
+    content: z.string().max(1000),
+  })).max(10).optional(),
+});
 
 // Load FAQs from knowledge base
 const faqsPath = path.join(__dirname, "../chatbot/faqs.json");
@@ -21,18 +36,17 @@ try {
   }
 } catch (_e) { /* silent — chatbot still works without it */ }
 
-chatRouter.post("/", async (req, res) => {
+chatRouter.post("/", chatLimiter, async (req, res) => {
   try {
-    const { message, history = [] } = req.body;
-    if (!message?.trim()) {
-      return res.status(400).json({ reply: "Please send a message." });
-    }
+    const parsed = chatRequestSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ reply: "Please send a shorter valid message." });
+    const { message, history = [] } = parsed.data;
 
     if (!process.env.GROQ_API_KEY || process.env.GROQ_API_KEY === "your_groq_api_key_here") {
       return res.status(500).json({ reply: "Chatbot is not configured yet — API key missing. Please contact support." });
     }
 
-    const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+    const groq = new Groq({ apiKey: process.env.GROQ_API_KEY, timeout: 10_000, maxRetries: 1 });
 
     // Fetch live products from DB
     const products = await prisma.product.findMany({

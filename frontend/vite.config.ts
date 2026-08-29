@@ -10,13 +10,14 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       output: {
-        manualChunks: {
-          // Core React (loaded always)
-          'react-core': ['react', 'react-dom', 'react-router-dom'],
-          // Heavy PDF/canvas libs only loaded when generating bills
-          'pdf-libs': ['jspdf', 'html2canvas'],
-          // Google OAuth only needed on auth pages
-          'google-auth': ['@react-oauth/google'],
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined;
+          if (id.includes('/jspdf/') || id.includes('/html2canvas/')) return 'pdf-libs';
+          if (id.includes('/@react-oauth/google/')) return 'google-auth';
+          if (id.includes('/react/') || id.includes('/react-dom/') || id.includes('/react-router')) {
+            return 'react-core';
+          }
+          return undefined;
         },
       },
     },

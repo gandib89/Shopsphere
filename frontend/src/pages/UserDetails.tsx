@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-const BACKEND_BASE = (import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000/api').replace('/api', '');
+const BACKEND_BASE = (import.meta.env.VITE_BACKEND_URL || '').replace('/api', '');
 import { Users, ArrowLeft, Mail, Phone, User as UserIcon, Shield, CheckCircle } from "lucide-react";
 import NavBar from "../components/NavBar.tsx";
+import { authFetch } from "../lib/session";
 
 const UserDetails = () => {
   interface User {
@@ -36,7 +37,7 @@ const UserDetails = () => {
 
     try {
       const baseUrl = `${BACKEND_BASE}/api/v1`;
-      const res = await fetch(`${baseUrl}/auth/getUser`, {
+      const res = await authFetch(`${baseUrl}/auth/getUser`, {
         method: "GET",
         headers,
       });

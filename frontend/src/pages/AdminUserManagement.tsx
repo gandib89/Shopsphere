@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 import { Edit2, Trash2, Mail, Users, X, Search } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -29,7 +28,6 @@ interface Statistics {
 
 function AdminUserManagement() {
   const token = localStorage.getItem('token');
-  const navigate = useNavigate();
   const [users, setUsers] = useState<User[]>([]);
   const [stats, setStats] = useState<Statistics | null>(null);
   const [loading, setLoading] = useState(true);

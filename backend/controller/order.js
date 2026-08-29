@@ -5,6 +5,28 @@ import { sendEmail } from "../utils/emailService.js";
 import { parsePagination } from "../utils/pagination.js";
 import crypto from "crypto";
 
+const ORDER_STATUS_TRANSITIONS = Object.freeze({
+  Pending: ["Cancelled"],
+  Confirmed: ["Processing", "Cancelled"],
+  Processing: ["Shipped"],
+  Shipped: ["Delivered"],
+  Delivered: [],
+  Cancelled: [],
+  "Return Requested": [],
+  "Return Approved": [],
+  "Return Rejected": [],
+  "Refund Released": [],
+});
+
+export const canTransitionOrderStatus = (currentStatus, nextStatus) =>
+  currentStatus === nextStatus || Boolean(ORDER_STATUS_TRANSITIONS[currentStatus]?.includes(nextStatus));
+
+export const effectiveProductPrice = (product) => {
+  const price = Number(product.price);
+  const discount = Math.min(100, Math.max(0, Number(product.discount) || 0));
+  return Math.round(price * (1 - discount / 100) * 100) / 100;
+};
+
 const deliveryAddressSchema = z.object({
   street: z.string().optional(),
   city: z.string().optional(),
@@ -126,7 +148,18 @@ export const adjustStock = async (productId, quantity, selectedColor, selectedSt
   if (!productDetails) return null;
 
   const delta = sign * quantity;
-  await client.product.update({ where: { id: productId }, data: { quantity: { increment: delta } } });
+
+  if (delta < 0) {
+    // Conditional decrement (not read-then-write) so two concurrent confirms for the last
+    // unit(s) can't both succeed and push stock negative — the loser gets a 0-row update.
+    const { count } = await client.product.updateMany({
+      where: { id: productId, quantity: { gte: -delta } },
+      data: { quantity: { increment: delta } },
+    });
+    if (count === 0) return null;
+  } else {
+    await client.product.update({ where: { id: productId }, data: { quantity: { increment: delta } } });
+  }
 
   if (selectedColor && productDetails.colorVariants.length > 0) {
     await client.productColorVariant.updateMany({
@@ -150,6 +183,74 @@ export const updateFirstRevenueByOrder = async (orderId, data, client = prisma) 
   const revenue = await client.revenue.findFirst({ where: { orderId } });
   if (!revenue) return null;
   return client.revenue.update({ where: { id: revenue.id }, data });
+};
+
+// Recomputes a promo code's discount server-side instead of trusting the client-sent
+// discountAmount (which becomes the actual eSewa charge otherwise). Mirrors
+// promoCodeController.js's validatePromoCode exactly — active/date/usageLimit/minPurchase
+// checks plus the percentage-or-fixed calculation. Per-user single-use enforcement stays the
+// job of the existing /promo/apply endpoint (called by the frontend right before checkout);
+// this function only re-derives the *amount*, so a forged or skipped client value can no
+// longer become the actual charge.
+export const resolveServerPromoDiscount = async (code, purchaseAmount, client = prisma) => {
+  if (!code) return { discountAmount: 0, code: null };
+  const promo = await client.promoCode.findUnique({ where: { code: String(code).toUpperCase() } });
+  if (!promo || !promo.isActive) return { discountAmount: 0, code: null };
+
+  const now = new Date();
+  if (now < promo.validFrom || now > promo.validUntil) return { discountAmount: 0, code: null };
+  if (promo.usageLimit && promo.usedCount >= promo.usageLimit) return { discountAmount: 0, code: null };
+  if (purchaseAmount < promo.minPurchase) return { discountAmount: 0, code: null };
+
+  let discountAmount = promo.discountType === "percentage"
+    ? (purchaseAmount * promo.discountValue) / 100
+    : promo.discountValue;
+  if (promo.maxDiscount && discountAmount > promo.maxDiscount) discountAmount = promo.maxDiscount;
+  if (discountAmount > purchaseAmount) discountAmount = purchaseAmount;
+
+  return { discountAmount: Math.round(discountAmount), code: promo.code };
+};
+
+export const redeemServerPromoDiscount = async (code, purchaseAmount, userId, client = prisma) => {
+  if (!code || !userId) return { discountAmount: 0, code: null };
+
+  const redeem = async (tx) => {
+    const resolved = await resolveServerPromoDiscount(code, purchaseAmount, tx);
+    if (!resolved.code) return resolved;
+
+    const promo = await tx.promoCode.findUnique({ where: { code: resolved.code } });
+    const existingUsage = await tx.promoCodeUsage.findUnique({
+      where: { promoCodeId_userId: { promoCodeId: promo.id, userId } },
+    });
+    if (existingUsage) return { discountAmount: 0, code: null };
+
+    await tx.promoCodeUsage.create({ data: { promoCodeId: promo.id, userId } });
+    const { count } = await tx.promoCode.updateMany({
+      where: {
+        id: promo.id,
+        isActive: true,
+        validFrom: { lte: new Date() },
+        validUntil: { gte: new Date() },
+        OR: [{ usageLimit: null }, { usedCount: { lt: promo.usageLimit ?? 0 } }],
+      },
+      data: { usedCount: { increment: 1 } },
+    });
+    if (count === 0) {
+      const error = new Error("Promo code is no longer available");
+      error.code = "PROMO_UNAVAILABLE";
+      throw error;
+    }
+    return resolved;
+  };
+
+  try {
+    return client.$transaction ? await client.$transaction(redeem) : await redeem(client);
+  } catch (error) {
+    if (error?.code === "P2002" || error?.code === "PROMO_UNAVAILABLE") {
+      return { discountAmount: 0, code: null };
+    }
+    throw error;
+  }
 };
 
 export const getAllOrder = async (req, res) => {
@@ -241,6 +342,12 @@ export const getOrderDetails = async (req, res) => {
       return res.status(404).json({ message: "Order not found" });
     }
 
+    const isOwner = order.userId === req.user.id;
+    const isSeller = req.user.role === "seller" && order.product?.sellerId === req.user.id;
+    if (req.user.role !== "admin" && !isOwner && !isSeller) {
+      return res.status(403).json({ message: "Not authorized to view this order" });
+    }
+
     res.status(200).json(withNestedOrderShape(order));
   } catch (error) {
     console.error("Error fetching order details:", error);
@@ -320,22 +427,27 @@ export const createOrder = async (req, res) => {
     }
 
     // Calculate total price
-    let totalPrice = quantity * productDetails.price;
+    const subtotal = quantity * effectiveProductPrice(productDetails);
 
-    // Apply promo code discount if provided
+    // Get user ID from token
+    const userId = req.user?.id;
+
+    // Recompute the promo discount server-side — never trust promoCode.discountAmount from
+    // the client, it would otherwise become the actual eSewa charge.
     let promoCodeStr = null;
     let promoDiscountAmount = null;
-    if (promoCode && promoCode.code && promoCode.discountAmount) {
-      totalPrice = Math.max(0, totalPrice - promoCode.discountAmount);
-      promoCodeStr = promoCode.code;
-      promoDiscountAmount = promoCode.discountAmount;
+    let totalPrice = subtotal;
+    if (promoCode && promoCode.code) {
+      const resolved = await redeemServerPromoDiscount(promoCode.code, subtotal, userId);
+      if (resolved.code) {
+        totalPrice = Math.max(0, subtotal - resolved.discountAmount);
+        promoCodeStr = resolved.code;
+        promoDiscountAmount = resolved.discountAmount;
+      }
     }
 
     // Calculate 5% admin commission on final price
     const adminCommission = totalPrice * 0.05;
-
-    // Get user ID from token
-    const userId = req.user?.id;
 
     // Create order with delivery address
     // Note: `phone` is intentionally NOT persisted — Order has no phone column (matches the
@@ -482,7 +594,7 @@ export const createBulkOrderFromCart = async (req, res) => {
       }
 
       // Calculate price
-      const itemTotal = item.quantity * productDetails.price;
+      const itemTotal = item.quantity * effectiveProductPrice(productDetails);
       totalBeforeDiscount += itemTotal;
       totalAmount += itemTotal;
 
@@ -555,16 +667,22 @@ export const createBulkOrderFromCart = async (req, res) => {
       return res.status(400).json({ message: "No valid products in cart" });
     }
 
-    // Apply promo code discount to total if provided
+    // Recompute the promo discount server-side against the real order total — never trust
+    // promoCode.discountAmount from the client, it would otherwise become the actual eSewa charge.
     let finalAmount = totalAmount;
-    if (promoCode && promoCode.code && promoCode.discountAmount) {
-      finalAmount = Math.max(0, totalAmount - promoCode.discountAmount);
-      // Save promo code to the first order (primary order for payment)
-      const updatedFirst = await prisma.order.update({
-        where: { id: createdOrders[0].id },
-        data: { promoCode: promoCode.code, promoDiscountAmount: promoCode.discountAmount },
-      });
-      createdOrders[0] = updatedFirst;
+    let discountApplied = 0;
+    if (promoCode && promoCode.code) {
+      const resolved = await redeemServerPromoDiscount(promoCode.code, totalAmount, userId);
+      if (resolved.code) {
+        finalAmount = Math.max(0, totalAmount - resolved.discountAmount);
+        discountApplied = resolved.discountAmount;
+        // Save promo code to the first order (primary order for payment)
+        const updatedFirst = await prisma.order.update({
+          where: { id: createdOrders[0].id },
+          data: { promoCode: resolved.code, promoDiscountAmount: resolved.discountAmount },
+        });
+        createdOrders[0] = updatedFirst;
+      }
     }
 
     // Return first order for payment (all orders share same group)
@@ -575,7 +693,7 @@ export const createBulkOrderFromCart = async (req, res) => {
       orderCount: createdOrders.length,
       totalAmount: finalAmount,
       originalAmount: totalBeforeDiscount,
-      discountApplied: promoCode ? promoCode.discountAmount : 0
+      discountApplied,
     });
   } catch (error) {
     console.error("Error creating bulk orders:", error);
@@ -614,12 +732,23 @@ export const updateOrder = async (req, res) => {
       return res.status(404).json({ message: "Order not found" });
     }
 
+    if (quantity !== undefined && Number(quantity) !== order.quantity) {
+      return res.status(409).json({ message: "Order quantity cannot be changed after checkout. Cancel it and create a new order instead." });
+    }
+    if (status !== undefined && !canTransitionOrderStatus(order.status, status)) {
+      return res.status(409).json({ message: `Order cannot move from ${order.status} to ${status}` });
+    }
+    const changesCustomerDetails = [firstName, lastName, email, deliveryDate].some((value) => value !== undefined);
+    if (changesCustomerDetails && order.status !== "Pending") {
+      return res.status(409).json({ message: "Customer and delivery details can only be changed while an order is pending" });
+    }
+
     const productDetails = await prisma.product.findUnique({ where: { id: order.productId } });
     if (!productDetails) {
       return res.status(404).json({ message: "Product not found" });
     }
 
-    const newQuantity = quantity || order.quantity;
+    const newQuantity = order.quantity;
 
     // Update the order fields, recalculating total price
     order = await prisma.order.update({
@@ -631,7 +760,7 @@ export const updateOrder = async (req, res) => {
         quantity: newQuantity,
         deliveryDate: deliveryDate ? new Date(deliveryDate) : order.deliveryDate,
         status: status || order.status,
-        totalPrice: newQuantity * productDetails.price,
+        totalPrice: order.totalPrice,
       },
       include: { product: { select: { name: true, price: true } } },
     });
@@ -641,11 +770,12 @@ export const updateOrder = async (req, res) => {
     console.log("Updated order:", updatedOrder);
 
     // Send update confirmation email
-    const subject = `Order ${status} – ShopSphere`;
-    const text = `Dear ${updatedOrder.firstName} ${updatedOrder.lastName},\n\nYour order has been ${status}.\n\nQuantity: ${updatedOrder.quantity}\nDelivery Date: ${new Date(updatedOrder.deliveryDate).toLocaleDateString()}\nTotal Price: Rs. ${updatedOrder.totalPrice}\n\nThank you for shopping with ShopSphere!`;
-    const html = shopSphereEmail(`Order ${status}`, `
+    const resultingStatus = updatedOrder.status;
+    const subject = `Order ${resultingStatus} – ShopSphere`;
+    const text = `Dear ${updatedOrder.firstName} ${updatedOrder.lastName},\n\nYour order has been ${resultingStatus}.\n\nQuantity: ${updatedOrder.quantity}\nDelivery Date: ${new Date(updatedOrder.deliveryDate).toLocaleDateString()}\nTotal Price: Rs. ${updatedOrder.totalPrice}\n\nThank you for shopping with ShopSphere!`;
+    const html = shopSphereEmail(`Order ${resultingStatus}`, `
       <p>Dear <strong>${updatedOrder.firstName} ${updatedOrder.lastName}</strong>,</p>
-      <p>Your order has been <strong>${status.toLowerCase()}</strong>. Here are the updated details:</p>
+      <p>Your order has been <strong>${resultingStatus.toLowerCase()}</strong>. Here are the updated details:</p>
       ${emailTable(
         emailRow('Product', updatedOrder.product?.name || 'Product') +
         emailRow('Quantity', updatedOrder.quantity) +
@@ -665,21 +795,25 @@ export const updateOrder = async (req, res) => {
 };
 
 export const deleteOrder = async (req, res) => {
-  console.log("Deleting order with ID:", req.params.id);
-
   try {
-    // Find the order to get the associated product ID
-    const order = await prisma.order.findUnique({ where: { id: req.params.id } });
+    const { id } = req.params;
+    const order = await prisma.order.findUnique({ where: { id } });
     if (!order) {
-      console.error("Order not found");
       return res.status(404).json({ message: "Order not found" });
     }
 
-    const productId = order.productId;
-
-    // Delete the order
-    await prisma.order.delete({ where: { id: req.params.id } });
-    console.log("Order deleted successfully:", order);
+    // Restore stock (if applicable) and delete the order atomically — mirrors
+    // userDeleteOrder's logic so an admin delete can't leave stock deducted forever.
+    const restoresStock = ['Confirmed', 'Processing', 'Shipped'].includes(order.status);
+    await prisma.$transaction(async (tx) => {
+      if (restoresStock) {
+        await adjustStock(order.productId, order.quantity, order.variantColor, order.variantStorage, 1, tx);
+      }
+      await tx.order.delete({ where: { id } });
+    });
+    if (restoresStock) {
+      console.log(`✅ Stock restored on admin delete: ${order.quantity} units for order ${id}`);
+    }
 
     res.status(200).json({ message: "Order deleted successfully" });
   } catch (error) {
@@ -713,14 +847,25 @@ export const userUpdateOrder = async (req, res) => {
         });
     }
 
-    // Update the order fields, recalculating the total price
-    const newQuantity = quantity || order.quantity;
+    if (order.status !== "Pending") {
+      return res.status(409).json({ message: "Only pending orders can be edited" });
+    }
+    if (quantity !== undefined && Number(quantity) !== order.quantity) {
+      return res.status(409).json({ message: "Order quantity cannot be changed after checkout. Cancel it and create a new order instead." });
+    }
+
+    const parsedDeliveryDate = deliveryDate ? new Date(deliveryDate) : order.deliveryDate;
+    if (Number.isNaN(parsedDeliveryDate.getTime())) {
+      return res.status(400).json({ message: "Invalid delivery date" });
+    }
+
+    // Price and quantity were fixed when checkout created this order. Mutating either here
+    // would desynchronise the payment intent, stock, and revenue records.
+    const newQuantity = order.quantity;
     order = await prisma.order.update({
       where: { id: order.id },
       data: {
-        quantity: newQuantity,
-        deliveryDate: deliveryDate ? new Date(deliveryDate) : order.deliveryDate,
-        totalPrice: newQuantity * order.product.price,
+        deliveryDate: parsedDeliveryDate,
       },
       include: { product: { select: { name: true, price: true } } },
     });
@@ -856,10 +1001,15 @@ export const updateSellerOrderStatus = async (req, res) => {
       return res.status(403).json({ message: "You can only update orders for your own products" });
     }
 
-    // Update status
-    const validStatuses = ["Pending", "Processing", "Shipped", "Delivered", "Cancelled"];
-    if (!validStatuses.includes(status)) {
-      return res.status(400).json({ message: "Invalid status" });
+    // Sellers can only advance paid orders one step at a time. Cancellation and refunds use
+    // the dedicated customer/admin workflows so their stock and payment rules also run.
+    const sellerTransitions = {
+      Confirmed: "Processing",
+      Processing: "Shipped",
+      Shipped: "Delivered",
+    };
+    if (sellerTransitions[order.status] !== status) {
+      return res.status(409).json({ message: `Order cannot move from ${order.status} to ${status}` });
     }
 
     const data = { status };
@@ -913,13 +1063,19 @@ export const generateBill = async (req, res) => {
     const order = await prisma.order.findUnique({
       where: { id: orderId },
       include: {
-        product: { select: { id: true, name: true, price: true } },
+        product: { select: { id: true, name: true, price: true, sellerId: true } },
         user: { select: { id: true, email: true, phone: true } },
       },
     });
 
     if (!order) {
       return res.status(404).json({ message: "Order not found" });
+    }
+
+    const isOwner = order.userId === req.user.id;
+    const isSeller = req.user.role === "seller" && order.product?.sellerId === req.user.id;
+    if (req.user.role !== "admin" && !isOwner && !isSeller) {
+      return res.status(403).json({ message: "Not authorized to view this order" });
     }
 
     // Deterministic (not Date.now()-based) so re-requesting the same order's bill is
@@ -1062,13 +1218,19 @@ export const sendOrderConfirmationEmail = async (req, res) => {
     const order = await prisma.order.findUnique({
       where: { id: orderId },
       include: {
-        product: { select: { name: true, price: true, description: true, images: true } },
+        product: { select: { name: true, price: true, description: true, images: true, sellerId: true } },
         user: { select: { email: true, shopName: true } },
       },
     });
 
     if (!order) {
       return res.status(404).json({ message: "Order not found" });
+    }
+
+    const isOwner = order.userId === req.user.id;
+    const isSeller = req.user.role === "seller" && order.product?.sellerId === req.user.id;
+    if (req.user.role !== "admin" && !isOwner && !isSeller) {
+      return res.status(403).json({ message: "Not authorized to email this order's confirmation" });
     }
 
     // Check if confirmation email has already been sent
@@ -1203,9 +1365,18 @@ export const confirmOrderCore = async (orderId) => {
 
         // Stock deduction, order status flip, and revenue update happen atomically —
         // a failure partway through must not leave stock deducted but the order still Pending.
-        const { updatedProduct, updatedOrder } = await prisma.$transaction(async (tx) => {
+        const { updatedProduct, updatedOrder, skipped = false } = await prisma.$transaction(async (tx) => {
+          // Atomically claim the pending order before touching stock. Concurrent payment
+          // callbacks may both reach this function, but only one can change Pending to the
+          // transient Confirming state; the loser becomes a no-op after the winner commits.
+          const claim = await tx.order.updateMany({
+            where: { id: orderId, status: "Pending" },
+            data: { status: "Confirming" },
+          });
+          if (claim.count === 0) return { updatedProduct: null, updatedOrder: null, skipped: true };
+
           const product = await adjustStock(productId, quantity, selectedColor, selectedStorage, -1, tx);
-          if (!product) return { updatedProduct: null, updatedOrder: null };
+          if (!product) return { updatedProduct: null, updatedOrder: null, skipped: false };
 
           const orderRow = await tx.order.update({
             where: { id: orderId },
@@ -1215,9 +1386,10 @@ export const confirmOrderCore = async (orderId) => {
 
           await updateFirstRevenueByOrder(orderId, { status: "Completed" }, tx);
 
-          return { updatedProduct: product, updatedOrder: orderRow };
+          return { updatedProduct: product, updatedOrder: orderRow, skipped: false };
         });
 
+        if (skipped) continue;
         if (!updatedProduct) {
           errors.push(`Product not found for order ${order.id}`);
           continue;
@@ -1383,7 +1555,13 @@ export const confirmOrderAndDeductStock = async (req, res) => {
       where: primaryOrder.orderGroupId ? { orderGroupId: primaryOrder.orderGroupId } : { orderId },
       orderBy: { createdAt: "desc" },
     });
-    if (payment && payment.status !== "Succeeded") {
+    // Require a verified payment — there is no cash-on-delivery option in this app (no
+    // paymentMethod field, no COD UI), so a missing Payment row means checkout was never
+    // completed, not "pay on delivery." Confirming here used to skip this check entirely
+    // whenever no Payment row existed at all, letting any logged-in user free-confirm their
+    // own pending order (deduct stock, mark paid, send the confirmation email) without ever
+    // paying — this was the single most severe bug in the app.
+    if (!payment || payment.status !== "Succeeded") {
       return res.status(402).json({ message: "Payment not verified yet. Please wait a moment and try again." });
     }
 
@@ -1561,7 +1739,7 @@ export const processReturn = async (req, res) => {
       return res.status(400).json({ message: "Action must be 'approve' or 'reject'" });
     }
 
-    const order = await prisma.order.findUnique({ where: { id: orderId }, include: { product: true } });
+    let order = await prisma.order.findUnique({ where: { id: orderId }, include: { product: true } });
     if (!order) return res.status(404).json({ message: "Order not found" });
 
     // sellers may only process returns for their own products
@@ -1576,18 +1754,25 @@ export const processReturn = async (req, res) => {
       return res.status(400).json({ message: "Order is not in 'Return Requested' status" });
     }
 
-    let newStatus;
-    if (action === "approve") {
-      newStatus = "Return Approved";
-
-      // Restore stock
-      try {
-        const { quantity } = order;
-        await adjustStock(order.product.id, quantity, order.variantColor, order.variantStorage, 1);
-      } catch (stockErr) {
-        console.error("Stock restore error on return approval:", stockErr);
+    const newStatus = action === "approve" ? "Return Approved" : "Return Rejected";
+    order = await prisma.$transaction(async (tx) => {
+      const claim = await tx.order.updateMany({
+        where: { id: orderId, status: "Return Requested" },
+        data: { status: newStatus },
+      });
+      if (claim.count === 0) {
+        const error = new Error("This return request has already been processed");
+        error.statusCode = 409;
+        throw error;
       }
+      if (action === "approve") {
+        const restored = await adjustStock(order.product.id, order.quantity, order.variantColor, order.variantStorage, 1, tx);
+        if (!restored) throw new Error("Unable to restore product stock");
+      }
+      return tx.order.findUnique({ where: { id: orderId }, include: { product: true } });
+    });
 
+    if (action === "approve") {
       const approvedHtml = shopSphereEmail('Return Approved', `
         <p>Hi <strong>${order.firstName}</strong>,</p>
         <p>Great news! Your return for <strong>${order.product?.name}</strong> has been approved.</p>
@@ -1615,7 +1800,6 @@ export const processReturn = async (req, res) => {
         }
       } catch (_) { /* non-fatal */ }
     } else {
-      newStatus = "Return Rejected";
       const rejectedHtml = shopSphereEmail('Return Request Rejected', `
         <p>Hi <strong>${order.firstName}</strong>,</p>
         <p>Unfortunately, your return request for <strong>${order.product?.name}</strong> could not be approved.</p>
@@ -1643,11 +1827,10 @@ export const processReturn = async (req, res) => {
       } catch (_) { /* non-fatal */ }
     }
 
-    const updatedOrder = await prisma.order.update({ where: { id: orderId }, data: { status: newStatus }, include: { product: true } });
-    res.status(200).json({ message: `Return ${action === "approve" ? "approved" : "rejected"} successfully`, order: withNestedOrderShape(updatedOrder) });
+    res.status(200).json({ message: `Return ${action === "approve" ? "approved" : "rejected"} successfully`, order: withNestedOrderShape(order) });
   } catch (error) {
     console.error("Error processing return:", error);
-    res.status(500).json({ message: "Server error while processing return" });
+    res.status(error.statusCode || 500).json({ message: error.message || "Server error while processing return" });
   }
 };
 

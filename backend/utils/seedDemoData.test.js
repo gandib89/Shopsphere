@@ -6,6 +6,8 @@ import bcrypt from "bcryptjs";
 
 import { ensureDemoData } from "./seedDemoData.js";
 
+process.env.DEMO_PASSWORD ||= "TestDemoPassword@123";
+
 const expectedAccounts = [
   ["seller1@shopsphere", "seller"],
   ["seller2@shopsphere", "seller"],
@@ -66,7 +68,7 @@ test("creates usable demo accounts and pictured products only once", async () =>
     assert.ok(account, `${email} should be seeded`);
     assert.equal(account.role, role);
     assert.equal(account.isVerified, true);
-    assert.equal(await bcrypt.compare("Qwerty@9876", account.password), true);
+    assert.equal(await bcrypt.compare(process.env.DEMO_PASSWORD, account.password), true);
   }
 
   const sellerIds = new Set([

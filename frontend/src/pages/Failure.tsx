@@ -14,9 +14,9 @@ function Failure() {
 
     const checkOrderStatus = async () => {
         try {
-            // Check if order exists and its current status
+            // Check if this order exists and belongs to the logged-in user
             const response = await axios.get(
-                `${import.meta.env.VITE_BACKEND_URL}/api/v1/order/getOrder`,
+                `${import.meta.env.VITE_BACKEND_URL}/api/v1/order/details/${orderId}`,
                 {
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -24,9 +24,9 @@ function Failure() {
                 }
             );
 
-            const order = response.data.find((o: any) => o._id === orderId);
+            const order = response.data;
 
-            if (order) {
+            if (order && order.status === "Pending") {
                 setOrderExists(true);
 
                 // If order exists and is Pending, it means payment might have failed
@@ -37,10 +37,10 @@ function Failure() {
                         navigate(`/success/${orderId}`);
                     }, 3000);
                 } else {
-                    // In production, actually cancel the order
+                    // In production, actually cancel the order (owner-checked, restores stock)
                     await axios.put(
-                        `${import.meta.env.VITE_BACKEND_URL}/api/v1/order/updateOrder/${orderId}`,
-                        { status: "Cancelled" },
+                        `${import.meta.env.VITE_BACKEND_URL}/api/v1/order/cancel/${orderId}`,
+                        {},
                         {
                             headers: {
                                 Authorization: `Bearer ${token}`,

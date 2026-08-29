@@ -3,7 +3,6 @@ import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 import { Toaster } from 'sonner';
-import React from 'react';
 import './lib/session'; // installs the axios auth interceptors before any request fires
 
 createRoot(document.getElementById('root')!).render(

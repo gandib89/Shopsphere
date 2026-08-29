@@ -1,5 +1,6 @@
 FROM node:20-alpine
 
+ENV NODE_ENV=production
 WORKDIR /app
 
 COPY package.json package-lock.json ./
@@ -12,6 +13,9 @@ RUN npx prisma generate --schema=prisma/schema.prisma
 
 RUN mkdir -p uploads && chown -R node:node uploads
 EXPOSE 4000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:4000/health', r => process.exit(r.statusCode===200?0:1)).on('error', () => process.exit(1))"
 
 USER node
 # Applies committed migrations before every start — fine for this project's scale;

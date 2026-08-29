@@ -1,7 +1,5 @@
 import bcrypt from "bcryptjs";
 
-const DEMO_PASSWORD = "Qwerty@9876";
-
 const demoUsers = [
   {
     id: "66a100000000000000000001",
@@ -182,12 +180,16 @@ const demoProducts = [
 ];
 
 export const ensureDemoData = async (prisma) => {
+  const demoPassword = process.env.DEMO_PASSWORD;
+  if (!demoPassword || demoPassword.length < 12) {
+    throw new Error("DEMO_PASSWORD must be set to at least 12 characters when demo seeding is enabled");
+  }
   const seedTransaction = async () => prisma.$transaction(async (database) => {
     const existingUsers = await Promise.all(
       demoUsers.map((user) => database.user.findUnique({ where: { email: user.email } })),
     );
     const usersToCreate = demoUsers.filter((_, index) => !existingUsers[index]);
-    const password = usersToCreate.length ? await bcrypt.hash(DEMO_PASSWORD, 12) : null;
+    const password = usersToCreate.length ? await bcrypt.hash(demoPassword, 12) : null;
     const resolvedUserIds = new Map();
     let usersCreated = 0;
     let usersExisting = 0;

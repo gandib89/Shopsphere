@@ -8,10 +8,13 @@ import {
   issueRefreshFamily,
   rotateRefreshToken,
   revokeFamilyByToken,
+  revokeAllFamiliesForUser,
   RefreshTokenError,
 } from "../utils/refreshTokenStore.js";
+import { generateRefreshToken as generateOpaqueToken, hashRefreshToken as hashOpaqueToken } from "../utils/tokens.js";
 import { OAuth2Client } from "google-auth-library";
 import nodemailer from "nodemailer";
+import { sendEmail } from "../utils/emailService.js";
 
 export { authorizeAdmin } from "../middlewares/authMiddleware.js";
 
@@ -32,8 +35,8 @@ const setRefreshCookie = (res, refreshToken) =>
 const clearRefreshCookie = (res) => res.clearCookie(REFRESH_COOKIE_NAME, REFRESH_COOKIE_OPTIONS);
 
 // Issues a fresh access token + a new refresh-token family, and sets the cookie.
-const issueSession = async (res, user) => {
-  const refreshToken = await issueRefreshFamily(user.id);
+const issueSession = async (res, user, client = prisma) => {
+  const refreshToken = await issueRefreshFamily(user.id, client);
   setRefreshCookie(res, refreshToken);
   return signAccessToken({ id: user.id, role: user.role });
 };
@@ -138,12 +141,14 @@ const registerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
   phone: z.string().optional(),
-  role: z.enum(["user", "admin", "seller"]),
+  // Administrative accounts are provisioned out-of-band. Accepting "admin" here would
+  // let any unauthenticated visitor grant themselves full control of the demo.
+  role: z.enum(["user", "seller"]),
   shopName: z.string().optional(),
   shopDescription: z.string().optional(),
 });
 
-export const register = async (req, res) => {
+export const register = async (req, res, client = prisma) => {
   const parsed = registerSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ code: "invalid_input", message: parsed.error.issues[0].message });
@@ -155,7 +160,7 @@ export const register = async (req, res) => {
     return res.status(400).json({ code: "invalid_input", message: "Shop name is required for sellers" });
   }
 
-  const existingUser = await prisma.user.findUnique({ where: { email } });
+  const existingUser = await client.user.findUnique({ where: { email } });
   if (existingUser) {
     return res.status(409).json({ code: "email_taken", message: "User already exists" });
   }
@@ -180,8 +185,8 @@ export const register = async (req, res) => {
   }
 
   try {
-    const user = await prisma.user.create({ data: userData });
-    const accessToken = await issueSession(res, user);
+    const user = await client.user.create({ data: userData });
+    const accessToken = await issueSession(res, user, client);
     res.status(201).json({ user: toPublicUser(user), accessToken });
   } catch (error) {
     if (error?.code === "P2002" && error?.meta?.target?.includes("email")) {
@@ -197,7 +202,7 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
-export const login = async (req, res) => {
+export const login = async (req, res, client = prisma) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ code: "invalid_input", message: parsed.error.issues[0].message });
@@ -205,7 +210,7 @@ export const login = async (req, res) => {
   const email = normalizeEmail(parsed.data.email);
   const { password } = parsed.data;
 
-  const user = await prisma.user.findUnique({ where: { email } });
+  const user = await client.user.findUnique({ where: { email } });
   if (!user || !user.password) {
     return res.status(401).json({ code: "invalid_credentials", message: "Invalid email or password" });
   }
@@ -217,25 +222,25 @@ export const login = async (req, res) => {
 
   // Opportunistic upgrade: this user still had a pre-argon2 (bcrypt) hash.
   if (isLegacyHash(user.password)) {
-    await prisma.user.update({
+    await client.user.update({
       where: { id: user.id },
       data: { password: await hashPassword(password) },
     });
   }
 
-  const accessToken = await issueSession(res, user);
+  const accessToken = await issueSession(res, user, client);
   res.status(200).json({ user: toPublicUser(user), accessToken });
 };
 
-export const refresh = async (req, res) => {
+export const refresh = async (req, res, client = prisma) => {
   const rawToken = req.cookies?.[REFRESH_COOKIE_NAME];
   if (!rawToken) {
     return res.status(401).json({ code: "unauthenticated", message: "No refresh token provided" });
   }
 
   try {
-    const { userId, refreshToken } = await rotateRefreshToken(rawToken);
-    const user = await prisma.user.findUnique({ where: { id: userId } });
+    const { userId, refreshToken } = await rotateRefreshToken(rawToken, client);
+    const user = await client.user.findUnique({ where: { id: userId } });
     if (!user) {
       clearRefreshCookie(res);
       return res.status(401).json({ code: "unauthenticated", message: "User not found" });
@@ -254,9 +259,9 @@ export const refresh = async (req, res) => {
   }
 };
 
-export const logout = async (req, res) => {
+export const logout = async (req, res, client = prisma) => {
   const rawToken = req.cookies?.[REFRESH_COOKIE_NAME];
-  if (rawToken) await revokeFamilyByToken(rawToken);
+  if (rawToken) await revokeFamilyByToken(rawToken, client);
   clearRefreshCookie(res);
   res.status(204).send();
 };
@@ -351,7 +356,10 @@ export const googleSignIn = async (req, res) => {
     const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
     const ticket = await client.verifyIdToken({ idToken: token, audience: process.env.GOOGLE_CLIENT_ID });
     const payload = ticket.getPayload();
-    const { sub: googleId, email, given_name: firstName, family_name: lastName } = payload;
+    const { sub: googleId, email, email_verified: emailVerified, given_name: firstName, family_name: lastName } = payload;
+    if (!email || !emailVerified) {
+      return res.status(401).json({ code: "invalid_credentials", message: "Google account email is not verified" });
+    }
     const normalizedEmail = normalizeEmail(email);
 
     let user = await prisma.user.findFirst({ where: { OR: [{ googleId }, { email: normalizedEmail }] } });
@@ -408,10 +416,92 @@ export const updatePassword = async (req, res) => {
       return res.status(400).json({ code: "invalid_credentials", message: "Current password is incorrect" });
     }
 
-    await prisma.user.update({ where: { id: user.id }, data: { password: await hashPassword(newPassword) } });
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({ where: { id: user.id }, data: { password: await hashPassword(newPassword) } });
+      await revokeAllFamiliesForUser(user.id, tx);
+    });
+    clearRefreshCookie(res);
     res.status(200).json({ message: "Password updated successfully" });
   } catch (error) {
     console.error("Error updating password:", error);
     res.status(500).json({ code: "internal_error", message: "Server error while updating password" });
   }
+};
+
+const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+const forgotPasswordSchema = z.object({ email: z.string().email() });
+
+// Request a password reset link. Always responds with the same generic message regardless of
+// whether the email exists — unlike /register, this endpoint must not confirm account existence.
+export const forgotPassword = async (req, res, client = prisma, send = sendEmail) => {
+  const parsed = forgotPasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ code: "invalid_input", message: "A valid email is required" });
+  }
+  const email = normalizeEmail(parsed.data.email);
+  const genericResponse = { message: "If an account exists for that email, a reset link has been sent." };
+
+  const user = await client.user.findUnique({ where: { email } });
+  // Google-only accounts have no password to reset — silently skip, same generic response.
+  if (user && user.password) {
+    const rawToken = generateOpaqueToken();
+    await client.user.update({
+      where: { id: user.id },
+      data: {
+        resetTokenHash: hashOpaqueToken(rawToken),
+        resetTokenExpiresAt: new Date(Date.now() + PASSWORD_RESET_TTL_MS),
+      },
+    });
+
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+    const resetLink = `${frontendUrl}/#/reset-password?token=${rawToken}`;
+    send(
+      user.email,
+      "Reset your ShopSphere password",
+      `Reset your password: ${resetLink}\nThis link expires in 1 hour. If you didn't request this, you can ignore this email.`,
+      `<div style="font-family: Arial, sans-serif; background-color: #f5f5f5; padding: 20px;">
+        <div style="background-color: white; padding: 30px; border-radius: 8px; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #7c3aed; margin-bottom: 20px;">Reset your password</h2>
+          <p style="color: #333; font-size: 16px; line-height: 1.6;">Hi ${user.firstName},</p>
+          <p style="color: #333; font-size: 16px; line-height: 1.6;">We received a request to reset your ShopSphere password. This link expires in 1 hour.</p>
+          <div style="text-align:center;margin:24px 0;">
+            <a href="${resetLink}" style="background-color:#7c3aed;color:white;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:bold;">Reset Password</a>
+          </div>
+          <p style="color: #999; font-size: 12px;">If you didn't request this, you can safely ignore this email — your password won't change.</p>
+        </div>
+      </div>`
+    );
+  }
+
+  res.status(200).json(genericResponse);
+};
+
+const resetPasswordSchema = z.object({
+  token: z.string().min(1),
+  newPassword: z.string().min(8),
+});
+
+// Complete a password reset. The token is single-use (cleared on success) and expires after
+// PASSWORD_RESET_TTL_MS — resetting also revokes every existing refresh-token family, since a
+// reset is a signal the account may have been compromised.
+export const resetPassword = async (req, res, client = prisma) => {
+  const parsed = resetPasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ code: "invalid_input", message: parsed.error.issues[0].message });
+  }
+  const { token, newPassword } = parsed.data;
+
+  const user = await client.user.findUnique({ where: { resetTokenHash: hashOpaqueToken(token) } });
+  if (!user || !user.resetTokenExpiresAt || user.resetTokenExpiresAt < new Date()) {
+    return res.status(400).json({ code: "invalid_token", message: "This reset link is invalid or has expired" });
+  }
+
+  await client.user.update({
+    where: { id: user.id },
+    data: { password: await hashPassword(newPassword), resetTokenHash: null, resetTokenExpiresAt: null },
+  });
+  await revokeAllFamiliesForUser(user.id, client);
+
+  res.status(200).json({ message: "Password reset successfully. Please log in with your new password." });
 };

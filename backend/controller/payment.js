@@ -11,6 +11,18 @@ import {
 } from "../utils/esewa.js";
 import { confirmOrderCore } from "./order.js";
 
+// createOrder() already bakes any promo discount into totalPrice; createBulkOrder() only
+// stores it on promoDiscountAmount (see order.js), so it's only subtracted here for the
+// grouped/bulk case — subtracting it for both would double-discount single orders. Pure and
+// exported so this exact rule (the actual eSewa charge amount) is independently testable.
+export const computeCheckoutAmount = (orders, isGrouped) => {
+  const groupTotal = orders.reduce((sum, o) => sum + o.totalPrice, 0);
+  const discount = isGrouped
+    ? orders.reduce((sum, o) => sum + (o.promoDiscountAmount || 0), 0)
+    : 0;
+  return Math.max(0, groupTotal - discount);
+};
+
 // POST /api/v1/payment/checkout
 // Requires Idempotency-Key header. Computes the charge amount from the order in the DB
 // (never trusts a client-supplied amount) and signs the eSewa form fields server-side, so the
@@ -53,14 +65,38 @@ export const checkout = async (req, res) => {
           ? await tx.order.findMany({ where: { orderGroupId: order.orderGroupId } })
           : [order];
 
-        // createOrder() already bakes any promo discount into totalPrice; createBulkOrder()
-        // only stores it on promoDiscountAmount (see order.js), so it's only subtracted here
-        // for the grouped/bulk case — subtracting it for both would double-discount single orders.
-        const groupTotal = orders.reduce((sum, o) => sum + o.totalPrice, 0);
-        const discount = order.orderGroupId
-          ? orders.reduce((sum, o) => sum + (o.promoDiscountAmount || 0), 0)
-          : 0;
-        const totalAmount = Math.max(0, groupTotal - discount);
+        const totalAmount = computeCheckoutAmount(orders, Boolean(order.orderGroupId));
+
+        // A browser retry may use a fresh HTTP idempotency key. Reuse the existing active
+        // gateway intent for this logical order so the customer can never receive two
+        // simultaneously payable eSewa forms for the same purchase.
+        const existingPayment = await tx.payment.findFirst({
+          where: { orderId: order.id, status: "Initiated" },
+          orderBy: { createdAt: "desc" },
+        });
+        if (existingPayment) {
+          const signed = signCheckoutFields({
+            totalAmount: existingPayment.amount,
+            transactionUuid: existingPayment.transactionUuid,
+            productCode: existingPayment.productCode,
+          });
+          return {
+            statusCode: 200,
+            body: {
+              success: true,
+              paymentId: existingPayment.id,
+              transactionUuid: existingPayment.transactionUuid,
+              signature: signed.signature,
+              signedFieldNames: signed.signedFieldNames,
+              productCode: signed.productCode,
+              amount: existingPayment.amount,
+              taxAmount: 0,
+              totalAmount: existingPayment.amount,
+              formActionUrl: FORM_ACTION_URL,
+              reused: true,
+            },
+          };
+        }
 
         const transactionUuid = crypto.randomUUID();
         const { signature, signedFieldNames, productCode } = signCheckoutFields({ totalAmount, transactionUuid });
@@ -115,14 +151,22 @@ export const checkout = async (req, res) => {
 // Shared by the success/failure redirect handlers and safe to call more than once for the same
 // transaction: dedupes on a per-status gatewayEventId, so a redelivered/duplicate redirect is a
 // no-op rather than a second charge confirmation.
-export const processEsewaEvent = async (transactionUuid, { source } = {}) => {
-  const payment = await prisma.payment.findUnique({ where: { transactionUuid } });
+export const processEsewaEvent = async (
+  transactionUuid,
+  { source } = {},
+  {
+    client = prisma,
+    checkStatus = checkTransactionStatus,
+    confirmOrder = confirmOrderCore,
+  } = {}
+) => {
+  const payment = await client.payment.findUnique({ where: { transactionUuid } });
   if (!payment) return { ok: false, reason: "unknown_transaction" };
   if (payment.status !== "Initiated") {
     return { ok: true, payment, alreadyProcessed: true };
   }
 
-  const statusResult = await checkTransactionStatus({
+  const statusResult = await checkStatus({
     productCode: payment.productCode,
     totalAmount: payment.amount,
     transactionUuid,
@@ -131,8 +175,15 @@ export const processEsewaEvent = async (transactionUuid, { source } = {}) => {
   const newStatus = statusResult.status === "COMPLETE" ? "Succeeded" : "Failed";
   const gatewayEventId = `${transactionUuid}:${statusResult.status}`;
 
+  // Do not publish a Succeeded payment until the order/stock transaction has committed.
+  // If confirmation fails, the payment stays Initiated so a later verified callback can
+  // retry instead of leaving a permanently paid-but-pending order.
+  if (newStatus === "Succeeded") {
+    await confirmOrder(payment.orderId);
+  }
+
   try {
-    await prisma.$transaction(async (tx) => {
+    await client.$transaction(async (tx) => {
       await tx.paymentEvent.create({
         data: {
           id: generateId(),
@@ -150,18 +201,10 @@ export const processEsewaEvent = async (transactionUuid, { source } = {}) => {
   } catch (err) {
     if (err.code === "P2002") {
       // Same gateway event already recorded by a concurrent or redelivered callback.
-      const fresh = await prisma.payment.findUnique({ where: { transactionUuid } });
+      const fresh = await client.payment.findUnique({ where: { transactionUuid } });
       return { ok: true, payment: fresh, alreadyProcessed: true };
     }
     throw err;
-  }
-
-  if (newStatus === "Succeeded") {
-    try {
-      await confirmOrderCore(payment.orderId);
-    } catch (confirmErr) {
-      console.error("Post-payment order confirmation failed:", confirmErr);
-    }
   }
 
   return { ok: true, payment: { ...payment, status: newStatus } };
@@ -170,20 +213,20 @@ export const processEsewaEvent = async (transactionUuid, { source } = {}) => {
 const redirectToApp = (req, res, outcome) => {
   const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
   const { orderId } = req.params;
+  const safeOrderId = /^[a-f\d]{24}$/i.test(orderId) ? orderId : "invalid-order";
   const userAgent = req.headers["user-agent"] || "";
   const isCapacitor = userAgent.includes("Capacitor") || req.headers["x-capacitor"];
   const target = isCapacitor
-    ? `capacitor://localhost/#/${outcome}/${orderId}`
-    : `${frontendUrl}/#/${outcome}/${orderId}`;
-  return res.send(
-    `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Payment ${outcome === "success" ? "Successful" : "Failed"}</title></head><body><p>Redirecting...</p><script>setTimeout(function(){ window.location.href = ${JSON.stringify(target)}; }, 300);</script></body></html>`
-  );
+    ? `capacitor://localhost/#/${outcome}/${safeOrderId}`
+    : `${frontendUrl.replace(/\/$/, "")}/#/${outcome}/${safeOrderId}`;
+  return res.redirect(302, target);
 };
 
 // GET target for eSewa's success_url. eSewa has no server-to-server webhook push — this
 // browser redirect, verified against eSewa's own status-check API before anything is trusted,
 // is this system's webhook-equivalent entrypoint (see processEsewaEvent above).
 export const esewaSuccessWebhook = async (req, res) => {
+  let verified = false;
   try {
     const encoded = req.query.data;
     if (encoded) {
@@ -192,12 +235,13 @@ export const esewaSuccessWebhook = async (req, res) => {
         console.error("eSewa callback signature mismatch", payload);
         return redirectToApp(req, res, "failure");
       }
-      await processEsewaEvent(payload.transaction_uuid, { source: "success_redirect" });
+      const result = await processEsewaEvent(payload.transaction_uuid, { source: "success_redirect" });
+      verified = result.ok && result.payment?.status === "Succeeded";
     }
   } catch (error) {
     console.error("eSewa success webhook error:", error);
   }
-  return redirectToApp(req, res, "success");
+  return redirectToApp(req, res, verified ? "success" : "failure");
 };
 
 export const esewaFailureWebhook = async (req, res) => {

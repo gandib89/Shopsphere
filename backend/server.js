@@ -6,6 +6,28 @@ import { dbConnection } from "./database/dbConnection.js";
 
 const PORT = process.env.PORT || 4000;
 
+const validateProductionConfig = () => {
+    if (process.env.NODE_ENV !== "production") return;
+    const failures = [];
+    if (!process.env.DATABASE_URL) failures.push("DATABASE_URL is required");
+    if (!process.env.FRONTEND_URL) failures.push("FRONTEND_URL is required");
+    if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
+        failures.push("JWT_SECRET must contain at least 32 characters");
+    }
+    if (!process.env.ESEWA_SECRET_KEY) failures.push("ESEWA_SECRET_KEY is required");
+    if (process.env.SEED_DEMO_DATA === "true" && (!process.env.DEMO_PASSWORD || process.env.DEMO_PASSWORD.length < 12)) {
+        failures.push("DEMO_PASSWORD must contain at least 12 characters when SEED_DEMO_DATA=true");
+    }
+    if (failures.length) throw new Error(`Invalid production configuration: ${failures.join("; ")}`);
+};
+
+try {
+    validateProductionConfig();
+} catch (error) {
+    console.error(error.message);
+    process.exit(1);
+}
+
 try {
     await dbConnection();
 } catch (error) {

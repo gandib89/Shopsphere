@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import NavBar from "../components/NavBar";
 import { getImageUrl } from "../lib/utils";
+import { authFetch } from "../lib/session";
 import {
   ArrowLeft,
   Package,
@@ -76,7 +77,7 @@ export default function TrackOrder() {
       const token = localStorage.getItem("token");
       if (!token) { navigate("/auth"); return; }
       try {
-        const res = await fetch(
+        const res = await authFetch(
           `${import.meta.env.VITE_BACKEND_URL}/api/v1/order/track/${orderId}`,
           { headers: { Authorization: `Bearer ${token}` } }
         );

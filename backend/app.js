@@ -1,10 +1,13 @@
+import "./config/loadEnv.js";
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
-import dotenv from 'dotenv';
+import rateLimit from "express-rate-limit";
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { errorMiddleware } from "./middlewares/error.js";
+import { requestContext } from "./middlewares/requestContext.js";
+import healthRouter from "./routes/healthRoute.js";
 import authRouter from "./routes/authRoute.js";
 import productRouter from "./routes/productRoute.js";
 import orderRouter from "./routes/orderRoute.js";
@@ -19,9 +22,11 @@ import testEmailRouter from "./routes/testEmailRoute.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-dotenv.config({ path: join(__dirname, 'config', 'config.env') });
-
 const app = express();
+
+// The container deployment exposes Express only through the bundled nginx proxy. Trust one
+// hop so secure cookies, request IPs, and per-client rate limits use the original request.
+if (process.env.NODE_ENV === "production") app.set("trust proxy", 1);
 
 app.use(
     cors({
@@ -62,6 +67,21 @@ app.use((req, res, next) => {
 app.use(express.json());
 app.use(express.urlencoded({extended: true }));
 app.use(cookieParser());
+app.use(requestContext);
+app.use(healthRouter);
+
+// General backstop against scripted abuse on any endpoint — the auth routes layer a much
+// tighter limiter on top of this for login/register/refresh specifically (see authRoute.js).
+app.use(
+  "/api/",
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 600,
+    standardHeaders: true,
+    legacyHeaders: false,
+  })
+);
+
 app.use('/api/v1/auth',authRouter);
 app.use ('/api/v1/product',productRouter);
 app.use('/api/v1/order', orderRouter);

@@ -8,6 +8,11 @@ export function cn(...inputs: ClassValue[]) {
 // Rewrites localhost image URLs to the actual backend URL (needed for mobile/Capacitor)
 export function getImageUrl(url: string | undefined | null): string {
   if (!url) return '/default-product.jpg';
-  const base = (import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000/api').replace('/api', '');
+  const base = getBackendOrigin();
   return url.replace(/^http:\/\/localhost:\d+/, base);
+}
+
+export function getBackendOrigin(): string {
+  const configured = (import.meta.env.VITE_BACKEND_URL || '').replace(/\/api\/?$/, '');
+  return configured || window.location.origin;
 }

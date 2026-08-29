@@ -44,7 +44,6 @@ function SellerOrders() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
-  const [newStatus, setNewStatus] = useState<string>('');
   const [activeFilter, setActiveFilter] = useState<string>('all');
 
   type FilterCategory = {
@@ -133,7 +132,7 @@ function SellerOrders() {
   const handleSellerReturn = async (orderId: string, action: 'approve' | 'reject') => {
     if (!window.confirm(`Are you sure you want to ${action} this return request?`)) return;
     try {
-      const res = await axios.put(
+      await axios.put(
         `${import.meta.env.VITE_BACKEND_URL}/api/v1/order/seller/return/${orderId}`,
         { action },
         { headers: { Authorization: `Bearer ${token}` } }
@@ -447,16 +446,18 @@ function SellerOrders() {
                               </div>
                               {/* Action buttons */}
                               <div className="flex flex-wrap gap-2">
-                                {['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled'].map((status) => {
-                                  const isCur = order.status === status;
+                                {([
+                                  ['Confirmed', 'Processing'],
+                                  ['Processing', 'Shipped'],
+                                  ['Shipped', 'Delivered'],
+                                ] as const).filter(([current]) => order.status === current).map(([, status]) => {
                                   return (
                                     <button
                                       key={status}
                                       onClick={() => handleStatusUpdate(order._id, status)}
-                                      disabled={isCur}
-                                      className={`px-3.5 py-1.5 border font-semibold text-sm transition active:scale-[0.98] ${getMarkButtonClasses(status, isCur)}`}
+                                      className={`px-3.5 py-1.5 border font-semibold text-sm transition active:scale-[0.98] ${getMarkButtonClasses(status, false)}`}
                                     >
-                                      {isCur ? `Current: ${status}` : `Mark ${status}`}
+                                      {`Mark ${status}`}
                                     </button>
                                   );
                                 })}

@@ -1,10 +1,9 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
-import { getImageUrl } from "../lib/utils";
+import { getBackendOrigin, getImageUrl } from "../lib/utils";
 import { toast } from "sonner";
 import { v4 as uuidv4 } from "uuid";
-import CryptoJS from "crypto-js";
 import { ShoppingCart, Star, ArrowLeft, Plus, Minus, Truck, Shield, Store, Tag, X, Loader } from "lucide-react";
 import NavBar from "../components/NavBar";
 
@@ -487,7 +486,7 @@ function ProductDetailsPage() {
         country: userDetails.country,
       },
       // Include promo code if applied
-      ...(appliedPromo && { promoCode: appliedPromo.code }),
+      ...(appliedPromo && { promoCode: { code: appliedPromo.code, discountAmount: appliedPromo.discountAmount } }),
     };
 
     try {
@@ -506,24 +505,6 @@ function ProductDetailsPage() {
       if (response.status === 201) {
         const newOrderId = response.data.order._id;
 
-        // Increment promo code usage if applied
-        if (appliedPromo) {
-          try {
-            await axios.post(
-              `${import.meta.env.VITE_BACKEND_URL}/api/v1/promo/apply`,
-              { code: appliedPromo.code },
-              {
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                },
-              }
-            );
-          } catch (promoError) {
-            console.error("Error incrementing promo usage:", promoError);
-            // Don't block order flow for promo error
-          }
-        }
-
         toast.success("Order created! Redirecting to payment...");
 
         // Warning for localhost usage
@@ -531,42 +512,61 @@ function ProductDetailsPage() {
           console.warn("⚠️ WARNING: Using localhost for ESewa payment. ESewa may not be able to redirect back properly. Consider using ngrok or a public URL for testing.");
         }
 
-        setTimeout(() => {
-          const transactionUuid = uuidv4();
-          const message = `total_amount=${totalPrice},transaction_uuid=${transactionUuid},product_code=EPAYTEST`;
-          const hash = CryptoJS.HmacSHA256(message, "8gBm/:&EnhH.1/q");
-          const hashBase64 = CryptoJS.enc.Base64.stringify(hash);
-          const signedFieldNames = "total_amount,transaction_uuid,product_code";
+        setTimeout(async () => {
+          try {
+            // Ask the backend to sign the eSewa checkout fields — it recomputes the amount
+            // from the order in the DB and signs with a secret that never reaches the browser
+            // (never compute this signature client-side — see CartCheckout.tsx for the same pattern).
+            const backendBase = getBackendOrigin();
+            const checkoutRes = await axios.post(
+              `${import.meta.env.VITE_BACKEND_URL}/api/v1/payment/checkout`,
+              { orderId: newOrderId },
+              {
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  "Idempotency-Key": uuidv4(),
+                },
+              }
+            );
+            const {
+              transactionUuid, signature, signedFieldNames, productCode,
+              amount, taxAmount, totalAmount, formActionUrl,
+            } = checkoutRes.data;
 
-          const form = document.createElement("form");
-          form.action = "https://rc-epay.esewa.com.np/api/epay/main/v2/form";
-          form.method = "POST";
+            const form = document.createElement("form");
+            form.action = formActionUrl;
+            form.method = "POST";
 
-          const inputs = {
-            amount: totalPrice.toString(),
-            tax_amount: "0",
-            product_service_charge: "0",
-            product_delivery_charge: "0",
-            total_amount: totalPrice.toString(),
-            transaction_uuid: transactionUuid,
-            product_code: "EPAYTEST",
-            success_url: `${(import.meta.env.VITE_BACKEND_URL as string).replace('/api', '')}/esewa-success/${newOrderId}`,
-            failure_url: `${(import.meta.env.VITE_BACKEND_URL as string).replace('/api', '')}/esewa-failure/${newOrderId}`,
-            signed_field_names: signedFieldNames,
-            signature: hashBase64,
-          };
+            const inputs = {
+              amount: amount.toString(),
+              tax_amount: taxAmount.toString(),
+              product_service_charge: "0",
+              product_delivery_charge: "0",
+              total_amount: totalAmount.toString(),
+              transaction_uuid: transactionUuid,
+              product_code: productCode,
+              success_url: `${backendBase}/api/v1/payment/esewa/success/${newOrderId}`,
+              failure_url: `${backendBase}/api/v1/payment/esewa/failure/${newOrderId}`,
+              signed_field_names: signedFieldNames,
+              signature,
+            };
 
-          Object.entries(inputs).forEach(([key, value]) => {
-            const input = document.createElement("input");
-            input.type = "hidden";
-            input.name = key;
-            input.value = value;
-            form.appendChild(input);
-          });
+            Object.entries(inputs).forEach(([key, value]) => {
+              const input = document.createElement("input");
+              input.type = "hidden";
+              input.name = key;
+              input.value = value;
+              form.appendChild(input);
+            });
 
-          document.body.appendChild(form);
-          form.submit();
-          document.body.removeChild(form);
+            document.body.appendChild(form);
+            form.submit();
+            document.body.removeChild(form);
+          } catch (checkoutError: any) {
+            console.error("Checkout error:", checkoutError);
+            toast.error(checkoutError.response?.data?.message || "Failed to start payment");
+            setSubmitting(false);
+          }
         }, 500);
       }
     } catch (error: any) {

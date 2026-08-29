@@ -60,10 +60,8 @@ function Success() {
     const param = useParams();
     const orderId = param.orderId;
     const token = localStorage.getItem("token");
-    const emailSentRef = useRef(false);
     const [order, setOrder] = useState<Order | null>(null);
     const [orderDetails, setOrderDetails] = useState<OrderDetails | null>(null);
-    const [loading, setLoading] = useState(true);
     const updateOrderCalledRef = useRef(false);
 
     const updateOrder = async () => {
@@ -77,7 +75,7 @@ function Success() {
             // Step 1: Confirm order and deduct stock after successful payment
             // This endpoint also sends the confirmation email automatically
             try {
-                const confirmResponse = await axios.put(
+                await axios.put(
                     `${import.meta.env.VITE_BACKEND_URL}/api/v1/order/confirm/${orderId}`,
                     {},
                     {
@@ -128,8 +126,6 @@ function Success() {
             }
         } catch (error) {
             console.error("Error updating order:", error);
-        } finally {
-            setLoading(false);
         }
     };
 

@@ -11,7 +11,7 @@ import {
 const revenueRouter = express.Router();
 
 // Admin routes
-revenueRouter.post("/create", verifyToken, createRevenueRecord);
+revenueRouter.post("/create", verifyToken, authorizeAdmin, createRevenueRecord);
 revenueRouter.get("/admin/monthly", verifyToken, authorizeAdmin, getAdminMonthlyRevenue);
 revenueRouter.get("/admin/total", verifyToken, authorizeAdmin, getAdminTotalRevenue);
 

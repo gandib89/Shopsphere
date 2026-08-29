@@ -7,8 +7,8 @@ services:
       POSTGRES_USER: shopsphere
       POSTGRES_PASSWORD: shopsphere
       POSTGRES_DB: shopsphere
-    ports:
-      - "5432:5432"
+    expose:
+      - "5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -32,13 +32,20 @@ services:
     environment:
       DATABASE_URL: postgresql://shopsphere:shopsphere@postgres:5432/shopsphere?schema=public
       PORT: 4000
-    ports:
-      - "4000:4000"
+      NODE_ENV: production
+    expose:
+      - "4000"
     volumes:
       - backend_uploads:/app/uploads
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        # Empty means same-origin /api through nginx, which is the safest container default.
+        VITE_BACKEND_URL: ${VITE_BACKEND_URL:-}
+        VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
+        VITE_DEMO_MODE: ${VITE_DEMO_MODE:-true}
     container_name: shopsphere-frontend
     restart: unless-stopped
     depends_on:

@@ -245,10 +245,19 @@ export const applyPromoCode = async (req, res) => {
       throw usageError;
     }
 
-    await prisma.promoCode.update({
-      where: { id: promoCode.id },
+    // Conditional update (not read-then-write) so concurrent redemptions from different
+    // users can't collectively blow past usageLimit.
+    const { count } = await prisma.promoCode.updateMany({
+      where: {
+        id: promoCode.id,
+        OR: [{ usageLimit: null }, { usedCount: { lt: promoCode.usageLimit ?? 0 } }],
+      },
       data: { usedCount: { increment: 1 } },
     });
+    if (count === 0) {
+      await prisma.promoCodeUsage.delete({ where: { promoCodeId_userId: { promoCodeId: promoCode.id, userId } } });
+      return res.status(400).json({ message: "This promo code has reached its usage limit" });
+    }
 
     res.status(200).json({
       success: true,

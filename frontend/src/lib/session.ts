@@ -45,6 +45,26 @@ export const clearSession = () => {
 
 export const getAccessToken = () => accessToken;
 
+// Native fetch does not pass through Axios interceptors. This wrapper gives the few pages
+// that still use fetch the same in-memory access token and one refresh-cookie retry, without
+// ever persisting the credential in localStorage.
+export const authFetch = async (input: RequestInfo | URL, init: RequestInit = {}) => {
+  let token = accessToken || await refreshSession();
+  const request = (currentToken: string | null) => {
+    const headers = new Headers(init.headers);
+    if (currentToken) headers.set("Authorization", `Bearer ${currentToken}`);
+    return fetch(input, { ...init, headers, credentials: init.credentials ?? "include" });
+  };
+
+  let response = await request(token);
+  if (response.status === 401 && token) {
+    accessToken = null;
+    token = await refreshSession();
+    if (token) response = await request(token);
+  }
+  return response;
+};
+
 export const login = async (email: string, password: string) => {
   const { data } = await axios.post(`${API_BASE}/api/v1/auth/login`, { email, password });
   setSession(data.accessToken, data.user);

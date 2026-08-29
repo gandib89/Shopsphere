@@ -3,12 +3,15 @@ import { HashRouter as Router, Routes, Route } from 'react-router-dom';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { LoadingState } from './components/ui/AsyncState';
 import { refreshSession } from './lib/session';
+import { ProtectedRoute } from './components/auth/ProtectedRoute';
 
 // Lazy-load every page so only the current route's JS is downloaded on first load
 const Home = lazy(() => import('./pages/Home'));
 const Auth = lazy(() => import('./pages/Auth'));
 const AuthLanding = lazy(() => import('./pages/AuthLanding'));
 const UserAuth = lazy(() => import('./pages/UserAuth'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const AdminAuth = lazy(() => import('./pages/AdminAuth'));
 const AddProduct = lazy(() => import('./pages/AddProduct'));
 const Cart = lazy(() => import('./pages/Cart'));
@@ -28,7 +31,6 @@ const UserBillHistory = lazy(() => import('./pages/UserBillHistory'));
 const MyOrders = lazy(() => import('./pages/MyOrders'));
 const MyOrdersNew = lazy(() => import('./pages/MyOrdersNew'));
 const AdminOrders = lazy(() => import('./pages/AdminOrders'));
-const PaymentForm = lazy(() => import('./pages/PaymentForm'));
 const Success = lazy(() => import('./pages/Success'));
 const Failure = lazy(() => import('./pages/Failure'));
 const SellerPanel = lazy(() => import('./pages/SellerPanel'));
@@ -42,6 +44,7 @@ const ChatWidget = lazy(() => import('./components/ChatWidget'));
 
 function App() {
   const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '727040751924-qkthupthtsqnm97dubl7i4hsillldvqh.apps.googleusercontent.com';
+  const isDemo = import.meta.env.VITE_DEMO_MODE !== 'false';
 
   useEffect(() => {
     // Access tokens live in memory only, so a hard reload starts with none —
@@ -92,57 +95,65 @@ function App() {
 
   return (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
-      <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <Router>
+        {isDemo && (
+          <div className="fixed inset-x-0 top-0 z-[100] bg-brass px-3 py-1.5 text-center text-xs font-semibold text-white shadow-sm">
+            Resume demo · synthetic data · sandbox payments only · no real orders or refunds
+          </div>
+        )}
+        <div className={isDemo ? 'pt-8' : ''}>
         <Suspense fallback={<div className="min-h-screen bg-paper"><LoadingState description="Loading ShopSphere…" /></div>}>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/auth-landing" element={<AuthLanding />} />
           <Route path="/user-auth" element={<UserAuth />} />
           <Route path="/seller-auth" element={<UserAuth />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/admin-auth" element={<AdminAuth />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/signin" element={<Auth />} />
           <Route path="/signup" element={<Auth />} />
-          <Route path="/add-product" element={<AddProduct />} />
+          <Route path="/add-product" element={<ProtectedRoute role="seller"><AddProduct /></ProtectedRoute>} />
           <Route path="/cart" element={<Cart />} />
           <Route path="/buy-product" element={<BuyProduct />} />
           <Route path="/product-details-page" element={<ProductDetailsPage />} />
           <Route path="/product-details" element={<ProductDetailsPage />} />
-          <Route path="/product-details-admin/:id" element={<ProductDetailsAdmin />} />
+          <Route path="/product-details-admin/:id" element={<ProtectedRoute role="admin"><ProductDetailsAdmin /></ProtectedRoute>} />
           <Route path="/all-products" element={<AllProducts />} />
           <Route path="/cart-checkout" element={<CartCheckout />} />
           <Route path="/checkout" element={<CartCheckout />} />
           <Route path="/orders" element={<OrderDetails />} />
           <Route path="/order-details" element={<OrderDetails />} />
           <Route path="/order/:orderId" element={<OrderDetails />} />
-          <Route path="/admin" element={<AdminPanel />} />
-          <Route path="/admin/seller-approvals" element={<AdminSellerApproval />} />
-          <Route path="/admin/seller-approval" element={<AdminSellerApproval />} />
-          <Route path="/admin/revenue" element={<AdminRevenueDashboard />} />
-          <Route path="/admin/users" element={<AdminUserManagement />} />
-          <Route path="/admin/promo-codes" element={<PromoManagement />} />
-          <Route path="/admin/orders" element={<AdminOrders />} />
-          <Route path="/admin-orders" element={<AdminOrders />} />
+          <Route path="/admin" element={<ProtectedRoute role="admin"><AdminPanel /></ProtectedRoute>} />
+          <Route path="/admin/seller-approvals" element={<ProtectedRoute role="admin"><AdminSellerApproval /></ProtectedRoute>} />
+          <Route path="/admin/seller-approval" element={<ProtectedRoute role="admin"><AdminSellerApproval /></ProtectedRoute>} />
+          <Route path="/admin/revenue" element={<ProtectedRoute role="admin"><AdminRevenueDashboard /></ProtectedRoute>} />
+          <Route path="/admin/users" element={<ProtectedRoute role="admin"><AdminUserManagement /></ProtectedRoute>} />
+          <Route path="/admin/promo-codes" element={<ProtectedRoute role="admin"><PromoManagement /></ProtectedRoute>} />
+          <Route path="/admin/orders" element={<ProtectedRoute role="admin"><AdminOrders /></ProtectedRoute>} />
+          <Route path="/admin-orders" element={<ProtectedRoute role="admin"><AdminOrders /></ProtectedRoute>} />
           <Route path="/my-orders" element={<MyOrders />} />
           <Route path="/my-orders-new" element={<MyOrdersNew />} />
           <Route path="/user/bills" element={<UserBillHistory />} />
           <Route path="/bill-history" element={<UserBillHistory />} />
-          <Route path="/user-details" element={<UserDetails />} />
-          <Route path="/payment" element={<PaymentForm />} />
+          <Route path="/user-details" element={<ProtectedRoute role="admin"><UserDetails /></ProtectedRoute>} />
           <Route path="/success/:orderId" element={<Success />} />
           <Route path="/failure/:orderId" element={<Failure />} />
-          <Route path="/seller-panel" element={<SellerPanel />} />
-          <Route path="/seller-products" element={<SellerProducts />} />
-          <Route path="/seller-products/:id" element={<SellerProductDetails />} />
-          <Route path="/seller-product-details" element={<SellerProductDetails />} />
-          <Route path="/seller-orders" element={<SellerOrders />} />
-          <Route path="/seller/revenue" element={<SellerRevenueDashboard />} />
-          <Route path="/seller-revenue" element={<SellerRevenueDashboard />} />
+          <Route path="/seller-panel" element={<ProtectedRoute role="seller"><SellerPanel /></ProtectedRoute>} />
+          <Route path="/seller-products" element={<ProtectedRoute role="seller"><SellerProducts /></ProtectedRoute>} />
+          <Route path="/seller-products/:id" element={<ProtectedRoute role="seller"><SellerProductDetails /></ProtectedRoute>} />
+          <Route path="/seller-product-details" element={<ProtectedRoute role="seller"><SellerProductDetails /></ProtectedRoute>} />
+          <Route path="/seller-orders" element={<ProtectedRoute role="seller"><SellerOrders /></ProtectedRoute>} />
+          <Route path="/seller/revenue" element={<ProtectedRoute role="seller"><SellerRevenueDashboard /></ProtectedRoute>} />
+          <Route path="/seller-revenue" element={<ProtectedRoute role="seller"><SellerRevenueDashboard /></ProtectedRoute>} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/track-order/:orderId" element={<TrackOrder />} />
         </Routes>
         <ChatWidget />
         </Suspense>
+        </div>
       </Router>
     </GoogleOAuthProvider>
   );

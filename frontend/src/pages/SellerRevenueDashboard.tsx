@@ -12,11 +12,6 @@ interface MonthData {
   orderCount: number;
 }
 
-interface TopProduct {
-  name: string;
-  revenue: number;
-}
-
 interface RevenueSummary {
   totals: any;
   totalSalePrice: number;

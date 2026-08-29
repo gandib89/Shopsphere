@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
-import { getImageUrl } from "../lib/utils";
+import { getBackendOrigin, getImageUrl } from "../lib/utils";
 import { toast } from "sonner";
 import { v4 as uuidv4 } from "uuid";
 import { ShoppingCart, Heart, Tag, X, Loader2, Check } from "lucide-react";
@@ -212,24 +212,6 @@ function BuyProduct() {
     try {
       setSubmitting(true);
       
-      // Apply promo code usage if discount is applied
-      if (appliedPromo?.code) {
-        try {
-          await axios.post(
-            `${import.meta.env.VITE_BACKEND_URL}/api/v1/promo/apply`,
-            { code: appliedPromo.code },
-            {
-              headers: {
-                Authorization: `Bearer ${token}`,
-              },
-            }
-          );
-        } catch (promoError) {
-          console.error("Error applying promo code:", promoError);
-          // Continue even if promo apply fails
-        }
-      }
-      
       // Add promo code to order data
       const orderData = {
         ...formattedData,
@@ -259,7 +241,7 @@ function BuyProduct() {
         // the order in the DB and signs with a secret that never reaches the browser.
         setTimeout(async () => {
           try {
-            const backendBase = (import.meta.env.VITE_BACKEND_URL as string).replace('/api', '');
+            const backendBase = getBackendOrigin();
             const checkoutRes = await axios.post(
               `${import.meta.env.VITE_BACKEND_URL}/api/v1/payment/checkout`,
               { orderId: newOrderId },

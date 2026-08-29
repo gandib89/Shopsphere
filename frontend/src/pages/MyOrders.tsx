@@ -3,6 +3,7 @@ import NavBar from "../components/NavBar";
 import { ArrowLeft, Package, CheckCircle, Clock, AlertCircle, XCircle, Truck, Star, RotateCcw, Ban, Banknote, Filter, CornerDownLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { authFetch } from "../lib/session";
 
 const MyOrders = () => {
   interface Order {
@@ -89,7 +90,7 @@ const MyOrders = () => {
     };
 
     try {
-      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/v1/order/user/get`, {
+      const res = await authFetch(`${import.meta.env.VITE_BACKEND_URL}/api/v1/order/user/get`, {
         method: "GET",
         headers,
       });
@@ -147,7 +148,7 @@ const MyOrders = () => {
     const token = localStorage.getItem("token");
     setCancellingId(orderId);
     try {
-      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/v1/order/cancel/${orderId}`, {
+      const res = await authFetch(`${import.meta.env.VITE_BACKEND_URL}/api/v1/order/cancel/${orderId}`, {
         method: "PUT",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       });
@@ -174,7 +175,7 @@ const MyOrders = () => {
       formData.append("reason", returnReason);
       formData.append("returnImage", returnImage);
 
-      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/v1/order/return/${returningOrder._id}`, {
+      const res = await authFetch(`${import.meta.env.VITE_BACKEND_URL}/api/v1/order/return/${returningOrder._id}`, {
         method: "PUT",
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
@@ -218,15 +219,12 @@ const MyOrders = () => {
     try {
       setSubmittingReview(true);
       const reviewData = {
-        productId: reviewingOrder.productId,
         rating: newReview.rating,
         comment: newReview.comment,
-        userName: `${reviewingOrder.firstName} ${reviewingOrder.lastName}`,
         orderId: reviewingOrder.orderId,
-        userId: localStorage.getItem("userId"),
       };
 
-      const res = await fetch(
+      const res = await authFetch(
         `${import.meta.env.VITE_BACKEND_URL}/api/v1/product/${reviewingOrder.productId}/reviews`,
         {
           method: "POST",

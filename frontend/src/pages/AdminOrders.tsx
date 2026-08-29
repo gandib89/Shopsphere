@@ -3,6 +3,7 @@ import NavBar from "../components/NavBar";
 import { ArrowLeft, Package, CheckCircle, Clock, AlertCircle, XCircle, Truck, RotateCcw, Ban, Banknote, Filter, CornerDownLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { authFetch } from "../lib/session";
 
 const AdminOrders = () => {
   interface Order {
@@ -82,7 +83,7 @@ const AdminOrders = () => {
     };
 
     try {
-      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/v1/order/getOrder`, {
+      const res = await authFetch(`${import.meta.env.VITE_BACKEND_URL}/api/v1/order/getOrder`, {
         method: "GET",
         headers,
       });
@@ -101,7 +102,7 @@ const AdminOrders = () => {
 
       const data = await res.json();
       // Handle both array and wrapped response
-      const ordersArray = Array.isArray(data) ? data : data.data || [];
+      const ordersArray: Order[] = Array.isArray(data) ? data : data.data || [];
       // Sort by delivery date (earliest first)
       const sortedOrders = ordersArray.sort((a, b) => {
         const dateA = new Date(a.deliveryDate).getTime();
@@ -153,7 +154,7 @@ const AdminOrders = () => {
     if (!window.confirm("Are you sure you want to cancel this order?")) return;
     const token = localStorage.getItem("token");
     try {
-      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/v1/order/cancel/${orderId}`, {
+      const res = await authFetch(`${import.meta.env.VITE_BACKEND_URL}/api/v1/order/cancel/${orderId}`, {
         method: "PUT",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       });
@@ -170,7 +171,7 @@ const AdminOrders = () => {
     if (!window.confirm("Release the refund for this order? The customer will be notified by email.")) return;
     const token = localStorage.getItem("token");
     try {
-      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/v1/order/admin/refund/${orderId}`, {
+      const res = await authFetch(`${import.meta.env.VITE_BACKEND_URL}/api/v1/order/admin/refund/${orderId}`, {
         method: "PUT",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       });
@@ -187,7 +188,7 @@ const AdminOrders = () => {
     if (!window.confirm(`Are you sure you want to ${action} this return request?`)) return;
     const token = localStorage.getItem("token");
     try {
-      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/v1/order/admin/return/${orderId}`, {
+      const res = await authFetch(`${import.meta.env.VITE_BACKEND_URL}/api/v1/order/admin/return/${orderId}`, {
         method: "PUT",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ action }),

@@ -1,10 +1,12 @@
 import express from "express";
 import nodemailer from "nodemailer";
+import { verifyToken, authorizeAdmin } from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
-// Test email endpoint - anyone can access for testing
-router.post("/test-email", async (req, res) => {
+// Debug endpoint for verifying SMTP config — admin-only, since it sends real email through
+// the server's own credentials and was previously reachable by anyone on the internet.
+router.post("/test-email", verifyToken, authorizeAdmin, async (req, res) => {
   try {
     const { testEmail } = req.body;
     const recipientEmail = testEmail || process.env.ADMIN_EMAIL;
@@ -74,9 +76,6 @@ router.post("/test-email", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to send test email",
-      error: error.message,
-      errorCode: error.code,
-      details: error.toString(),
     });
   }
 });

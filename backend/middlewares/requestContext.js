@@ -1,0 +1,25 @@
+import crypto from "crypto";
+import { logger } from "../utils/logger.js";
+
+// Assigns a correlation id to every request (reusing an inbound X-Request-Id from a proxy/LB
+// when present) and logs one structured line per request on completion — the minimum needed to
+// answer "what happened to request X" without a full APM tier.
+export const requestContext = (req, res, next) => {
+  const requestId = req.headers["x-request-id"] || crypto.randomUUID();
+  req.requestId = requestId;
+  res.setHeader("X-Request-Id", requestId);
+
+  const startedAt = Date.now();
+  res.on("finish", () => {
+    logger.info("request", {
+      requestId,
+      method: req.method,
+      path: req.originalUrl,
+      statusCode: res.statusCode,
+      durationMs: Date.now() - startedAt,
+      userId: req.user?.id,
+    });
+  });
+
+  next();
+};

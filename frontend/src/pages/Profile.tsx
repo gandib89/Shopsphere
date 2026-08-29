@@ -3,6 +3,7 @@ import NavBar from "../components/NavBar";
 import { ArrowLeft, User, Pencil, X, Store, Phone, Mail, Check, Lock, Eye, EyeOff } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { authFetch } from "../lib/session";
 
 interface UserProfile {
   _id: string;
@@ -52,7 +53,7 @@ const Profile = () => {
 
   const fetchProfile = async () => {
     try {
-      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/v1/auth/me`, {
+      const res = await authFetch(`${import.meta.env.VITE_BACKEND_URL}/api/v1/auth/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error("Failed to load profile");
@@ -79,7 +80,7 @@ const Profile = () => {
     }
     try {
       setSaving(true);
-      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/v1/auth/profile`, {
+      const res = await authFetch(`${import.meta.env.VITE_BACKEND_URL}/api/v1/auth/profile`, {
         method: "PUT",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -127,7 +128,7 @@ const Profile = () => {
     }
     try {
       setChangingPassword(true);
-      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/v1/auth/update-password`, {
+      const res = await authFetch(`${import.meta.env.VITE_BACKEND_URL}/api/v1/auth/update-password`, {
         method: "PUT",
         headers: {
           Authorization: `Bearer ${token}`,

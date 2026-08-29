@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import NavBar from "../components/NavBar";
-import { ArrowLeft, Package, User, MapPin, Calendar, CreditCard, Tag, Truck, CheckCircle, Clock, AlertCircle, XCircle, RotateCcw, Ban, Banknote, ShoppingBag, Store, ImageIcon } from "lucide-react";
+import { ArrowLeft, Package, User, MapPin, Calendar, CreditCard, Tag, Truck, CheckCircle, Clock, AlertCircle, XCircle, RotateCcw, Banknote, ShoppingBag, Store, ImageIcon } from "lucide-react";
+import { authFetch } from "../lib/session";
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:4000";
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "";
 
 interface OrderData {
   _id: string;
@@ -83,7 +84,7 @@ const OrderDetails = () => {
     const token = localStorage.getItem("token");
     if (!token) { setError("You must be logged in to view this page."); setLoading(false); return; }
     try {
-      const res = await fetch(`${BACKEND_URL}/api/v1/order/details/${orderId}`, {
+      const res = await authFetch(`${BACKEND_URL}/api/v1/order/details/${orderId}`, {
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       });
       if (!res.ok) {
@@ -101,7 +102,7 @@ const OrderDetails = () => {
     const token = localStorage.getItem("token");
     if (!token) { setError("You must be logged in to view this page."); setLoading(false); return; }
     try {
-      const res = await fetch(`${BACKEND_URL}/api/v1/order/getOrder`, {
+      const res = await authFetch(`${BACKEND_URL}/api/v1/order/getOrder`, {
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       });
       if (!res.ok) {

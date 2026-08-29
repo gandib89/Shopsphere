@@ -17,7 +17,7 @@ const ChatWidget: React.FC = () => {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [unread, setUnread] = useState(false);
-  const [keyboardOffset, setKeyboardOffset] = useState(0);
+  const keyboardOffset = 0;
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);

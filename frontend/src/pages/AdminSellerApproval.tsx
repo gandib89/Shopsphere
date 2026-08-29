@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 import { CheckCircle, XCircle, Clock, RefreshCw, Mail, Phone, Store } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -17,7 +16,6 @@ interface Seller {
 }
 
 const AdminSellerApproval = () => {
-  const navigate = useNavigate();
   const token = localStorage.getItem('token');
   const [sellers, setSellers] = useState<Seller[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,7 +57,7 @@ const AdminSellerApproval = () => {
   const handleApproveSeller = async (sellerId: string) => {
     try {
       setProcessingId(sellerId);
-      const response = await axios.put(
+      await axios.put(
         `${import.meta.env.VITE_BACKEND_URL}/api/v1/auth/verify-seller/${sellerId}`,
         {},
         {

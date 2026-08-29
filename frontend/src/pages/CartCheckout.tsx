@@ -8,6 +8,7 @@ import NavBar from "../components/NavBar";
 import { PageHeader } from "../components/operations/PageHeader";
 import { Button } from "../components/ui/Button";
 import { EmptyState, LoadingState } from "../components/ui/AsyncState";
+import { getBackendOrigin } from "../lib/utils";
 
 interface CartItem {
   _id: string;
@@ -172,24 +173,6 @@ function CartCheckout() {
     setSubmitting(true);
 
     try {
-      // Apply promo code usage if discount is applied
-      if (appliedPromo?.code) {
-        try {
-          await axios.post(
-            `${import.meta.env.VITE_BACKEND_URL}/api/v1/promo/apply`,
-            { code: appliedPromo.code },
-            {
-              headers: {
-                Authorization: `Bearer ${token}`,
-              },
-            }
-          );
-        } catch (promoError) {
-          console.error("Error applying promo code:", promoError);
-          // Continue even if promo apply fails
-        }
-      }
-
       // Create orders for ALL cart items (grouped together)
       const cartItemsPayload = cart.items.map(item => ({
         productId: item.product.id,
@@ -234,7 +217,7 @@ function CartCheckout() {
 
       // Ask the backend to sign the eSewa checkout fields — it recomputes the amount from the
       // orders in the DB (incl. promo discount) and signs with a secret that never reaches the browser.
-      const backendBase = (import.meta.env.VITE_BACKEND_URL as string).replace('/api', '');
+      const backendBase = getBackendOrigin();
       const checkoutRes = await axios.post(
         `${import.meta.env.VITE_BACKEND_URL}/api/v1/payment/checkout`,
         { orderId },

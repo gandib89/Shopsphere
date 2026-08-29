@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Bell, X, CheckCheck, Package, AlertTriangle, ShoppingBag, Tag } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { getImageUrl } from "../lib/utils";
+import { authFetch } from "../lib/session";
 
 interface Notification {
   _id: string;
@@ -38,7 +39,7 @@ export default function NotificationBell() {
   const fetchNotifications = async () => {
     if (!token) return;
     try {
-      const res = await fetch(`${BACKEND}/api/v1/notifications`, {
+      const res = await authFetch(`${BACKEND}/api/v1/notifications`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) return;
@@ -67,7 +68,7 @@ export default function NotificationBell() {
 
   const markRead = async (id: string) => {
     try {
-      await fetch(`${BACKEND}/api/v1/notifications/read/${id}`, {
+      await authFetch(`${BACKEND}/api/v1/notifications/read/${id}`, {
         method: "PUT",
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -80,7 +81,7 @@ export default function NotificationBell() {
 
   const markAllRead = async () => {
     try {
-      await fetch(`${BACKEND}/api/v1/notifications/read-all`, {
+      await authFetch(`${BACKEND}/api/v1/notifications/read-all`, {
         method: "PUT",
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -92,7 +93,7 @@ export default function NotificationBell() {
   const deleteOne = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     try {
-      await fetch(`${BACKEND}/api/v1/notifications/${id}`, {
+      await authFetch(`${BACKEND}/api/v1/notifications/${id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -106,7 +107,7 @@ export default function NotificationBell() {
 
   const clearAll = async () => {
     try {
-      await fetch(`${BACKEND}/api/v1/notifications`, {
+      await authFetch(`${BACKEND}/api/v1/notifications`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });
