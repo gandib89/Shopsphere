@@ -1,0 +1,293 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "ShopSphere Architecture",
+    "output": "shopsphere-architecture.html",
+    "quality_profile": "showcase",
+    "viewBox": [
+      940,
+      390
+    ]
+  },
+  "components": [
+    {
+      "id": "users",
+      "type": "external",
+      "label": "Shoppers & Admins",
+      "sublabel": "Browser",
+      "pos": [
+        40,
+        230
+      ],
+      "size": [
+        130,
+        42
+      ]
+    },
+    {
+      "id": "frontend",
+      "type": "frontend",
+      "label": "React SPA",
+      "sublabel": "Nginx :80",
+      "pos": [
+        230,
+        230
+      ],
+      "size": [
+        150,
+        42
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "Express API",
+      "sublabel": "Node.js :4000",
+      "pos": [
+        450,
+        230
+      ],
+      "size": [
+        150,
+        42
+      ]
+    },
+    {
+      "id": "db",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "Prisma ORM :5432",
+      "pos": [
+        670,
+        230
+      ],
+      "size": [
+        150,
+        42
+      ]
+    },
+    {
+      "id": "googleAuth",
+      "type": "security",
+      "label": "Google OAuth",
+      "sublabel": "Identity provider",
+      "pos": [
+        250,
+        115
+      ],
+      "size": [
+        150,
+        42
+      ]
+    },
+    {
+      "id": "llm",
+      "type": "external",
+      "label": "LLM Providers",
+      "sublabel": "Groq + Gemini",
+      "pos": [
+        500,
+        115
+      ],
+      "size": [
+        150,
+        42
+      ]
+    },
+    {
+      "id": "recommender",
+      "type": "backend",
+      "label": "Apriori Engine",
+      "sublabel": "Offline Python job",
+      "pos": [
+        750,
+        115
+      ],
+      "size": [
+        150,
+        42
+      ]
+    },
+    {
+      "id": "uploads",
+      "type": "database",
+      "label": "Uploads Volume",
+      "sublabel": "Docker volume",
+      "pos": [
+        250,
+        325
+      ],
+      "size": [
+        150,
+        42
+      ]
+    },
+    {
+      "id": "esewa",
+      "type": "external",
+      "label": "eSewa",
+      "sublabel": "Payment gateway",
+      "pos": [
+        500,
+        325
+      ],
+      "size": [
+        150,
+        42
+      ]
+    },
+    {
+      "id": "email",
+      "type": "external",
+      "label": "SMTP Relay",
+      "sublabel": "Nodemailer",
+      "pos": [
+        750,
+        325
+      ],
+      "size": [
+        150,
+        42
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Docker Compose stack",
+      "wraps": [
+        "frontend",
+        "api",
+        "db",
+        "uploads"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "users-frontend",
+      "from": "users",
+      "to": "frontend",
+      "label": "HTTPS",
+      "variant": "emphasis"
+    },
+    {
+      "id": "frontend-api",
+      "from": "frontend",
+      "to": "api",
+      "label": "/api proxy"
+    },
+    {
+      "id": "api-db",
+      "from": "api",
+      "to": "db",
+      "label": "Prisma SQL"
+    },
+    {
+      "id": "api-googleAuth",
+      "from": "api",
+      "to": "googleAuth",
+      "label": "verify ID token",
+      "variant": "security",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "labelAt": [
+        325,
+        167
+      ]
+    },
+    {
+      "id": "api-llm",
+      "from": "api",
+      "to": "llm",
+      "label": "chat completion",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "labelAt": [
+        575,
+        167
+      ]
+    },
+    {
+      "id": "recommender-api",
+      "from": "recommender",
+      "to": "api",
+      "label": "recommendations_map.json",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        825,
+        167
+      ]
+    },
+    {
+      "id": "api-uploads",
+      "from": "api",
+      "to": "uploads",
+      "label": "multer storage",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        325,
+        315
+      ]
+    },
+    {
+      "id": "api-esewa",
+      "from": "api",
+      "to": "esewa",
+      "label": "init / verify payment",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        575,
+        315
+      ]
+    },
+    {
+      "id": "api-email",
+      "from": "api",
+      "to": "email",
+      "label": "order emails",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        825,
+        315
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Frontend",
+      "items": [
+        "React + Vite SPA served by Nginx",
+        "Nginx reverse-proxies /api to the backend container"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Backend",
+      "items": [
+        "Express REST API (auth, cart, orders, payments, products)",
+        "JWT + argon2/bcrypt auth, Google OAuth login",
+        "Chatbot via Groq / Gemini using backend/chatbot/faqs.json"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Data & Integrations",
+      "items": [
+        "PostgreSQL via Prisma ORM",
+        "eSewa payment gateway, Nodemailer SMTP for order emails",
+        "Offline Apriori job feeds product recommendations into Postgres/JSON"
+      ]
+    }
+  ]
+}

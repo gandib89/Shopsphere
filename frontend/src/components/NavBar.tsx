@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
+import { AdminContext } from "./admin/AdminContext";
 import { Link, useNavigate } from "react-router-dom";
 import { ShoppingCart, Home, LogOut, LogIn, Settings, Menu, X, UserCircle } from "lucide-react";
 import { toast } from "sonner";
@@ -10,6 +11,7 @@ const navLink = "flex min-h-10 items-center gap-1.5 rounded-[var(--radius-contro
 const navLinkMobile = "flex min-h-12 w-full items-center gap-3 border-b border-hairline px-1 text-sm font-medium text-ink transition-colors hover:text-brass";
 
 export default function NavBar() {
+  const insideAdmin = useContext(AdminContext);
   const token = localStorage.getItem("token");
   const isAdmin = localStorage.getItem("isAdmin") === "true";
   const isSeller = localStorage.getItem("isSeller") === "true";
@@ -39,6 +41,8 @@ export default function NavBar() {
     toast.success("Signed out successfully");
     navigate("/auth");
   };
+
+  if (insideAdmin) return null;
 
   return (
     <>

@@ -1,0 +1,803 @@
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import {
+  ArrowRight,
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  CreditCard,
+  Headphones,
+  PackageCheck,
+  Scale,
+  Search,
+  ShieldCheck,
+  ShoppingBag,
+  Star,
+  X,
+} from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import DemoHeader from './DemoHeader';
+import Footer from './Footer';
+import { Button, IconButton } from './ui/Button';
+import { installSectionScroll } from '../lib/sectionScroll';
+import '../pages/ui-redesign-demo.css';
+import '../pages/storefront-demo.css';
+
+export type StorefrontProduct = {
+  id: string;
+  name: string;
+  category: string;
+  price: number;
+  rating: number;
+  reviews: number;
+  image: string;
+  imageBackground: 'white' | 'dark';
+  imageFit?: 'cover';
+  note: string;
+  description?: string;
+  inStock?: boolean;
+  previousPrice?: number;
+  requiresOptions?: boolean;
+};
+
+type LiveStorefront = {
+  bagCount: number | null;
+  canPurchase: boolean;
+  pendingProduct: string | null;
+  onAddToCart: (product: StorefrontProduct) => Promise<boolean>;
+  onDetails: (product: StorefrontProduct) => void;
+  onAccount: () => void;
+  onBag: () => void;
+  catalogStatus?: ReactNode;
+  catalogControls?: ReactNode;
+  accountActions?: ReactNode;
+  category: string;
+};
+
+// Three columns is what a comparison table can show without turning into a horizontal scroll.
+const MAX_COMPARE = 3;
+
+const formatNpr = (amount: number) => `NPR ${new Intl.NumberFormat('en-NP').format(amount)}`;
+
+export default function StorefrontView({ products, live }: { products: StorefrontProduct[]; live?: LiveStorefront }) {
+  const searchCategories = ['All', ...new Set(products.map((product) => product.category))];
+  const navigate = useNavigate();
+  const [bagOpen, setBagOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [query, setQuery] = useState('');
+  const [searchCategory, setSearchCategory] = useState('All');
+  const [categoryOpen, setCategoryOpen] = useState(false);
+  const searchForm = useRef<HTMLFormElement>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
+  const categoryToggle = useRef<HTMLButtonElement>(null);
+  const categoryOptions = useRef<Array<HTMLButtonElement | null>>([]);
+  const [cartItems, setCartItems] = useState<string[]>([]);
+  const [addedProductId, setAddedProductId] = useState<string | null>(null);
+  const [quickView, setQuickView] = useState<StorefrontProduct | null>(null);
+  const quickViewTrigger = useRef<HTMLButtonElement | null>(null);
+  const [compareIds, setCompareIds] = useState<string[]>([]);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const compareTrigger = useRef<HTMLButtonElement | null>(null);
+  const catalogue = useRef<HTMLElement>(null);
+  const demoRoot = useRef<HTMLDivElement>(null);
+  const productScroller = useRef<HTMLDivElement | null>(null);
+  const productScrollerObserver = useRef<ResizeObserver | null>(null);
+  const [cardStep, setCardStep] = useState<number | null>(null);
+  const [scrollState, setScrollState] = useState({ atStart: true, atEnd: true });
+  const cardGap = 16;
+  const targetCardWidth = 240;
+
+  // The "Popular right now" strip keeps its scroll position across re-renders since it's the
+  // same DOM node — without this, re-sorting leaves it wherever it was scrolled to, showing a
+  // different, often mid-card-cropped, product at that same pixel offset.
+  useEffect(() => {
+    productScroller.current?.scrollTo({ left: 0 });
+  }, [products]);
+
+  // Size cards so an exact whole number fill the strip's width — no card is ever left
+  // half-cut at the trailing edge. The strip only exists in the DOM once products have loaded
+  // (it's inside the `visibleProducts.length ? ... : <empty state>` branch), so a plain
+  // useLayoutEffect keyed on mount would run too early and never fire again. A callback ref
+  // measures exactly when the node actually appears (or its size changes) instead.
+  const measureCardStep = useCallback((el: HTMLDivElement) => {
+    const width = el.clientWidth;
+    if (!width) return;
+    const count = Math.max(1, Math.floor((width + cardGap) / (targetCardWidth + cardGap)));
+    setCardStep((width - (count - 1) * cardGap) / count + cardGap);
+  }, []);
+  // Memoized so React treats it as the same ref across re-renders — an inline callback ref
+  // gets torn down and reattached (disconnecting the observer) on every render, including the
+  // very state update the measurement itself triggers, which meant it never stuck.
+  const setProductScroller = useCallback((el: HTMLDivElement | null) => {
+    productScrollerObserver.current?.disconnect();
+    productScroller.current = el;
+    if (!el) return;
+    // The element can still read a 0 width at the instant the ref attaches (layout not yet
+    // committed by the browser); a follow-up measurement next frame catches the real size.
+    measureCardStep(el);
+    requestAnimationFrame(() => measureCardStep(el));
+    const observer = new ResizeObserver(() => measureCardStep(el));
+    observer.observe(el);
+    productScrollerObserver.current = observer;
+  }, [measureCardStep]);
+
+  const updateScrollEdges = () => {
+    const el = productScroller.current;
+    if (!el) return;
+    setScrollState({
+      atStart: el.scrollLeft <= 1,
+      atEnd: el.scrollLeft >= el.scrollWidth - el.clientWidth - 1,
+    });
+  };
+  useEffect(updateScrollEdges, [cardStep, products]);
+
+  // One card per click, not a whole page: the strip glides a single step so the products
+  // stay visually continuous instead of the entire row swapping out at once.
+  const slideProducts = (direction: 1 | -1) => {
+    const el = productScroller.current;
+    if (!el || !cardStep) return;
+    el.scrollBy({ left: direction * cardStep, behavior: 'smooth' });
+  };
+
+
+  // A vertical wheel over the strip scrolls it sideways instead of paging the section, so a
+  // plain mouse can browse the row. Registered natively because React's onWheel is passive
+  // and so cannot preventDefault the page-level section snapping.
+  useEffect(() => {
+    const el = productScroller.current;
+    if (!el) return;
+    // Each notch extends a target the strip glides towards. A plain smooth scrollBy per notch
+    // would restart from wherever the previous glide had reached, so a quick spin of the wheel
+    // silently lost most of its distance.
+    let target: number | null = null;
+    let forgetTarget = 0;
+    const onWheel = (event: WheelEvent) => {
+      if (event.ctrlKey || Math.abs(event.deltaX) > Math.abs(event.deltaY) || !event.deltaY) return;
+      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? el.clientWidth : 1;
+      const max = el.scrollWidth - el.clientWidth;
+      const from = target ?? el.scrollLeft;
+      // Edge release: once the strip has nothing left to give in that direction the wheel goes
+      // back to the page, so scrolling up over the row can never trap the reader inside it.
+      if (event.deltaY > 0 ? from >= max - 1 : from <= 1) { target = null; return; }
+      event.preventDefault();
+      target = Math.max(0, Math.min(max, from + event.deltaY * unit));
+      el.scrollTo({ left: target, behavior: 'smooth' });
+      window.clearTimeout(forgetTarget);
+      forgetTarget = window.setTimeout(() => { target = null; }, 250);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      window.clearTimeout(forgetTarget);
+      el.removeEventListener('wheel', onWheel);
+    };
+    // cardStep is measured right after the strip mounts, so this re-runs once the node exists.
+  }, [products, cardStep]);
+
+  useLayoutEffect(() => {
+    const root = demoRoot.current;
+    const hero = root?.querySelector<HTMLElement>('.ux-demo-hero-section');
+    const header = root?.querySelector('.ux-demo-header-theme');
+    if (!hero || !header) return;
+    // Measure the hero's normal document position, even when resizing mid-scroll.
+    const sizeHero = () => {
+      const top = hero.getBoundingClientRect().top + window.scrollY;
+      hero.style.setProperty('--ux-demo-hero-top', `${top}px`);
+    };
+    sizeHero();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(sizeHero);
+    observer?.observe(header);
+    window.addEventListener('resize', sizeHero);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', sizeHero);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (demoRoot.current) return installSectionScroll(demoRoot.current);
+  }, []);
+
+  const routeCategory = live?.category;
+  useEffect(() => {
+    if (routeCategory === undefined) return;
+    setSearchCategory(routeCategory || 'All');
+    setSearchTerm('');
+    setQuery('');
+    if (routeCategory) requestAnimationFrame(() => catalogue.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  }, [routeCategory]);
+
+  useEffect(() => {
+    if (!addedProductId) return;
+    const timeout = window.setTimeout(() => setAddedProductId(null), 1600);
+    return () => window.clearTimeout(timeout);
+  }, [addedProductId, cartItems.length]);
+
+  useEffect(() => {
+    if (!categoryOpen) return;
+    const dismissOutside = (event: PointerEvent) => {
+      if (event.target instanceof Node && !searchForm.current?.contains(event.target)) setCategoryOpen(false);
+    };
+    document.addEventListener('pointerdown', dismissOutside);
+    return () => document.removeEventListener('pointerdown', dismissOutside);
+  }, [categoryOpen]);
+
+  const visibleProducts = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    return products.filter((product) => {
+      const matchesQuery = !normalizedQuery || `${product.name} ${product.category}`.toLowerCase().includes(normalizedQuery);
+      return matchesQuery && (searchCategory === 'All' || product.category === searchCategory);
+    });
+  }, [products, query, searchCategory]);
+
+  // One tile per category the catalogue actually carries, illustrated by its first product —
+  // category navigation is the path most shoppers take, and the header dropdown alone hides it.
+  const categoryTiles = useMemo(() => {
+    const tiles = new Map<string, { category: string; count: number; image: string; background: StorefrontProduct['imageBackground'] }>();
+    for (const product of products) {
+      const tile = tiles.get(product.category);
+      if (tile) tile.count += 1;
+      else tiles.set(product.category, { category: product.category, count: 1, image: product.image, background: product.imageBackground });
+    }
+    return [...tiles.values()].sort((a, b) => b.count - a.count);
+  }, [products]);
+
+  const browseProducts = () => {
+    setQuery('');
+    setSearchTerm('');
+    setSearchCategory('All');
+    setCategoryOpen(false);
+    // Drop ?category= as well, or the cleared view still reloads and shares as that category.
+    if (live?.category) navigate('/');
+    requestAnimationFrame(() => catalogue.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  };
+
+  const submitSearch = () => {
+    setQuery(searchTerm.trim());
+    setCategoryOpen(false);
+    requestAnimationFrame(() => catalogue.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  };
+
+  const selectSearchCategory = (category: string) => {
+    setSearchCategory(category);
+    categoryToggle.current?.focus();
+    submitSearch();
+  };
+
+  const closeQuickView = () => {
+    setQuickView(null);
+    quickViewTrigger.current?.focus();
+  };
+
+  const addToCart = async (product: StorefrontProduct) => {
+    if (live) {
+      if (!live.canPurchase || product.requiresOptions) { live.onDetails(product); return; }
+      if (product.inStock === false || live.pendingProduct) return;
+      setAddedProductId(null);
+      if (!await live.onAddToCart(product)) return;
+    } else {
+      setCartItems((current) => [...current, product.id]);
+    }
+    setAddedProductId(product.id);
+    if (quickView) closeQuickView();
+  };
+
+  const actionLabel = (product: StorefrontProduct) => {
+    if (live && !live.canPurchase) return 'View details';
+    if (product.inStock === false) return 'Sold out';
+    if (product.requiresOptions) return 'Choose options';
+    if (live?.pendingProduct === product.id) return 'Adding…';
+    return addedProductId === product.id ? 'Added to bag' : 'Add to cart';
+  };
+
+  const disablePurchase = (product: StorefrontProduct) => Boolean(live?.canPurchase && (product.inStock === false || live.pendingProduct));
+
+  const compareProducts = compareIds
+    .map((id) => products.find((product) => product.id === id))
+    .filter((product): product is StorefrontProduct => Boolean(product));
+  // A phone against a watch shares no row worth reading across, so the first pick fixes the
+  // category and every card outside it stops offering the toggle.
+  const compareCategory = compareProducts[0]?.category ?? null;
+  const comparing = (product: StorefrontProduct) => compareIds.includes(product.id);
+  const compareFull = compareIds.length >= MAX_COMPARE;
+  const compareLocked = (product: StorefrontProduct) =>
+    !comparing(product) && Boolean((compareCategory && product.category !== compareCategory) || compareFull);
+
+  const toggleCompare = (product: StorefrontProduct) => {
+    setCompareIds((current) => {
+      if (current.includes(product.id)) return current.filter((id) => id !== product.id);
+      if (compareLocked(product)) return current;
+      return [...current, product.id];
+    });
+  };
+
+  const closeCompare = () => {
+    setCompareOpen(false);
+    compareTrigger.current?.focus();
+  };
+
+  const compareRows: Array<{ label: string; value: (product: StorefrontProduct) => string }> = [
+    { label: 'Price', value: (product) => formatNpr(product.price) },
+    { label: 'Previous price', value: (product) => (product.previousPrice ? formatNpr(product.previousPrice) : '—') },
+    { label: 'Rating', value: (product) => (product.reviews ? `${product.rating} out of 5` : 'No reviews yet') },
+    { label: 'Reviews', value: (product) => `${product.reviews}` },
+    { label: 'Availability', value: (product) => (product.inStock === false ? 'Sold out' : 'In stock') },
+    { label: 'Highlight', value: (product) => product.description || product.note },
+  ];
+
+  // Browsing — the default strip or a category the shopper picked — reads as one horizontal
+  // row. Only a search drops to the wrapped grid, where scanning the whole result set matters
+  // more than the row format.
+  const browsingStrip = !query;
+
+
+  const productCards = visibleProducts.map((product) => (
+    <article key={product.id} className="ux-demo-product-card">
+      <div className={`ux-demo-product-media ux-demo-product-image${product.imageFit === 'cover' ? ' ux-demo-product-image-cover' : ''}`} data-background={product.imageBackground}>
+        <img src={product.image} alt="" loading="lazy" onError={(event) => {
+          if (live && !event.currentTarget.src.endsWith('/images/product-placeholder.svg')) event.currentTarget.src = '/images/product-placeholder.svg';
+        }} />
+      </div>
+      <div className="ux-demo-product-copy">
+        <h3 id={`${product.id}-name`}>{product.name}</h3>
+        <p id={`${product.id}-note`}>{product.note}</p>
+        {live && <p className="storefront-price">{formatNpr(product.price)} {product.previousPrice && <del>{formatNpr(product.previousPrice)}</del>}</p>}
+        <ChevronRight aria-hidden="true" />
+      </div>
+      <button
+        type="button"
+        className="ux-demo-product-open"
+        aria-labelledby={`${product.id}-name`}
+        aria-describedby={`${product.id}-note`}
+        aria-haspopup="dialog"
+        onClick={(event) => { quickViewTrigger.current = event.currentTarget; setQuickView(product); }}
+      />
+      <div className="ux-demo-product-actions">
+        <button
+          type="button"
+          className="ux-demo-product-add"
+          aria-label={`${live ? actionLabel(product) : 'Add to cart'}: ${product.name}`}
+          disabled={disablePurchase(product)}
+          aria-busy={live?.pendingProduct === product.id}
+          onClick={() => addToCart(product)}
+        >
+          {addedProductId === product.id ? <Check aria-hidden="true" /> : <ShoppingBag aria-hidden="true" />}
+          <span>{actionLabel(product)}</span>
+        </button>
+        <button
+          type="button"
+          className="ux-demo-product-compare"
+          aria-pressed={comparing(product)}
+          aria-label={`Compare ${product.name}`}
+          disabled={compareLocked(product)}
+          title={compareLocked(product)
+            ? compareFull
+              ? `Comparing ${MAX_COMPARE} products already`
+              : `Only ${compareCategory} products can join this comparison`
+            : undefined}
+          onClick={() => toggleCompare(product)}
+        >
+          <Scale aria-hidden="true" />
+          <span>{comparing(product) ? 'Selected' : 'Compare'}</span>
+        </button>
+      </div>
+    </article>
+  ));
+
+  return (
+    <div ref={demoRoot} className={`ux-demo min-h-screen bg-paper text-ink ${live ? 'storefront-live' : 'pt-2.5 sm:pt-0'}`} data-theme="light">
+      <a href="#demo-main" onClick={(event) => {
+        event.preventDefault();
+        const main = demoRoot.current?.querySelector<HTMLElement>('main');
+        main?.focus({ preventScroll: true });
+        main?.scrollIntoView({ behavior: 'instant', block: 'start' });
+      }} className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-12 focus:z-50 focus:bg-paper-raised focus:px-4 focus:py-3">
+        {live ? 'Skip to store content' : 'Skip to demo content'}
+      </a>
+
+      <div className="ui-redesign ux-demo-header-theme palette-emerald theme-light">
+        <DemoHeader
+          homePath={live ? '/' : '/ux-demo'}
+          homeLabel={live ? 'ShopSphere home' : 'ShopSphere demo home'}
+          navigationLabel={live ? 'Main navigation' : 'Demo navigation'}
+          bagCount={live ? live.bagCount : cartItems.length}
+          accountActions={live?.accountActions}
+          headerSearch={
+            <form
+              ref={searchForm}
+              role="search"
+              aria-label="Product search"
+              className="ux-demo-header-search"
+              onSubmit={(event) => { event.preventDefault(); submitSearch(); }}
+              onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setCategoryOpen(false); }}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  event.preventDefault();
+                  searchInput.current?.focus();
+                  setCategoryOpen(false);
+                }
+              }}
+            >
+              <input
+                ref={searchInput}
+                type="search"
+                name="q"
+                aria-label="Search products"
+                placeholder={searchCategory === 'All' ? 'Search products...' : `Search ${searchCategory}...`}
+                value={searchTerm}
+                onFocus={() => setCategoryOpen(true)}
+                onClick={() => setCategoryOpen(true)}
+                onChange={(event) => { setSearchTerm(event.target.value); setCategoryOpen(true); }}
+                onKeyDown={(event) => {
+                  if (event.key === 'ArrowDown') {
+                    event.preventDefault();
+                    setCategoryOpen(true);
+                    requestAnimationFrame(() => categoryOptions.current[0]?.focus());
+                  }
+                }}
+                enterKeyHint="search"
+                className="ux-demo-search-input"
+              />
+              <button
+                ref={categoryToggle}
+                type="button"
+                className="ux-demo-category-toggle"
+                aria-label="Search by category"
+                aria-expanded={categoryOpen}
+                aria-controls="search-category-dropdown"
+                onClick={() => setCategoryOpen((open) => !open)}
+              ><ChevronDown aria-hidden="true" /></button>
+              <button
+                type="submit"
+                className="ux-demo-search-submit"
+                onClick={(event) => {
+                  if (!searchTerm.trim() && !query && searchCategory === 'All') {
+                    event.preventDefault();
+                    setCategoryOpen(true);
+                  }
+                }}
+              >Search</button>
+              {categoryOpen && (
+                <div id="search-category-dropdown" className="ux-demo-search-categories" role="group" aria-labelledby="search-category-title">
+                  <p id="search-category-title">Search by category</p>
+                  <div className="ux-demo-search-category-options">
+                    {searchCategories.map((category, index) => (
+                      <button
+                        key={category}
+                        ref={(element) => { categoryOptions.current[index] = element; }}
+                        type="button"
+                        aria-pressed={searchCategory === category}
+                        onClick={() => selectSearchCategory(category)}
+                        onKeyDown={(event) => {
+                          const delta = event.key === 'ArrowDown' || event.key === 'ArrowRight' ? 1 : event.key === 'ArrowUp' || event.key === 'ArrowLeft' ? -1 : 0;
+                          if (delta) {
+                            event.preventDefault();
+                            categoryOptions.current[(index + delta + searchCategories.length) % searchCategories.length]?.focus();
+                          }
+                        }}
+                      >
+                        {category === 'All' ? 'All categories' : category}
+                        {searchCategory === category && <Check aria-hidden="true" />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </form>
+          }
+          onShop={browseProducts}
+          onAbout={() => document.getElementById('why-shopsphere')?.scrollIntoView({ behavior: 'smooth' })}
+          onContact={() => document.getElementById('contact-us')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          onAccount={live?.onAccount ?? (() => navigate('/auth'))}
+          onBag={live?.onBag ?? (() => setBagOpen(true))}
+        />
+      </div>
+
+      <main id="demo-main" tabIndex={-1} className="ux-demo-main">
+        <section className="ux-demo-hero-section">
+          <div className="ux-demo-hero-shell container-store">
+            <div data-scroll-section className="ux-demo-hero-stage relative overflow-hidden rounded-[var(--radius-surface)] border border-black/10 bg-[#111719]">
+              <img
+                src="/images/shopsphere-redesign-hero.webp"
+                alt="MacBook, iPhone, Apple Watch, and AirPods arranged on a dark studio surface"
+                width="1672"
+                height="941"
+                fetchPriority="high"
+                className="absolute inset-0 h-full w-full object-cover object-[58%_center] sm:object-center"
+              />
+              <div
+                className="absolute inset-0"
+                style={{
+                  background:
+                    'linear-gradient(90deg, rgba(9, 18, 19, 0.98) 0%, rgba(9, 18, 19, 0.88) 28%, rgba(9, 18, 19, 0.42) 52%, rgba(9, 18, 19, 0.05) 76%)',
+                }}
+              />
+              <div className="ux-demo-hero-copy relative z-10 flex max-w-[42rem] flex-col justify-center px-6 py-10 sm:px-12 lg:px-20">
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#79c7b3] sm:text-sm">
+                  A better way to buy Apple
+                </p>
+                <h1 className="mt-5 max-w-[12ch] text-[clamp(3rem,6vw,5.5rem)] font-semibold leading-[0.95] tracking-[-0.055em] text-[#edf2f1]">
+                  Choose better technology.
+                </h1>
+                <p className="mt-6 max-w-lg text-base leading-relaxed text-[#bec8c7] sm:text-lg">
+                  Verified Apple products, local support, and clear delivery for every purchase in Nepal.
+                </p>
+                <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={live?.onAccount ?? (() => navigate('/auth'))}
+                    className="inline-flex min-h-12 items-center justify-center gap-3 whitespace-nowrap rounded-xl bg-[#0d725d] px-6 font-semibold text-[#f7fbfa] transition-colors hover:bg-[#075745] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#79c7b3] focus-visible:ring-offset-2 focus-visible:ring-offset-[#111719]"
+                  >
+                    {live?.accountActions ? 'My account' : 'Sign in to ShopSphere'} <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => document.getElementById('why-shopsphere')?.scrollIntoView({ behavior: 'smooth' })}
+                    className="inline-flex min-h-12 items-center justify-center whitespace-nowrap rounded-xl border border-[#edf2f1]/80 bg-[#f6f8f7]/90 px-6 font-semibold text-[#151a1b] transition-colors hover:bg-[#edf2f1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#79c7b3] focus-visible:ring-offset-2 focus-visible:ring-offset-[#111719]"
+                  >
+                    How buying works
+                  </button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+
+        {live && categoryTiles.length > 1 && (
+          <section data-scroll-section aria-labelledby="categories-title" className="ux-demo-categories container-store scroll-mt-28">
+            <p className="text-sm font-semibold text-brass">Browse the catalogue</p>
+            <h2 id="categories-title" className="mt-1 text-2xl font-semibold tracking-[-0.03em] sm:text-3xl">Shop by category</h2>
+            <p className="mt-1 text-sm text-ink-muted">Jump straight to the range you came for.</p>
+            <ul className="ux-demo-category-grid">
+              {categoryTiles.map((tile) => (
+                <li key={tile.category}>
+                  <Link to={`/?category=${encodeURIComponent(tile.category)}`} className="ux-demo-category-tile">
+                    <span className="ux-demo-product-media ux-demo-category-media" data-background={tile.background}>
+                      <img src={tile.image} alt="" loading="lazy" />
+                    </span>
+                    <span className="ux-demo-category-name">{tile.category}</span>
+                    <span className="ux-demo-category-count">{tile.count} {tile.count === 1 ? 'product' : 'products'}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        <section ref={catalogue} data-scroll-section aria-labelledby="products-title" className="ux-demo-products-panel container-store scroll-mt-28">
+          <div className="flex flex-col gap-5 border-b border-hairline pb-6 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-brass">Selected by ShopSphere</p>
+              <h2 id="products-title" aria-live="polite" className="mt-1 text-2xl font-semibold tracking-[-0.03em] sm:text-3xl">{query ? `Search results for “${query}”` : searchCategory !== 'All' ? searchCategory : 'Popular right now'}</h2>
+              <p className="mt-1 text-sm text-ink-muted">{searchCategory !== 'All' ? `Searching in ${searchCategory}` : 'Fresh picks from approved sellers'}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              {live?.catalogControls}
+              {(query || searchCategory !== 'All') && <Button variant="quiet" onClick={browseProducts}>Clear filters</Button>}
+            </div>
+          </div>
+
+          {live?.catalogStatus ?? (visibleProducts.length ? (
+            browsingStrip ? (
+            <div className="ux-demo-product-slider">
+              <div
+                ref={setProductScroller}
+                onScroll={updateScrollEdges}
+                style={cardStep ? { '--ux-demo-card-w': `${cardStep - cardGap}px` } as CSSProperties : undefined}
+                className="ux-demo-product-grid ux-demo-product-grid--scroll"
+              >
+                {productCards}
+              </div>
+              {!scrollState.atStart && (
+                <button type="button" className="ux-demo-product-slider-nav ux-demo-product-slider-prev" aria-label="Show previous products" onClick={() => slideProducts(-1)}>
+                  <ChevronLeft aria-hidden="true" />
+                </button>
+              )}
+              {!scrollState.atEnd && (
+                <button type="button" className="ux-demo-product-slider-nav ux-demo-product-slider-next" aria-label="Show more products" onClick={() => slideProducts(1)}>
+                  <ChevronRight aria-hidden="true" />
+                </button>
+              )}
+            </div>
+            ) : (
+              <div className="ux-demo-product-grid">{productCards}</div>
+            )
+          ) : (
+            <div className="my-12 rounded-[var(--radius-surface)] border border-hairline bg-paper-raised px-6 py-12 text-center">
+              <Search className="mx-auto h-6 w-6 text-ink-muted" aria-hidden="true" />
+              <h3 className="mt-4 font-semibold">{live ? products.length ? 'No matching products' : 'No products available' : 'No demo products match'}</h3>
+              <p className="mt-1 text-sm text-ink-muted">Try another search or clear the filters.</p>
+              <Button className="mt-5" variant="secondary" onClick={browseProducts}>Show all products</Button>
+            </div>
+          ))}
+        </section>
+
+        <section id="why-shopsphere" data-scroll-section aria-labelledby="why-title" className="scroll-mt-28 border-y border-hairline">
+          <div className="container-store py-10 md:py-14">
+            <div className="max-w-2xl">
+              <p className="text-sm font-semibold text-brass">A calmer way to buy</p>
+              <h2 id="why-title" className="mt-1 text-2xl font-semibold tracking-[-0.03em] sm:text-3xl">The answers appear before you have to ask.</h2>
+            </div>
+            <div className="mt-8 grid gap-7 sm:grid-cols-2 lg:grid-cols-4">
+              {[
+                { icon: ShieldCheck, title: 'Approved sellers', copy: 'Every seller is reviewed before their products appear.' },
+                { icon: PackageCheck, title: 'Clear stock', copy: 'Availability and product details stay close to the buying action.' },
+                { icon: CreditCard, title: 'Familiar payment', copy: 'Pay securely with eSewa and see a clear outcome immediately.' },
+                { icon: Headphones, title: 'Local help', copy: 'Support from Pokhara when an order needs human attention.' },
+              ].map(({ icon: Icon, title, copy }) => (
+                <div key={title} className="border-t border-hairline pt-5">
+                  <Icon className="h-5 w-5 text-brass" aria-hidden="true" />
+                  <h3 className="mt-4 text-sm font-semibold">{title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-ink-muted">{copy}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <div id="contact-us" data-scroll-section className="scroll-mt-28">
+        <Footer />
+      </div>
+
+      {!live && bagOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 pt-10 sm:pt-8" role="presentation" onClick={() => setBagOpen(false)} onKeyDown={(event) => { if (event.key === 'Escape') setBagOpen(false); }}>
+          <aside role="dialog" aria-modal="true" aria-labelledby="demo-bag-title" className="ml-auto flex h-full w-full max-w-lg flex-col overflow-y-auto border-l border-hairline bg-paper-raised shadow-float" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-hairline px-5 py-4">
+              <h2 id="demo-bag-title" className="font-semibold">Your bag</h2>
+              <IconButton autoFocus label="Close bag" onClick={() => setBagOpen(false)}><X className="h-5 w-5" /></IconButton>
+            </div>
+            {cartItems.length ? (
+              <div className="flex flex-1 flex-col p-6">
+                <ul className="space-y-5">
+                  {products.filter((product) => cartItems.includes(product.id)).map((product) => {
+                    const quantity = cartItems.filter((id) => id === product.id).length;
+                    return (
+                      <li key={product.id} className="flex gap-4">
+                        <img src={product.image} alt="" data-background={product.imageBackground} className="ux-demo-product-media h-20 w-20 shrink-0 rounded-[var(--radius-control)] object-contain" />
+                        <div className="min-w-0 flex-1">
+                          <h3 className="text-sm font-semibold">{product.name}</h3>
+                          <p className="mt-1 text-sm text-ink-muted">Quantity: {quantity}</p>
+                          <p className="mt-1 font-mono text-sm">{formatNpr(product.price * quantity)}</p>
+                          <button type="button" className="mt-1 min-h-11 text-sm text-brass underline underline-offset-4" onClick={() => setCartItems((current) => current.filter((id) => id !== product.id))} aria-label={`Remove ${product.name} from bag`}>Remove</button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <div className="mt-auto border-t border-hairline pt-5">
+                  <p className="flex justify-between gap-4 font-semibold"><span>Subtotal</span><span className="font-mono">{formatNpr(cartItems.reduce((total, id) => total + (products.find((product) => product.id === id)?.price ?? 0), 0))}</span></p>
+                  <p className="mt-3 text-sm text-ink-muted">Demo bag only. No payment or order will be placed.</p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
+                <ShoppingBag className="h-8 w-8 text-brass" aria-hidden="true" />
+                <p className="font-semibold">Your bag is empty</p>
+                <Button onClick={() => { setBagOpen(false); browseProducts(); }}>Browse products</Button>
+              </div>
+            )}
+          </aside>
+        </div>
+      )}
+
+      {compareProducts.length > 0 && (
+        <div className="ux-demo-compare-tray" role="region" aria-label="Compare products">
+          <p className="text-sm font-semibold">Comparing {compareCategory}</p>
+          <ul className="ux-demo-compare-chips">
+            {compareProducts.map((product) => (
+              <li key={product.id}>
+                <span>{product.name}</span>
+                <button type="button" aria-label={`Remove ${product.name} from comparison`} onClick={() => toggleCompare(product)}>
+                  <X aria-hidden="true" />
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div className="ml-auto flex items-center gap-2">
+            <Button variant="quiet" onClick={() => setCompareIds([])}>Clear</Button>
+            <Button
+              disabled={compareProducts.length < 2}
+              onClick={(event) => { compareTrigger.current = event.currentTarget; setCompareOpen(true); }}
+            >
+              {compareProducts.length < 2 ? 'Pick one more' : `Compare ${compareProducts.length}`}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {compareOpen && compareProducts.length > 1 && (
+        <div className="fixed inset-0 z-50 flex bg-ink/35 p-4 sm:p-8" role="presentation" onClick={closeCompare} onKeyDown={(event) => { if (event.key === 'Escape') closeCompare(); }}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="compare-title"
+            className="m-auto flex max-h-full w-full max-w-3xl flex-col overflow-hidden rounded-[var(--radius-surface)] border border-hairline bg-paper-raised shadow-float"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-hairline px-5 py-4">
+              <h2 id="compare-title" className="font-semibold">Comparing {compareCategory}</h2>
+              <IconButton autoFocus label="Close comparison" onClick={closeCompare}><X className="h-5 w-5" /></IconButton>
+            </div>
+            <div className="overflow-auto p-5">
+              <table className="ux-demo-compare-table">
+                <caption className="sr-only">{compareProducts.map((product) => product.name).join(' compared with ')}</caption>
+                <thead>
+                  <tr>
+                    <td />
+                    {compareProducts.map((product) => (
+                      <th key={product.id} scope="col">
+                        <span className="ux-demo-product-media block aspect-[4/3]" data-background={product.imageBackground}>
+                          <img src={product.image} alt="" className="h-full w-full object-contain" />
+                        </span>
+                        <span className="mt-2 block text-sm font-semibold">{product.name}</span>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {compareRows.map((row) => (
+                    <tr key={row.label}>
+                      <th scope="row">{row.label}</th>
+                      {compareProducts.map((product) => <td key={product.id}>{row.value(product)}</td>)}
+                    </tr>
+                  ))}
+                  <tr>
+                    <th scope="row">Buy</th>
+                    {compareProducts.map((product) => (
+                      <td key={product.id}>
+                        <Button className="w-full" disabled={disablePurchase(product)} onClick={() => addToCart(product)}>{actionLabel(product)}</Button>
+                      </td>
+                    ))}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {quickView && (
+        <div className="fixed inset-0 z-50 bg-ink/35 pt-10 sm:pt-8" role="presentation" onClick={closeQuickView} onKeyDown={(event) => { if (event.key === 'Escape') closeQuickView(); }}>
+          <aside
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="quick-view-title"
+            className="ml-auto flex h-full w-full max-w-lg flex-col overflow-y-auto border-l border-hairline bg-paper-raised shadow-float"
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (event.key !== 'Tab') return;
+              const buttons = event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)');
+              const first = buttons[0];
+              const last = buttons[buttons.length - 1];
+              if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+              else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+            }}
+          >
+            <div className="flex items-center justify-between border-b border-hairline px-5 py-4">
+              <p className="text-sm font-semibold">Quick view</p>
+              <IconButton autoFocus label="Close quick view" onClick={closeQuickView}><X className="h-5 w-5" /></IconButton>
+            </div>
+            <div className="ux-demo-product-media aspect-[4/3] shrink-0" data-background={quickView.imageBackground}><img src={quickView.image} alt={quickView.name} className="h-full w-full object-contain" onError={(event) => {
+              if (live && !event.currentTarget.src.endsWith('/images/product-placeholder.svg')) event.currentTarget.src = '/images/product-placeholder.svg';
+            }} /></div>
+            <div className="flex flex-1 flex-col p-6">
+              <p className="text-xs font-medium text-brass">{quickView.category}</p>
+              <p className="mt-2 text-xs font-semibold text-brass-dark">{quickView.inStock === false ? 'Sold out' : 'In stock'}</p>
+              <h2 id="quick-view-title" className="mt-2 text-2xl font-semibold tracking-[-0.03em]">{quickView.name}</h2>
+              <div className="mt-3 flex items-center gap-1.5 text-sm text-ink-muted"><Star className="h-4 w-4 fill-brass text-brass" aria-hidden="true" />{quickView.reviews ? <>{quickView.rating} <span>· {quickView.reviews} reviews</span></> : 'No reviews yet'}</div>
+              <p className="mt-5 font-mono text-xl font-semibold tabular-nums">{formatNpr(quickView.price)}</p>
+              <p className="mt-3 text-sm leading-relaxed text-ink-muted">{live ? quickView.description || quickView.note : `${quickView.note}. This concept keeps stock, seller confidence, delivery, and the next buying action together.`}</p>
+              <ul className="mt-6 space-y-3 text-sm">
+                {['Verified seller listing', 'Delivery estimate shown at checkout', 'Secure eSewa payment'].map((item) => <li key={item} className="flex items-center gap-2"><Check className="h-4 w-4 text-brass" aria-hidden="true" />{item}</li>)}
+              </ul>
+              {live && <Button variant="secondary" className="my-5 w-full" onClick={() => live.onDetails(quickView)}>View full product details</Button>}
+              <Button size="lg" className="mt-auto w-full" disabled={disablePurchase(quickView)} onClick={() => addToCart(quickView)}>{actionLabel(quickView)} · {formatNpr(quickView.price)}</Button>
+            </div>
+          </aside>
+        </div>
+      )}
+    </div>
+  );
+}

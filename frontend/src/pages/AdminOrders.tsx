@@ -1,453 +1,106 @@
-import React, { useEffect, useState } from "react";
-import NavBar from "../components/NavBar";
-import { ArrowLeft, Package, CheckCircle, Clock, AlertCircle, XCircle, Truck, RotateCcw, Ban, Banknote, Filter, CornerDownLeft } from "lucide-react";
-import { useNavigate } from "react-router-dom";
-import { toast } from "sonner";
-import { authFetch } from "../lib/session";
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { RefreshCw, Search } from 'lucide-react';
+import { toast } from 'sonner';
+import { authFetch } from '../lib/session';
+import { AdminHeading, AdminPagination, OrderStatus } from '../components/admin/AdminUi';
+import { adminDate, adminMoney, getAdminCollection, type AdminOrder } from '../lib/adminData';
 
-const AdminOrders = () => {
-  interface Order {
-    _id: string;
-    firstName: string;
-    lastName: string;
-    email: string;
-    quantity: number;
-    deliveryDate: Date;
-    totalPrice: number;
-    product: {
-      name: string;
-    };
-    status: string;
-    color?: string;
-    variants?: {
-      color?: string;
-      storage?: string;
-    };
-    returnReason?: string;
-    returnImage?: string;
-    refundReleasedAt?: Date;
-  }
+const filters = [
+  {key:'all', label:'All', statuses:[]},
+  {key:'active', label:'Active', statuses:['Pending','Confirmed','Processing','Shipped']},
+  {key:'delivered', label:'Delivered', statuses:['Delivered']},
+  {key:'cancelled', label:'Cancelled', statuses:['Cancelled']},
+  {key:'returns', label:'Returns', statuses:['Return Requested','Return Approved','Return Rejected','Refund Released']},
+];
+export default function AdminOrders() {
+  const [params, setParams] = useSearchParams();
+  const status = filters.some(filter => filter.key === params.get('status')) ? params.get('status')! : 'all';
+  const search = params.get('q') || '';
+  const [orders,setOrders] = useState<AdminOrder[]>([]);
+  const [loading,setLoading] = useState(true);
+  const [error,setError] = useState('');
+  const [sort,setSort] = useState('newest');
+  const [size,setSize] = useState(20);
+  const [page,setPage] = useState(1);
+  const [expanded,setExpanded] = useState<string | null>(null);
+  const [showEmail,setShowEmail] = useState(true);
+  const [showDate,setShowDate] = useState(true);
+  const [busy,setBusy] = useState<string | null>(null);
+  const pending = useRef(false);
+  const load = useCallback(async (signal?: AbortSignal) => {
+    setLoading(true); setError('');
+    try { const rows = await getAdminCollection<AdminOrder>('/api/v1/order/getOrder',signal); if(!signal?.aborted) setOrders(rows); }
+    catch (err) { if(!signal?.aborted) setError(err instanceof Error ? err.message : 'Could not load orders.'); }
+    finally { if(!signal?.aborted) setLoading(false); }
+  },[]);
+  useEffect(() => { const controller = new AbortController(); void load(controller.signal); return () => controller.abort(); },[load]);
+  useEffect(() => {setPage(1);setExpanded(null);},[status,search,sort,size]);
+  const query = (key: string, value: string) => { const next = new URLSearchParams(params); if(!value || value === 'all') next.delete(key); else next.set(key,value); setParams(next,{replace:true}); };
+  const matchStatus = (order: AdminOrder, key: string) => key === 'all' || !!filters.find(filter => filter.key === key)?.statuses.includes(order.status);
+  const filtered = orders.filter(order => matchStatus(order,status) && [order._id,order.firstName,order.lastName,order.email,order.product?.name].join(' ').toLowerCase().includes(search.trim().toLowerCase())).sort((a,b) => sort === 'total' ? b.totalPrice-a.totalPrice : sort === 'delivery' ? new Date(a.deliveryDate || '9999').getTime()-new Date(b.deliveryDate || '9999').getTime() : sort === 'name' ? (a.firstName+' '+a.lastName).localeCompare(b.firstName+' '+b.lastName) : sort === 'product' ? (a.product?.name || '').localeCompare(b.product?.name || '') : new Date(b.createdAt || 0).getTime()-new Date(a.createdAt || 0).getTime());
+  const pages = Math.max(1,Math.ceil(filtered.length/size));
+  const currentPage = Math.min(page,pages);
+  const rows = filtered.slice((currentPage-1)*size,currentPage*size);
 
-  const navigate = useNavigate();
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [activeFilter, setActiveFilter] = useState<string>("all");
-
-  type FilterCategory = {
-    key: string;
-    label: string;
-    icon: React.ReactNode;
-    statuses: string[];
-  };
-
-  const filterCategories: FilterCategory[] = [
-    { key: "all", label: "All", icon: <Package className="w-4 h-4" />, statuses: [] },
-    { key: "active", label: "Active", icon: <Clock className="w-4 h-4" />, statuses: ["Pending", "Confirmed", "Processing"] },
-    { key: "shipped", label: "Shipped", icon: <Truck className="w-4 h-4" />, statuses: ["Shipped"] },
-    { key: "delivered", label: "Delivered", icon: <CheckCircle className="w-4 h-4" />, statuses: ["Delivered"] },
-    { key: "cancelled", label: "Cancelled", icon: <XCircle className="w-4 h-4" />, statuses: ["Cancelled"] },
-    { key: "returns", label: "Returns", icon: <CornerDownLeft className="w-4 h-4" />, statuses: ["Return Requested", "Return Approved", "Return Rejected", "Refund Released"] },
-  ];
-
-  const getFilteredOrders = () => {
-    if (activeFilter === "all") return orders;
-    const category = filterCategories.find((c) => c.key === activeFilter);
-    if (!category) return orders;
-    return orders.filter((o) => category.statuses.includes(o.status));
-  };
-
-  const getCountForFilter = (key: string) => {
-    if (key === "all") return orders.length;
-    const category = filterCategories.find((c) => c.key === key);
-    if (!category) return 0;
-    return orders.filter((o) => category.statuses.includes(o.status)).length;
-  };
-
-  useEffect(() => {
-    fetchOrders();
-  }, []);
-
-  const fetchOrders = async () => {
-    const token = localStorage.getItem("token");
-
-    if (!token) {
-      setError("You must be logged in to access this page.");
-      setLoading(false);
-      return;
-    }
-
-    const headers = {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    };
-
+  const deliveryStages = ['Confirmed','Processing','Shipped','Delivered'];
+  const setDeliveryStatus = async (order: AdminOrder, next: string) => {
+    if(next === order.status || pending.current) return;
+    const prompt = order.status === 'Pending' ? `This order's payment has not been verified. Force it to ${next} anyway? Stock will be deducted as if it were paid.` : `Set this order's delivery status to ${next}?`;
+    if(!window.confirm(prompt)) return;
+    pending.current = true; setBusy(order._id);
     try {
-      const res = await authFetch(`${import.meta.env.VITE_BACKEND_URL}/api/v1/order/getOrder`, {
-        method: "GET",
-        headers,
-      });
-
-      if (!res.ok) {
-        let errorMessage = `HTTP ${res.status}: Failed to fetch orders`;
-        try {
-          const errorData = await res.json();
-          errorMessage = errorData.message || errorMessage;
-        } catch (jsonErr) {
-          // Response is not JSON (e.g., HTML error page)
-          console.error("Server returned non-JSON response:", res.status, res.statusText);
-        }
-        throw new Error(errorMessage);
-      }
-
+      const res = await authFetch(import.meta.env.VITE_BACKEND_URL+'/api/v1/order/seller/update-status/'+order._id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:next})});
       const data = await res.json();
-      // Handle both array and wrapped response
-      const ordersArray: Order[] = Array.isArray(data) ? data : data.data || [];
-      // Sort by delivery date (earliest first)
-      const sortedOrders = ordersArray.sort((a, b) => {
-        const dateA = new Date(a.deliveryDate).getTime();
-        const dateB = new Date(b.deliveryDate).getTime();
-        return dateA - dateB;
-      });
-      setOrders(sortedOrders);
-      setError("");
-    } catch (err) {
-      console.error("Error fetching orders:", err);
-      setError(err instanceof Error ? err.message : "An unknown error occurred");
-    } finally {
-      setLoading(false);
-    }
+      if(!res.ok) throw new Error(data.message || 'The order could not be updated.');
+      setOrders(previous => previous.map(item => item._id === order._id ? {...item,status:next} : item));
+      toast.success('Order marked '+next);
+    } catch(err) {toast.error(err instanceof Error ? err.message : 'Could not update order.');}
+    finally {pending.current=false;setBusy(null);}
   };
-
-  // Status is carried mostly by icon shape; color collapses to four semantic
-  // buckets (neutral / needs-attention / resolved / cancelled) to stay inside
-  // the instrument world's one-accent palette instead of ten pastel hues.
-  const getStatusColor = (status: string): string => {
-    switch (status?.toLowerCase()) {
-      case "shipped":
-      case "return requested":
-      case "return approved":   return "border-brass text-brass";
-      case "delivered":
-      case "refund released":   return "border-moss text-moss";
-      case "cancelled":
-      case "return rejected":   return "border-seal text-seal";
-      default:                  return "border-hairline text-ink-muted";
-    }
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch (status?.toLowerCase()) {
-      case "pending":          return <Clock className="w-4 h-4" />;
-      case "processing":       return <AlertCircle className="w-4 h-4" />;
-      case "shipped":          return <Truck className="w-4 h-4" />;
-      case "delivered":        return <CheckCircle className="w-4 h-4" />;
-      case "cancelled":        return <XCircle className="w-4 h-4" />;
-      case "return requested": return <RotateCcw className="w-4 h-4" />;
-      case "return approved":  return <CheckCircle className="w-4 h-4" />;
-      case "return rejected":  return <Ban className="w-4 h-4" />;
-      case "refund released":  return <Banknote className="w-4 h-4" />;
-      default:                 return <Package className="w-4 h-4" />;
-    }
-  };
-
-  const handleCancelOrder = async (orderId: string) => {
-    if (!window.confirm("Are you sure you want to cancel this order?")) return;
-    const token = localStorage.getItem("token");
+  const action = async (order: AdminOrder, kind: 'cancel'|'approve'|'reject'|'refund') => {
+    if(pending.current) return;
+    const allowed = kind === 'cancel' ? ['Pending','Confirmed'].includes(order.status) : kind === 'refund' ? order.status === 'Return Approved' : order.status === 'Return Requested';
+    if(!allowed) return;
+    const prompt = kind === 'refund' ? 'Release the refund for this order? The customer will be notified by email.' : kind === 'cancel' ? 'Cancel this order and restore its stock?' : (kind === 'approve' ? 'Approve' : 'Reject') + ' this return request?';
+    if(!window.confirm(prompt)) return;
+    pending.current = true; setBusy(order._id);
+    const path = kind === 'cancel' ? '/cancel/' : kind === 'refund' ? '/admin/refund/' : '/admin/return/';
     try {
-      const res = await authFetch(`${import.meta.env.VITE_BACKEND_URL}/api/v1/order/cancel/${orderId}`, {
-        method: "PUT",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      });
-      if (!res.ok) throw new Error("Failed to cancel order");
-      setOrders((prev) => prev.map((o) => o._id === orderId ? { ...o, status: "Cancelled" } : o));
-      toast.success("Order cancelled and stock restored");
-    } catch (err) {
-      console.error("Error cancelling order:", err);
-      toast.error("Failed to cancel order. Please try again.");
-    }
-  };
-
-  const handleReleaseRefund = async (orderId: string) => {
-    if (!window.confirm("Release the refund for this order? The customer will be notified by email.")) return;
-    const token = localStorage.getItem("token");
-    try {
-      const res = await authFetch(`${import.meta.env.VITE_BACKEND_URL}/api/v1/order/admin/refund/${orderId}`, {
-        method: "PUT",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      });
+      const res = await authFetch(import.meta.env.VITE_BACKEND_URL+'/api/v1/order'+path+order._id,{method:'PUT',headers:{'Content-Type':'application/json'},...(kind === 'approve' || kind === 'reject' ? {body:JSON.stringify({action:kind})} : {})});
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to release refund");
-      setOrders((prev) => prev.map((o) => o._id === orderId ? { ...o, status: "Refund Released" } : o));
-      toast.success("Refund released successfully — customer notified");
-    } catch (err: any) {
-      toast.error(err.message || "Failed to release refund");
-    }
+      if(!res.ok) throw new Error(data.message || 'The order could not be updated.');
+      const next = kind === 'cancel' ? 'Cancelled' : kind === 'refund' ? 'Refund Released' : kind === 'approve' ? 'Return Approved' : 'Return Rejected';
+      setOrders(previous => previous.map(item => item._id === order._id ? {...item,status:next} : item));
+      toast.success(kind === 'cancel' ? 'Order cancelled and stock restored' : next);
+    } catch(err) {toast.error(err instanceof Error ? err.message : 'Could not update order.');}
+    finally {pending.current=false;setBusy(null);}
   };
 
-  const handleProcessReturn = async (orderId: string, action: "approve" | "reject") => {
-    if (!window.confirm(`Are you sure you want to ${action} this return request?`)) return;
-    const token = localStorage.getItem("token");
-    try {
-      const res = await authFetch(`${import.meta.env.VITE_BACKEND_URL}/api/v1/order/admin/return/${orderId}`, {
-        method: "PUT",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to process return");
-      const newStatus = action === "approve" ? "Return Approved" : "Return Rejected";
-      setOrders((prev) => prev.map((o) => o._id === orderId ? { ...o, status: newStatus } : o));
-      toast.success(`Return ${action === "approve" ? "approved" : "rejected"} successfully`);
-    } catch (err: any) {
-      toast.error(err.message || "Failed to process return");
-    }
-  };
-
-  if (loading) {
-    return (
-      <>
-        <NavBar />
-        <div className="flex items-center justify-center min-h-screen bg-paper">
-          <div className="text-center">
-            <Package className="w-10 h-10 mx-auto mb-4 text-brass animate-pulse" />
-            <p className="text-ink-muted">Loading your orders...</p>
-          </div>
-        </div>
-      </>
-    );
-  }
-
-  return (
-    <>
-      <NavBar />
-      <div className="min-h-screen bg-paper">
-        {/* Header */}
-        <div className="bg-ink text-paper py-6 sm:py-8 border-b border-brass/40">
-          <div className="container mx-auto px-4 sm:px-6">
-            <div className="flex items-center gap-3 mb-1">
-              <button
-                onClick={() => navigate(-1)}
-                className="p-2 hover:text-brass transition-colors shrink-0"
-                title="Go back"
-              >
-                <ArrowLeft className="w-5 h-5 sm:w-6 sm:h-6" />
-              </button>
-              <h1 className="font-display text-2xl sm:text-4xl font-bold">All Orders</h1>
+  return <main>
+    <AdminHeading title="Orders" description="Find an order, review its details, and take the next action."><button className="admin-button" disabled={loading || !!busy} onClick={() => void load()}><RefreshCw size={14} aria-hidden="true" />Refresh</button></AdminHeading>
+    <details className="admin-screen-options"><summary>Screen options</summary><div><label><input type="checkbox" checked={showEmail} onChange={event=>setShowEmail(event.target.checked)} />Customer email</label><label><input type="checkbox" checked={showDate} onChange={event=>setShowDate(event.target.checked)} />Order date</label><label>Rows per page <select aria-label="Orders per page" value={size} onChange={event=>setSize(Number(event.target.value))}><option>20</option><option>50</option><option>100</option></select></label></div></details>
+    <div className="admin-tabs" aria-label="Order status filters">{filters.map(filter=><button key={filter.key} aria-pressed={status===filter.key} onClick={()=>query('status',filter.key)}>{filter.label}<span>({loading || error ? '—' : orders.filter(order=>matchStatus(order,filter.key)).length})</span></button>)}</div>
+    {error && <p className="admin-notice" role="alert">{error}</p>}
+    <section className="admin-panel" aria-label="Orders list">
+      <div className="admin-toolbar"><label className="admin-search"><Search size={15} aria-hidden="true" /><input type="search" aria-label="Search orders" placeholder="Search order, customer, email…" value={search} onChange={event=>query('q',event.target.value)} /></label><div className="admin-filters"><label>Sort by<select aria-label="Sort orders" value={sort} onChange={event=>setSort(event.target.value)}><option value="newest">Date (newest first)</option><option value="name">Customer name</option><option value="product">Product name</option><option value="delivery">Delivery date</option><option value="total">Highest total</option></select></label>{(search || status!=='all') && <button className="admin-button" onClick={()=>setParams({})}>Clear filters</button>}</div></div>
+      {loading ? <p className="admin-empty" role="status">Loading orders…</p> : error ? <p className="admin-empty">Refresh to load the order list.</p> : !rows.length ? <p className="admin-empty">{orders.length ? 'No orders match these filters.' : 'Customer orders will appear here when they are placed.'}</p> :
+        <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th scope="col">Order / customer</th>{showDate && <th scope="col">Date</th>}<th scope="col">Status</th><th scope="col">Total</th><th scope="col">Actions</th></tr></thead><tbody>{rows.map(order=><Fragment key={order._id}>
+          <tr><td><Link className="admin-text-link" to={'/admin/orders/'+order._id}>#{order._id.slice(-8)} · {order.firstName} {order.lastName}</Link>{showEmail && <small>{order.email}</small>}<small>{order.product?.name || 'Product'}</small></td>{showDate && <td className="admin-numeric">{adminDate(order.createdAt)}</td>}<td><OrderStatus status={order.status} /></td><td className="admin-numeric">{adminMoney(order.totalPrice)}</td><td><button className="admin-button" aria-label={'Preview order '+order._id.slice(-8)} aria-expanded={expanded===order._id} aria-controls={'preview-'+order._id} onClick={()=>setExpanded(expanded===order._id?null:order._id)}>{expanded===order._id ? 'Close' : 'Preview'}</button></td></tr>
+          {expanded===order._id && <tr id={'preview-'+order._id}><td colSpan={showDate ? 5 : 4}><div className="admin-order-preview"><h3>{order.product?.name || 'Order details'}</h3><dl><div><dt>Customer</dt><dd>{order.firstName} {order.lastName}<br />{order.email}</dd></div><div><dt>Expected delivery</dt><dd>{adminDate(order.deliveryDate)}</dd></div><div><dt>Quantity / configuration</dt><dd>{order.quantity} · {order.color || order.variants?.color || 'Standard'} {order.variants?.storage || ''}</dd></div></dl>
+            {order.returnReason && <p>Return reason: {order.returnReason}</p>}
+            {order.returnImage && <a href={import.meta.env.VITE_BACKEND_URL+'/uploads/'+order.returnImage} target="_blank" rel="noreferrer"><img src={import.meta.env.VITE_BACKEND_URL+'/uploads/'+order.returnImage} alt="Customer return evidence" /></a>}
+            {order.status==='Pending' && <p className="admin-notice">Payment has not been verified yet. You can still force this order into the delivery pipeline below.</p>}
+            <div className="admin-order-preview-actions"><Link className="admin-button admin-button--primary" to={'/admin/orders/'+order._id}>View full order</Link>
+              {(deliveryStages.includes(order.status) || order.status==='Pending') && <label>Delivery status <select aria-label="Set delivery status" disabled={!!busy} value={deliveryStages.includes(order.status) ? order.status : ''} onChange={event=>void setDeliveryStatus(order,event.target.value)}>{order.status==='Pending' && <option value="" disabled>Pending (unpaid)</option>}{deliveryStages.map(stage=><option key={stage} value={stage}>{stage}</option>)}</select></label>}
+              {['Pending','Confirmed'].includes(order.status) && <button className="admin-button admin-button--danger" disabled={!!busy} onClick={()=>void action(order,'cancel')}>Cancel order</button>}
+              {order.status==='Return Requested' && <><button className="admin-button" disabled={!!busy} onClick={()=>void action(order,'approve')}>Approve return</button><button className="admin-button admin-button--danger" disabled={!!busy} onClick={()=>void action(order,'reject')}>Reject return</button></>}
+              {order.status==='Return Approved' && <button className="admin-button" disabled={!!busy} onClick={()=>void action(order,'refund')}>Release refund · {adminMoney(order.totalPrice)}</button>}
+              {busy===order._id && <span role="status">Updating order…</span>}
             </div>
-            <p className="text-paper/60 text-sm ml-11">View and manage all customer orders</p>
-          </div>
-        </div>
-
-        {/* Filter Tabs */}
-        <div className="bg-paper-raised border-b border-hairline sticky top-0 z-10">
-          <div className="container mx-auto px-4 sm:px-6">
-            <div className="flex items-center gap-1.5 overflow-x-auto py-3 scrollbar-hide">
-              <Filter className="w-4 h-4 text-brass mr-1 shrink-0" />
-              {filterCategories.map((cat) => {
-                const count = getCountForFilter(cat.key);
-                const isActive = activeFilter === cat.key;
-                return (
-                  <button
-                    key={cat.key}
-                    onClick={() => setActiveFilter(cat.key)}
-                    className={`flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-semibold whitespace-nowrap transition-colors border ${
-                      isActive
-                        ? "bg-ink text-paper border-ink"
-                        : "bg-transparent text-ink-muted border-hairline hover:border-brass hover:text-brass"
-                    }`}
-                  >
-                    {cat.icon}
-                    {cat.label}
-                    <span className={`ml-1 px-1.5 text-xs font-mono tabular-nums ${isActive ? "text-brass" : "text-ink-muted/70"}`}>
-                      {count}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        {/* Content */}
-        <div className="container mx-auto px-4 sm:px-6 py-6 sm:py-10">
-          {error && (
-            <div className="mb-6 p-4 border border-seal/40 bg-seal/5 text-seal">
-              {error}
-            </div>
-          )}
-
-          {orders.length === 0 ? (
-            <div className="text-center py-12 border border-dashed border-hairline">
-              <Package className="w-16 h-16 mx-auto mb-4 text-ink-muted/40" />
-              <h2 className="font-display text-2xl font-bold text-ink mb-2">No Orders Yet</h2>
-              <p className="text-ink-muted mb-6">Start shopping to see your orders here</p>
-              <button
-                onClick={() => navigate("/")}
-                className="px-6 py-3 bg-brass text-white hover:bg-brass-dark active:scale-[0.98] transition font-semibold"
-              >
-                Continue Shopping
-              </button>
-            </div>
-          ) : (
-            <>
-              <div className="mb-6 flex items-center justify-between">
-                <p className="text-ink-muted text-sm">
-                  Showing: <span className="font-bold text-ink font-mono tabular-nums">{getFilteredOrders().length}</span>
-                  {activeFilter !== "all" && <> of <span className="font-bold text-ink font-mono tabular-nums">{orders.length}</span> orders</>}
-                  {activeFilter === "all" && <> orders</>}
-                </p>
-                {activeFilter !== "all" && (
-                  <button
-                    onClick={() => setActiveFilter("all")}
-                    className="text-sm text-brass hover:text-brass-dark font-medium flex items-center gap-1"
-                  >
-                    <XCircle className="w-3.5 h-3.5" /> Clear filter
-                  </button>
-                )}
-              </div>
-
-              {getFilteredOrders().length === 0 ? (
-                <div className="text-center py-12 border border-dashed border-hairline">
-                  <Filter className="w-14 h-14 mx-auto mb-4 text-ink-muted/30" />
-                  <h3 className="font-display text-xl font-bold text-ink mb-2">No orders in this category</h3>
-                  <p className="text-ink-muted">There are no orders with the selected status filter.</p>
-                </div>
-              ) : (
-              <div className="grid grid-cols-1 gap-6">
-                {getFilteredOrders().map((order) => (
-                  <div
-                    key={order._id}
-                    className="bg-paper-raised border border-hairline overflow-hidden"
-                  >
-                    {/* Order Header */}
-                    <div className="flex flex-col md:flex-row md:items-center md:justify-between p-6 border-b border-hairline">
-                      <div>
-                        <h3 className="text-xl font-bold text-ink mb-2">
-                          {order.product?.name || "Product"}
-                        </h3>
-                        <p className="text-sm text-ink-muted font-mono tabular-nums">Order ID: {order._id.slice(-8)}</p>
-                      </div>
-                      <div className={`inline-flex items-center gap-2 px-3.5 py-1.5 border font-semibold mt-4 md:mt-0 ${getStatusColor(order.status)}`}>
-                        {getStatusIcon(order.status)}
-                        <span>{order.status || "Unknown"}</span>
-                      </div>
-                    </div>
-
-                    {/* Order Details Grid */}
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-6 p-6 bg-paper border-b border-hairline">
-                      <div>
-                        <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide mb-1">Quantity</p>
-                        <p className="text-2xl font-bold text-ink font-mono tabular-nums">{order.quantity}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide mb-1">Unit Price</p>
-                        <p className="text-2xl font-bold text-ink font-mono tabular-nums">
-                          Rs.{order.totalPrice && order.quantity ? Math.round(order.totalPrice / order.quantity) : 0}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide mb-1">Color</p>
-                        <p className="text-lg font-bold text-ink">{order.color || order.variants?.color || "N/A"}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide mb-1">Expected Delivery</p>
-                        <p className="text-lg font-bold text-brass font-mono tabular-nums">{new Date(order.deliveryDate).toLocaleDateString()}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide mb-1">Total Amount</p>
-                        <p className="text-2xl font-bold text-ink font-mono tabular-nums">Rs.{order.totalPrice}</p>
-                      </div>
-                    </div>
-
-                    {/* Customer Info */}
-                    <div className="p-6 bg-paper">
-                      <p className="text-sm font-semibold text-ink mb-3">Delivery Details</p>
-                      <div className="space-y-2 text-sm text-ink-muted">
-                        <p><span className="font-semibold text-ink">Name:</span> {order.firstName} {order.lastName}</p>
-                        <p><span className="font-semibold text-ink">Email:</span> {order.email}</p>
-                        <p><span className="font-semibold text-ink">Expected Delivery:</span> {new Date(order.deliveryDate).toLocaleDateString()}</p>
-                      </div>
-                      {/* Return reason banner */}
-                      {["Return Requested", "Return Approved", "Return Rejected", "Refund Released"].includes(order.status) && (
-                        <div className="mt-3 p-3 border border-brass/40 bg-brass/5">
-                          <p className="text-xs font-bold text-brass uppercase tracking-wide mb-1">Return Info</p>
-                          {order.returnReason ? (
-                            <p className="text-sm text-ink">{order.returnReason}</p>
-                          ) : (
-                            <p className="text-sm text-ink-muted italic">No reason provided</p>
-                          )}
-                          {order.returnImage && (
-                            <div className="mt-3">
-                              <p className="text-xs font-bold text-brass uppercase tracking-wide mb-2">Defect Photo</p>
-                              <img
-                                src={`${import.meta.env.VITE_BACKEND_URL}/uploads/${order.returnImage}`}
-                                alt="Product defect"
-                                className="w-full max-w-xs border border-brass/40 cursor-pointer hover:opacity-90 transition"
-                                onClick={() => window.open(`${import.meta.env.VITE_BACKEND_URL}/uploads/${order.returnImage}`, '_blank')}
-                              />
-                              <p className="text-xs text-ink-muted mt-1">Click image to view full size</p>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Actions */}
-                    <div className="p-6 flex flex-col md:flex-row gap-3 flex-wrap border-t border-hairline">
-                      <button
-                        onClick={() => navigate(`/order/${order._id}`)}
-                        className="flex-1 px-4 py-2 bg-brass text-white hover:bg-brass-dark active:scale-[0.98] transition font-semibold"
-                      >
-                        View Details
-                      </button>
-                      {["pending", "confirmed"].includes(order.status?.toLowerCase()) && (
-                        <button
-                          onClick={() => handleCancelOrder(order._id)}
-                          className="flex-1 px-4 py-2 border border-seal text-seal hover:bg-seal/5 active:scale-[0.98] transition font-semibold flex items-center justify-center gap-2"
-                        >
-                          <XCircle className="w-4 h-4" /> Cancel Order
-                        </button>
-                      )}
-                      {order.status === "Return Requested" && (
-                        <>
-                          <button
-                            onClick={() => handleProcessReturn(order._id, "approve")}
-                            className="flex-1 px-4 py-2 bg-moss text-paper hover:opacity-90 active:scale-[0.98] transition font-semibold flex items-center justify-center gap-2"
-                          >
-                            <CheckCircle className="w-5 h-5" /> Approve Return
-                          </button>
-                          <button
-                            onClick={() => handleProcessReturn(order._id, "reject")}
-                            className="flex-1 px-4 py-2 bg-seal text-paper hover:opacity-90 active:scale-[0.98] transition font-semibold flex items-center justify-center gap-2"
-                          >
-                            <Ban className="w-5 h-5" /> Reject Return
-                          </button>
-                        </>
-                      )}
-                      {order.status === "Return Approved" && (
-                        <button
-                          onClick={() => handleReleaseRefund(order._id)}
-                          className="flex-1 px-4 py-2 bg-moss text-paper hover:opacity-90 active:scale-[0.98] transition font-semibold flex items-center justify-center gap-2"
-                        >
-                          <Banknote className="w-5 h-5" /> Release Fund (Rs.{order.totalPrice})
-                        </button>
-                      )}
-                      {order.status === "Refund Released" && (
-                        <div className="flex-1 px-4 py-2 border border-moss text-moss font-semibold flex items-center justify-center gap-2">
-                          <Banknote className="w-4 h-4" /> Refund Released – Rs.{order.totalPrice}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              )}
-            </>
-          )}
-        </div>
-      </div>
-    </>
-  );
-};
-
-export default AdminOrders;
+          </div></td></tr>}
+        </Fragment>)}</tbody></table></div>}
+      {!loading && !error && rows.length>0 && <AdminPagination page={currentPage} pages={pages} onPage={setPage} />}
+    </section>
+  </main>;
+}

@@ -49,6 +49,15 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* The page-background paper grain, applied everywhere the paper color itself is the
+   background (not on raised white surfaces like cards/panels). Tailwind's `bg-paper`
+   utility only sets background-color, so this just adds the image/repeat on top of it. */
+.bg-paper {
+  background-image: url('/images/ux-demo-paper-texture.webp');
+  background-repeat: repeat;
+  background-attachment: fixed;
+}
+
 h1, h2, h3, .font-display {
   font-family: "Aptos Display", "Segoe UI", system-ui, sans-serif;
   letter-spacing: -0.025em;

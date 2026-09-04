@@ -1,224 +1,53 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import axios from "axios";
-import { toast } from "sonner";
-import NavBar from "../components/NavBar";
-import { ArrowLeft, Eye, Search } from "lucide-react";
+import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { RefreshCw, Search } from 'lucide-react';
+import { getImageUrl } from '../lib/utils';
+import { adminMoney, getAdminCollection } from '../lib/adminData';
+import { AdminHeading, AdminPagination } from '../components/admin/AdminUi';
 
 interface Product {
-  _id: string;
-  name: string;
-  category: string;
-  price: number;
-  quantity: number;
-  description: string;
-  images: string[];
-  seller?: {
-    _id: string;
-    shopName?: string;
-    firstName?: string;
-    lastName?: string;
-  };
+  _id: string; name: string; category: string; price: number; quantity: number; images: string[]; createdAt?: string;
+  seller?: {shopName?: string};
 }
-
-function AllProducts() {
-  const navigate = useNavigate();
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("all");
-  const token = localStorage.getItem("token");
-
-  const mapCategory = (cat: string) =>
-    ({ 'Mobile Phones': 'iPhone', 'Laptops': 'MacBook', 'Smartwatches': 'Apple Watch', 'Tablets': 'iPad' } as Record<string, string>)[cat] ?? cat;
-
-  useEffect(() => {
-    fetchProducts();
-  }, []);
-
-  const fetchProducts = async () => {
-    try {
-      setLoading(true);
-      const response = await axios.get(
-        `${import.meta.env.VITE_BACKEND_URL}/api/v1/product/get`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-      setProducts(response.data);
-    } catch (error) {
-      console.error("Error fetching products:", error);
-      toast.error("Failed to load products");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const categories = ["all", ...Array.from(new Set(products.map(p => p.category))).sort()];
-
-  const filteredProducts = products.filter(
-    (product) =>
-      (categoryFilter === "all" || product.category === categoryFilter) &&
-      (
-        product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        product.category.toLowerCase().includes(searchTerm.toLowerCase())
-      )
-  );
-
-  return (
-    <>
-      <NavBar />
-      <div className="min-h-screen bg-paper py-6 sm:py-8">
-        <div className="container mx-auto px-4 sm:px-6 max-w-7xl">
-          {/* Back Button */}
-          <button
-            onClick={() => navigate("/admin")}
-            className="flex items-center gap-2 mb-5 text-ink-muted hover:text-brass font-medium text-sm transition"
-          >
-            <ArrowLeft size={18} />
-            Back to Admin Panel
-          </button>
-
-          <div className="bg-paper-raised border border-hairline p-4 sm:p-8">
-            <h1 className="font-display text-3xl font-bold text-ink mb-6">
-              All Products
-            </h1>
-
-            {/* Search + Category Filter */}
-            <div className="mb-6 flex flex-col gap-3">
-              <div className="flex items-center border border-hairline bg-paper-raised overflow-hidden transition-colors duration-150 focus-within:border-brass">
-                <div className="px-3.5 flex items-center border-r border-hairline">
-                  <Search size={16} className="text-brass" />
-                </div>
-                <input
-                  type="text"
-                  placeholder="Search by product name or category..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="flex-1 px-3.5 py-2.5 text-sm text-ink bg-transparent outline-none"
-                />
-                {searchTerm && (
-                  <button onClick={() => setSearchTerm('')} className="px-3.5 text-ink-muted hover:text-ink text-lg leading-none">×</button>
-                )}
-              </div>
-              {/* Category filter row */}
-              <div className="flex flex-wrap gap-1.5">
-                {categories.map((cat) => (
-                  <button
-                    key={cat}
-                    onClick={() => setCategoryFilter(cat)}
-                    className={`px-3.5 py-1.5 text-[13px] font-medium border transition-colors duration-150 ${
-                      categoryFilter === cat
-                        ? 'bg-ink text-paper border-ink'
-                        : 'bg-transparent text-ink-muted border-hairline hover:border-brass hover:text-brass'
-                    }`}
-                  >
-                    {cat === 'all' ? 'All' : mapCategory(cat)}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Products Table */}
-            {loading ? (
-              <div className="text-center py-12">
-                <p className="text-ink-muted text-lg">Loading products...</p>
-              </div>
-            ) : filteredProducts.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr className="border-b-2 border-ink">
-                      <th className="p-4 text-left font-semibold text-ink text-xs uppercase tracking-wide">
-                        Product Name
-                      </th>
-                      <th className="p-4 text-left font-semibold text-ink text-xs uppercase tracking-wide">
-                        Category
-                      </th>
-                      <th className="p-4 text-left font-semibold text-ink text-xs uppercase tracking-wide">
-                        Seller
-                      </th>
-                      <th className="p-4 text-center font-semibold text-ink text-xs uppercase tracking-wide">
-                        Stock
-                      </th>
-                      <th className="p-4 text-right font-semibold text-ink text-xs uppercase tracking-wide">
-                        Price
-                      </th>
-                      <th className="p-4 text-center font-semibold text-ink text-xs uppercase tracking-wide">
-                        Action
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredProducts.map((product) => (
-                      <tr
-                        key={product._id}
-                        className="border-b border-hairline hover:bg-paper transition-colors"
-                      >
-                        <td className="p-4 font-semibold text-ink">
-                          {product.name}
-                        </td>
-                        <td className="p-4">
-                          <span className="text-ink-muted text-xs font-semibold uppercase tracking-wide">
-                            {mapCategory(product.category)}
-                          </span>
-                        </td>
-                        <td className="p-4">
-                          {product.seller?.shopName ? (
-                            <p className="font-semibold text-ink text-sm">{product.seller.shopName}</p>
-                          ) : (
-                            <span className="text-ink-muted text-sm">—</span>
-                          )}
-                        </td>
-                        <td className="p-4 text-center">
-                          <span
-                            className={`font-mono text-xs tabular-nums ${
-                              product.quantity > 0 ? "text-ink-muted" : "text-seal struck"
-                            }`}
-                          >
-                            {product.quantity > 0 ? `${product.quantity} UNITS` : 'SOLD OUT'}
-                          </span>
-                        </td>
-                        <td className="p-4 text-right font-semibold text-ink font-mono tabular-nums">
-                          Rs. {product.price.toLocaleString()}
-                        </td>
-                        <td className="p-4 text-center">
-                          <button
-                            onClick={() =>
-                              navigate(`/product-details-admin/${product._id}`)
-                            }
-                            className="inline-flex items-center gap-2 border border-ink hover:bg-ink hover:text-paper active:scale-[0.98] text-ink px-4 py-2 transition font-semibold text-sm"
-                          >
-                            <Eye size={16} />
-                            View Details
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="text-center py-12">
-                <p className="text-ink-muted text-lg">
-                  {searchTerm ? "No products found matching your search." : "No products available."}
-                </p>
-              </div>
-            )}
-
-            {/* Results Count */}
-            {!loading && filteredProducts.length > 0 && (
-              <div className="mt-6 text-sm text-ink-muted tabular-nums">
-                Showing {filteredProducts.length} of {products.length} products
-              </div>
-            )}
-          </div>
+export default function AllProducts() {
+  const [products,setProducts] = useState<Product[]>([]);
+  const [loading,setLoading] = useState(true);
+  const [error,setError] = useState('');
+  const [search,setSearch] = useState('');
+  const [category,setCategory] = useState('all');
+  const [stock,setStock] = useState('all');
+  const [sort,setSort] = useState('name');
+  const [direction,setDirection] = useState('asc');
+  const [page,setPage] = useState(1);
+  const load = useCallback(async (signal?:AbortSignal) => {
+    setLoading(true); setError('');
+    try { const data = await getAdminCollection<Product>('/api/v1/product/get',signal); if(!signal?.aborted) setProducts(data); }
+    catch(err){if(!signal?.aborted)setError(err instanceof Error?err.message:'Could not load products.');}
+    finally {if(!signal?.aborted)setLoading(false);}
+  },[]);
+  useEffect(()=>{const controller=new AbortController();void load(controller.signal);return()=>controller.abort();},[load]);
+  useEffect(()=>setPage(1),[search,category,stock,sort,direction]);
+  const dir=direction==='desc'?-1:1;
+  const filtered=products.filter(product=>(category==='all'||product.category===category)&&(stock==='all'||(stock==='in'?product.quantity>0:product.quantity<=0))&&[product.name,product.category,product.seller?.shopName].join(' ').toLowerCase().includes(search.trim().toLowerCase())).sort((a,b)=>dir*(sort==='price'?a.price-b.price:sort==='stock'?a.quantity-b.quantity:sort==='date'?new Date(a.createdAt||0).getTime()-new Date(b.createdAt||0).getTime():a.name.localeCompare(b.name)));
+  const pages=Math.max(1,Math.ceil(filtered.length/20));
+  const current=Math.min(page,pages);
+  return <main>
+    <AdminHeading title="Products" description="Review seller listings, availability, and pricing across your marketplace."><button className="admin-button" disabled={loading} onClick={()=>void load()}><RefreshCw size={14} aria-hidden="true" />Refresh</button></AdminHeading>
+    {error&&<p className="admin-notice" role="alert">{error}</p>}
+    <section className="admin-panel" aria-label="Product catalogue">
+      <div className="admin-toolbar">
+        <label className="admin-search"><Search size={15} aria-hidden="true" /><input type="search" aria-label="Search products" placeholder="Search product, category, seller…" value={search} onChange={event=>setSearch(event.target.value)} /></label>
+        <div className="admin-filters">
+          <label>Category<select aria-label="Filter product category" value={category} onChange={event=>setCategory(event.target.value)}><option value="all">All categories</option>{[...new Set(products.map(product=>product.category))].sort().map(value=><option key={value}>{value}</option>)}</select></label>
+          <label>Stock<select aria-label="Filter product stock" value={stock} onChange={event=>setStock(event.target.value)}><option value="all">All stock</option><option value="in">In stock</option><option value="out">Out of stock</option></select></label>
+          <label>Sort<select aria-label="Sort products" value={sort} onChange={event=>setSort(event.target.value)}><option value="name">Name</option><option value="date">Date added</option><option value="price">Price</option><option value="stock">Stock</option></select></label>
+          <label>Order<select aria-label="Sort order" value={direction} onChange={event=>setDirection(event.target.value)}><option value="asc">Ascending</option><option value="desc">Descending</option></select></label>
+          {(search||category!=='all'||stock!=='all'||sort!=='name'||direction!=='asc')&&<button className="admin-button" onClick={()=>{setSearch('');setCategory('all');setStock('all');setSort('name');setDirection('asc');}}>Clear filters</button>}
         </div>
       </div>
-    </>
-  );
+      {loading?<p className="admin-empty" role="status">Loading products…</p>:error?<p className="admin-empty">Refresh to load the catalogue.</p>:!filtered.length?<p className="admin-empty">{products.length?'No products match these filters.':'Seller products will appear here.'}</p>:
+        <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th scope="col">Product</th><th scope="col">Category</th><th scope="col">Stock</th><th scope="col">Price</th><th scope="col">Seller</th><th scope="col">Actions</th></tr></thead><tbody>{filtered.slice((current-1)*20,current*20).map(product=><tr key={product._id}><td><div className="admin-product-cell"><img src={product.images?.[0]?getImageUrl(product.images[0]):'/images/product-placeholder.svg'} alt="" onError={event=>{event.currentTarget.onerror=null;event.currentTarget.src='/images/product-placeholder.svg';}} /><Link className="admin-text-link" to={'/product-details-admin/'+product._id}>{product.name}</Link></div></td><td>{product.category}</td><td><span className={'admin-status admin-status--'+(product.quantity>0?'success':'attention')}>{product.quantity>0?'In stock':'Out of stock'}</span><small>{product.quantity>0?product.quantity+' units available':''}</small></td><td className="admin-numeric">{adminMoney(product.price)}</td><td>{product.seller?.shopName||'—'}</td><td><Link className="admin-button" to={'/product-details-admin/'+product._id}>View / edit</Link></td></tr>)}</tbody></table></div>}
+      {!loading&&!error&&filtered.length>0&&<AdminPagination page={current} pages={pages} onPage={setPage}/>}
+    </section>
+  </main>;
 }
-
-export default AllProducts;

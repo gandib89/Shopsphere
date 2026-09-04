@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Edit2, Trash2, Mail, Users, X, Search } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -6,6 +7,7 @@ import NavBar from '../components/NavBar';
 
 interface User {
   _id: string;
+  id?: string;
   firstName: string;
   lastName: string;
   email: string;
@@ -16,6 +18,7 @@ interface User {
   isVerified?: boolean;
   createdAt: string;
 }
+const normalizeUser = (user: User & { id?: string }): User => ({ ...user, _id: user._id || user.id || '' });
 
 interface Statistics {
   totalUsers: number;
@@ -28,10 +31,12 @@ interface Statistics {
 
 function AdminUserManagement() {
   const token = localStorage.getItem('token');
+  const [searchParams, setSearchParams] = useSearchParams();
   const [users, setUsers] = useState<User[]>([]);
   const [stats, setStats] = useState<Statistics | null>(null);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'user' | 'seller' | 'admin'>('all');
+  const requestedRole = searchParams.get('role');
+  const filter: 'all' | 'user' | 'seller' | 'admin' = requestedRole === 'user' || requestedRole === 'seller' || requestedRole === 'admin' ? requestedRole : 'all';
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -59,7 +64,7 @@ function AdminUserManagement() {
           },
         }
       );
-      setUsers(response.data);
+      setUsers(response.data.map(normalizeUser));
     } catch (err) {
       console.error('Error fetching users:', err);
       toast.error('Failed to load users');
@@ -133,7 +138,7 @@ function AdminUserManagement() {
         }
       );
 
-      setUsers(users.map(u => u._id === editingUser._id ? response.data.user : u));
+      setUsers(users.map(u => u._id === editingUser._id ? normalizeUser(response.data.user) : u));
       setShowEditModal(false);
       setEditingUser(null);
       toast.success('User updated successfully');
@@ -205,8 +210,8 @@ function AdminUserManagement() {
           <div className="container mx-auto px-4 sm:px-6">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <h1 className="font-display text-2xl sm:text-4xl font-bold mb-1">User Management</h1>
-                <p className="text-paper/60 text-sm">Manage users, sellers, and admins</p>
+                <h1 className="font-display text-2xl sm:text-4xl font-bold mb-1">{filter === 'user' ? 'Customers' : 'User Management'}</h1>
+                <p className="text-paper/60 text-sm">{filter === 'user' ? 'Manage customer accounts' : 'Manage users, sellers, and admins'}</p>
               </div>
               <button
                 onClick={fetchUsers}
@@ -270,7 +275,7 @@ function AdminUserManagement() {
               {(['all', 'user', 'seller', 'admin'] as const).map((role) => (
                 <button
                   key={role}
-                  onClick={() => setFilter(role)}
+                  onClick={() => setSearchParams(role === 'all' ? {} : { role })}
                   className={`px-3.5 py-1.5 text-[13px] font-medium border transition-colors duration-150 ${
                     filter === role
                       ? 'bg-ink text-paper border-ink'
@@ -311,7 +316,7 @@ function AdminUserManagement() {
                     <tr key={user._id} className="border-b border-hairline hover:bg-paper transition-colors">
                       <td className="p-4">
                         <div className="font-semibold text-ink">
-                          {user.firstName} {user.lastName}
+                          {user.role === 'seller' ? <Link className="admin-text-link" to={'/admin/sellers/' + user._id}>{user.firstName} {user.lastName}</Link> : <>{user.firstName} {user.lastName}</>}
                         </div>
                         {user.shopName && (
                           <div className="text-xs text-ink-muted">{user.shopName}</div>
@@ -329,6 +334,7 @@ function AdminUserManagement() {
                       </td>
                       <td className="p-4">
                         <div className="flex gap-1">
+                          {user.role === 'seller' && <Link className="admin-button" to={'/admin/sellers/' + user._id}>View seller</Link>}
                           <button
                             onClick={() => handleEditUser(user)}
                             className="p-2 text-ink-muted hover:text-brass active:scale-[0.97] transition"

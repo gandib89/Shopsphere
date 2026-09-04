@@ -7,4 +7,8 @@ Object.defineProperty(Element.prototype, 'scrollIntoView', {
   value: vi.fn(),
 });
 
+Object.defineProperty(Element.prototype, 'scrollTo', { configurable: true, value: vi.fn() });
+Object.defineProperty(Element.prototype, 'scrollBy', { configurable: true, value: vi.fn() });
+globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} } as never;
+
 afterEach(cleanup);

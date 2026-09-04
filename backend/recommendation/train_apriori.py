@@ -106,7 +106,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Train Apriori market-basket model")
     parser.add_argument(
         "--input",
-        default="./data/Final_Apple_Apriori_Dataset_v2.csv",
+        default="./data/shopsphere_market_basket.csv",
         help="Path to source CSV dataset",
     )
     parser.add_argument(
@@ -115,7 +115,7 @@ def main() -> None:
         help="Directory to write model output files",
     )
     parser.add_argument("--min-support", type=float, default=0.005)
-    parser.add_argument("--min-confidence", type=float, default=0.25)
+    parser.add_argument("--min-confidence", type=float, default=0.15)
     parser.add_argument("--top-k", type=int, default=10)
     args = parser.parse_args()
 

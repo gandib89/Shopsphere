@@ -983,12 +983,11 @@ export const getSellerOrders = async (req, res) => {
   }
 };
 
-// Update order status (seller can update status of orders for their products)
+// Update order status (seller can update status of orders for their own products; admin can update any)
 export const updateSellerOrderStatus = async (req, res) => {
   try {
     const { orderId } = req.params;
     const { status } = req.body;
-    const sellerId = req.user.id;
 
     // Find the order
     let order = await prisma.order.findUnique({ where: { id: orderId }, include: { product: true } });
@@ -997,27 +996,51 @@ export const updateSellerOrderStatus = async (req, res) => {
       return res.status(404).json({ message: "Order not found" });
     }
 
-    // Check if the seller owns the product in this order
-    if (order.product.sellerId !== sellerId) {
+    // Sellers may only touch orders for their own products; admins can update any order.
+    if (req.user.role !== "admin" && order.product.sellerId !== req.user.id) {
       return res.status(403).json({ message: "You can only update orders for your own products" });
     }
 
-    // Sellers can only advance paid orders one step at a time. Cancellation and refunds use
-    // the dedicated customer/admin workflows so their stock and payment rules also run.
-    const sellerTransitions = {
-      Confirmed: "Processing",
-      Processing: "Shipped",
-      Shipped: "Delivered",
-    };
-    if (sellerTransitions[order.status] !== status) {
+    // The fulfilment pipeline, once an order is paid for. Pending isn't in here — moving
+    // out of Pending requires a verified payment (confirmOrderCore), and Cancelled/Return/
+    // Refund states go through their own dedicated workflows so stock and refund rules run.
+    const DELIVERY_STAGES = ["Confirmed", "Processing", "Shipped", "Delivered"];
+    const STAGE_TIMESTAMP_FIELD = { Confirmed: "confirmedAt", Processing: "processingAt", Shipped: "shippedAt", Delivered: "deliveredAt" };
+
+    const isAdmin = req.user.role === "admin";
+    // Admin override: force a Pending order into the fulfilment pipeline without a verified
+    // payment (e.g. an off-platform/manual payment arrangement). Still routes through
+    // confirmOrderCore so stock deduction and the revenue record stay correct — only the
+    // payment-verification gate is skipped, not the accounting.
+    if (isAdmin && order.status === "Pending" && DELIVERY_STAGES.includes(status)) {
+      const { confirmedOrders, errors } = await confirmOrderCore(orderId);
+      if (confirmedOrders.length === 0) {
+        return res.status(409).json({ message: errors[0] || "Could not confirm this order (it may be out of stock)." });
+      }
+      order = await prisma.order.findUnique({ where: { id: orderId }, include: { product: true } });
+    }
+
+    // Admins can jump to any pipeline stage (forward to skip a step, or back to correct a
+    // mistake). Sellers can only advance one step at a time.
+    const manualOverride = isAdmin && DELIVERY_STAGES.includes(order.status) && DELIVERY_STAGES.includes(status);
+    const sellerTransitions = { Confirmed: "Processing", Processing: "Shipped", Shipped: "Delivered" };
+    if (!manualOverride && sellerTransitions[order.status] !== status) {
       return res.status(409).json({ message: `Order cannot move from ${order.status} to ${status}` });
     }
 
     const data = { status };
-    if (status === "Confirmed")   data.confirmedAt  = order.confirmedAt  || new Date();
-    if (status === "Processing")  data.processingAt = order.processingAt || new Date();
-    if (status === "Shipped")     data.shippedAt    = order.shippedAt    || new Date();
-    if (status === "Delivered")   data.deliveredAt  = order.deliveredAt  || new Date();
+    if (manualOverride) {
+      const targetIndex = DELIVERY_STAGES.indexOf(status);
+      DELIVERY_STAGES.forEach((stage, index) => {
+        const field = STAGE_TIMESTAMP_FIELD[stage];
+        data[field] = index <= targetIndex ? order[field] || new Date() : null;
+      });
+    } else {
+      if (status === "Confirmed")   data.confirmedAt  = order.confirmedAt  || new Date();
+      if (status === "Processing")  data.processingAt = order.processingAt || new Date();
+      if (status === "Shipped")     data.shippedAt    = order.shippedAt    || new Date();
+      if (status === "Delivered")   data.deliveredAt  = order.deliveredAt  || new Date();
+    }
 
     order = await prisma.order.update({ where: { id: orderId }, data, include: { product: true } });
 

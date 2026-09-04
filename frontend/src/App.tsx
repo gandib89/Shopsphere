@@ -7,6 +7,8 @@ import { ProtectedRoute } from './components/auth/ProtectedRoute';
 
 // Lazy-load every page so only the current route's JS is downloaded on first load
 const Home = lazy(() => import('./pages/Home'));
+const StorefrontDemo = lazy(() => import('./pages/StorefrontDemo'));
+const UiRedesignDemo = lazy(() => import('./pages/UiRedesignDemo'));
 const AuthLanding = lazy(() => import('./pages/AuthLanding'));
 const UserAuth = lazy(() => import('./pages/UserAuth'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
@@ -19,8 +21,11 @@ const CartCheckout = lazy(() => import('./pages/CartCheckout'));
 const ProductDetailsPage = lazy(() => import('./pages/ProductDetailsPage'));
 const ProductDetailsAdmin = lazy(() => import('./pages/ProductDetailsAdmin'));
 const AllProducts = lazy(() => import('./pages/AllProducts'));
+const AdminLayout = lazy(() => import('./components/admin/AdminLayout'));
 const AdminPanel = lazy(() => import('./pages/AdminPanel'));
 const AdminSellerApproval = lazy(() => import('./pages/AdminSellerApproval'));
+const AdminSellers = lazy(() => import('./pages/AdminSellers'));
+const AdminSellerDetails = lazy(() => import('./pages/AdminSellerDetails'));
 const AdminRevenueDashboard = lazy(() => import('./pages/AdminRevenueDashboard'));
 const AdminUserManagement = lazy(() => import('./pages/AdminUserManagement'));
 const PromoManagement = lazy(() => import('./pages/PromoManagement'));
@@ -100,10 +105,12 @@ function App() {
             Demo · synthetic data · sandbox payments only · no real orders or refunds
           </div>
         )}
-        <div className={isDemo ? 'pt-8' : ''}>
+        <div className={isDemo ? 'pt-8' : ''} data-demo-banner={isDemo ? 'true' : 'false'}>
         <Suspense fallback={<div className="min-h-screen bg-paper"><LoadingState description="Loading ShopSphere…" /></div>}>
         <Routes>
           <Route path="/" element={<Home />} />
+          <Route path="/ux-demo" element={<StorefrontDemo />} />
+          <Route path="/ui-redesign-demo" element={<UiRedesignDemo />} />
           <Route path="/auth-landing" element={<AuthLanding />} />
           <Route path="/user-auth" element={<UserAuth />} />
           <Route path="/seller-auth" element={<UserAuth />} />
@@ -118,26 +125,15 @@ function App() {
           <Route path="/buy-product" element={<BuyProduct />} />
           <Route path="/product-details-page" element={<ProductDetailsPage />} />
           <Route path="/product-details" element={<ProductDetailsPage />} />
-          <Route path="/product-details-admin/:id" element={<ProtectedRoute role="admin"><ProductDetailsAdmin /></ProtectedRoute>} />
-          <Route path="/all-products" element={<AllProducts />} />
           <Route path="/cart-checkout" element={<CartCheckout />} />
           <Route path="/checkout" element={<CartCheckout />} />
           <Route path="/orders" element={<OrderDetails />} />
           <Route path="/order-details" element={<OrderDetails />} />
           <Route path="/order/:orderId" element={<OrderDetails />} />
-          <Route path="/admin" element={<ProtectedRoute role="admin"><AdminPanel /></ProtectedRoute>} />
-          <Route path="/admin/seller-approvals" element={<ProtectedRoute role="admin"><AdminSellerApproval /></ProtectedRoute>} />
-          <Route path="/admin/seller-approval" element={<ProtectedRoute role="admin"><AdminSellerApproval /></ProtectedRoute>} />
-          <Route path="/admin/revenue" element={<ProtectedRoute role="admin"><AdminRevenueDashboard /></ProtectedRoute>} />
-          <Route path="/admin/users" element={<ProtectedRoute role="admin"><AdminUserManagement /></ProtectedRoute>} />
-          <Route path="/admin/promo-codes" element={<ProtectedRoute role="admin"><PromoManagement /></ProtectedRoute>} />
-          <Route path="/admin/orders" element={<ProtectedRoute role="admin"><AdminOrders /></ProtectedRoute>} />
-          <Route path="/admin-orders" element={<ProtectedRoute role="admin"><AdminOrders /></ProtectedRoute>} />
           <Route path="/my-orders" element={<MyOrders />} />
           <Route path="/my-orders-new" element={<MyOrdersNew />} />
           <Route path="/user/bills" element={<UserBillHistory />} />
           <Route path="/bill-history" element={<UserBillHistory />} />
-          <Route path="/user-details" element={<ProtectedRoute role="admin"><UserDetails /></ProtectedRoute>} />
           <Route path="/success/:orderId" element={<Success />} />
           <Route path="/failure/:orderId" element={<Failure />} />
           <Route path="/seller-panel" element={<ProtectedRoute role="seller"><SellerPanel /></ProtectedRoute>} />
@@ -147,6 +143,22 @@ function App() {
           <Route path="/seller-orders" element={<ProtectedRoute role="seller"><SellerOrders /></ProtectedRoute>} />
           <Route path="/seller/revenue" element={<ProtectedRoute role="seller"><SellerRevenueDashboard /></ProtectedRoute>} />
           <Route path="/seller-revenue" element={<ProtectedRoute role="seller"><SellerRevenueDashboard /></ProtectedRoute>} />
+          <Route element={<ProtectedRoute role="admin"><AdminLayout /></ProtectedRoute>}>
+            <Route path="/product-details-admin/:id" element={<ProductDetailsAdmin />} />
+            <Route path="/all-products" element={<AllProducts />} />
+            <Route path="/admin" element={<AdminPanel />} />
+            <Route path="/admin/sellers" element={<AdminSellers />} />
+            <Route path="/admin/sellers/:sellerId" element={<AdminSellerDetails />} />
+            <Route path="/admin/seller-approvals" element={<AdminSellerApproval />} />
+            <Route path="/admin/seller-approval" element={<AdminSellerApproval />} />
+            <Route path="/admin/revenue" element={<AdminRevenueDashboard />} />
+            <Route path="/admin/users" element={<AdminUserManagement />} />
+            <Route path="/admin/promo-codes" element={<PromoManagement />} />
+            <Route path="/admin/orders" element={<AdminOrders />} />
+            <Route path="/admin-orders" element={<AdminOrders />} />
+            <Route path="/user-details" element={<UserDetails />} />
+            <Route path="/admin/orders/:orderId" element={<OrderDetails />} />
+          </Route>
           <Route path="/profile" element={<Profile />} />
           <Route path="/track-order/:orderId" element={<TrackOrder />} />
         </Routes>

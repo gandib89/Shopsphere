@@ -37,6 +37,14 @@ export const authorizeSeller = (req, res, next) => {
   next();
 };
 
+// Admins have full oversight of the marketplace, so anything seller-scoped also allows admin.
+export const authorizeSellerOrAdmin = (req, res, next) => {
+  if (req.user.role !== "seller" && req.user.role !== "admin") {
+    return res.status(403).json({ code: "forbidden", message: "Sellers or admins only" });
+  }
+  next();
+};
+
 // Check if seller is verified before allowing product operations
 export const checkSellerVerification = async (req, res, next) => {
   try {

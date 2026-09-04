@@ -1,0 +1,75 @@
+import StorefrontView, { type StorefrontProduct } from '../components/StorefrontView';
+
+const products: StorefrontProduct[] = [
+  {
+    id: 'iphone-17-pro-max',
+    name: 'iPhone 17 Pro Max',
+    category: 'iPhone',
+    price: 234999,
+    rating: 4.9,
+    reviews: 86,
+    image: '/images/17pmorange.jpg',
+    imageBackground: 'white',
+    note: 'Available in 3 finishes',
+  },
+  {
+    id: 'macbook-air-m4',
+    name: 'MacBook Air M4',
+    category: 'MacBook',
+    price: 164500,
+    rating: 4.8,
+    reviews: 42,
+    image: '/images/macairmidnight.jpg',
+    imageBackground: 'white',
+    imageFit: 'cover',
+    note: '13-inch · 16GB memory',
+  },
+  {
+    id: 'apple-watch',
+    name: 'Apple Watch Series 10',
+    category: 'Apple Watch',
+    price: 56900,
+    rating: 4.7,
+    reviews: 31,
+    image: '/images/ux-demo/apple-watch-dark.webp',
+    imageBackground: 'dark',
+    note: 'GPS · 46mm aluminium',
+  },
+  {
+    id: 'charging-dock',
+    name: '3-in-1 MagSafe charger',
+    category: 'Accessories',
+    price: 12500,
+    rating: 4.6,
+    reviews: 19,
+    image: '/images/ux-demo/charger-dark.webp',
+    imageBackground: 'dark',
+    note: 'Phone, watch and earbuds',
+  },
+  {
+    id: 'mac-mini-m4',
+    name: 'Mac mini M4',
+    category: 'Mac mini',
+    price: 104500,
+    rating: 4.9,
+    reviews: 27,
+    image: '/images/ux-demo/mac-mini-dark.webp',
+    imageBackground: 'dark',
+    note: '16GB unified memory · 256GB',
+  },
+  {
+    id: 'magic-keyboard',
+    name: 'Magic Keyboard with Touch ID',
+    category: 'Accessories',
+    price: 24500,
+    rating: 4.7,
+    reviews: 22,
+    image: '/images/ux-demo/magic-keyboard-dark.webp',
+    imageBackground: 'dark',
+    note: 'USB-C · US English',
+  },
+];
+
+export default function StorefrontDemo() {
+  return <StorefrontView products={products} />;
+}

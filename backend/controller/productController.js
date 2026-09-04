@@ -599,7 +599,19 @@ export const getProductRecommendations = async (req, res) => {
       console.warn("Recommendation map not available, using fallback only:", error.message);
     }
 
-    const aprioriCandidates = resolveRecommendationCandidates(product.name, recommendationMap);
+    // Name first. A product the model has never seen — anything a seller uploaded
+    // after the last retrain — falls back to the rules learned for its store
+    // category, which the dataset carries alongside the product rows.
+    let aprioriCandidates = resolveRecommendationCandidates(product.name, recommendationMap);
+    if (aprioriCandidates.length === 0) {
+      aprioriCandidates = resolveRecommendationCandidates(product.category, recommendationMap);
+    }
+    // Rules can point at a whole category; recommending the source product's own
+    // category back to itself would just surface near-duplicates.
+    const normalizedSourceCategory = normalizeRecommendationKey(product.category);
+    aprioriCandidates = aprioriCandidates.filter(
+      (candidate) => normalizeRecommendationKey(candidate.item) !== normalizedSourceCategory
+    );
     const aprioriNames = aprioriCandidates.map((candidate) => candidate.item);
 
     if (aprioriNames.length > 0) {
@@ -619,8 +631,12 @@ export const getProductRecommendations = async (req, res) => {
           if (matchedDbIds.has(dbProduct.id)) continue;
           const normalizedDbName = normalizeRecommendationKey(dbProduct.name);
 
-          // Exact normalized match
-          if (normalizedDbName === normalizedCandidateName) {
+          // Exact normalized match, or a category-level rule ("Accessories"),
+          // which any product in that category satisfies.
+          if (
+            normalizedDbName === normalizedCandidateName ||
+            normalizeRecommendationKey(dbProduct.category) === normalizedCandidateName
+          ) {
             matchedDbIds.add(dbProduct.id);
             matchedProducts.push({
               ...dbProduct,
@@ -729,7 +745,7 @@ export const retrainProductRecommendations = async (req, res) => {
       : 0.005;
     const minConfidence = Number.isFinite(requestedMinConfidence) && requestedMinConfidence > 0 && requestedMinConfidence <= 1
       ? requestedMinConfidence
-      : 0.25;
+      : 0.15;
     const topK = Number.isFinite(requestedTopK) && requestedTopK >= 1 && requestedTopK <= 20
       ? Math.floor(requestedTopK)
       : 10;
@@ -738,7 +754,7 @@ export const retrainProductRecommendations = async (req, res) => {
     const scriptPath = path.resolve(recommendationDir, "train_apriori.py");
     const datasetPath = path.resolve(
       recommendationDir,
-      "data/Final_Apple_Apriori_Dataset.csv"
+      "data/shopsphere_market_basket.csv"
     );
     const outputDir = path.resolve(recommendationDir, "output");
 

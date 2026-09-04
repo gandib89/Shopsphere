@@ -186,7 +186,10 @@ export const ensureDemoData = async (prisma) => {
   }
   const seedTransaction = async () => prisma.$transaction(async (database) => {
     const existingUsers = await Promise.all(
-      demoUsers.map((user) => database.user.findUnique({ where: { email: user.email } })),
+      demoUsers.map(async (user) => (
+        (await database.user.findUnique({ where: { id: user.id } }))
+        ?? database.user.findUnique({ where: { email: user.email } })
+      )),
     );
     const usersToCreate = demoUsers.filter((_, index) => !existingUsers[index]);
     const password = usersToCreate.length ? await bcrypt.hash(demoPassword, 12) : null;

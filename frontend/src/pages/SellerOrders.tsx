@@ -403,6 +403,11 @@ function SellerOrders() {
                           <RotateCcw className="w-4 h-4" /> Customer requested a return — admin will review this request.
                         </p>
                       )}
+                      {order.status === 'Pending' && (
+                        <p className="text-ink-muted text-sm font-semibold mb-2 flex items-center gap-2">
+                          <Clock className="w-4 h-4" /> Awaiting payment confirmation — delivery status can be advanced once the customer's payment is verified.
+                        </p>
+                      )}
                       {!['Return Approved', 'Return Rejected', 'Refund Released', 'Cancelled'].includes(order.status) && (
                         <>
                           <button

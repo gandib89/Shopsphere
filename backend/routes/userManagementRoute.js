@@ -9,11 +9,16 @@ import {
 } from "../controller/userManagement.js";
 import { verifyToken } from "../middlewares/authMiddleware.js";
 import { authorizeAdmin } from "../controller/auth.js";
+import { listAdminSellers, getAdminSeller } from '../controller/adminSellers.js';
 
 const userManagementRouter = express.Router();
 
 // All routes require admin authentication
 userManagementRouter.use(verifyToken, authorizeAdmin);
+
+// Read-only seller directory and profiles, behind the same admin authorization.
+userManagementRouter.get('/sellers', (req, res) => listAdminSellers(req, res));
+userManagementRouter.get('/sellers/:sellerId', (req, res) => getAdminSeller(req, res));
 
 // Get all users and sellers
 userManagementRouter.get("/all", getAllUsersAndSellers);

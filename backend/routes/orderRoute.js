@@ -2,7 +2,7 @@ import express from "express";
 import multer from "multer";
 import path from "path";
 import crypto from "crypto";
-import { isAuthenticated, verifyToken, authorizeSeller, authorizeAdmin } from "../middlewares/authMiddleware.js";
+import { isAuthenticated, verifyToken, authorizeSeller, authorizeAdmin, authorizeSellerOrAdmin } from "../middlewares/authMiddleware.js";
 import {
   getAllOrder, 
   createOrder, 
@@ -68,7 +68,7 @@ orderRouter.delete("/user/delete/:id", isAuthenticated, userDeleteOrder);
 
 // Seller-specific routes
 orderRouter.get("/seller/my-orders", verifyToken, authorizeSeller, getSellerOrders);
-orderRouter.put("/seller/update-status/:orderId", verifyToken, authorizeSeller, updateSellerOrderStatus);
+orderRouter.put("/seller/update-status/:orderId", verifyToken, authorizeSellerOrAdmin, updateSellerOrderStatus);
 
 // Bill routes
 orderRouter.get("/bill/:orderId", verifyToken, generateBill);

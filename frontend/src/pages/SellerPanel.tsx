@@ -8,6 +8,7 @@ import NavBar from '../components/NavBar';
 import { ActionList, type ActionItem } from '../components/operations/ActionList';
 import { PageHeader } from '../components/operations/PageHeader';
 import { LoadingState } from '../components/ui/AsyncState';
+import { Money } from '../components/catalog/Money';
 
 interface Product {
   _id: string;
@@ -223,60 +224,65 @@ function SellerPanel() {
             {products.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {products.slice(0, 3).map((product) => (
-                  <article key={product._id} className="rounded-[var(--radius-surface)] border border-hairline p-4 transition-colors hover:border-brass/50">
-                    <img
-                      src={getImageUrl(product.images?.[0])}
-                      alt={product.name}
-                      className="mb-3 aspect-[4/3] w-full rounded-[var(--radius-control)] border border-hairline object-cover"
-                    />
-                    <h3 className="font-semibold text-ink mb-1">{product.name}</h3>
-                    <p className="text-sm text-ink-muted mb-2">{product.category}</p>
-                    <div className="flex justify-between items-center mb-3">
-                      <p className="text-lg font-bold text-ink font-mono tabular-nums">Rs. {product.price.toLocaleString()}</p>
-                      <p className="text-sm text-ink-muted font-mono tabular-nums">{product.quantity} total</p>
+                  <article key={product._id} className="group flex h-full flex-col overflow-hidden rounded-[var(--radius-surface)] border border-hairline bg-paper-raised transition-colors hover:border-ink-muted/45">
+                    <div className="relative aspect-[4/3] w-full overflow-hidden bg-paper">
+                      <img
+                        src={getImageUrl(product.images?.[0])}
+                        alt={product.name}
+                        loading="lazy"
+                        className="h-full w-full object-cover transition-transform duration-200 ease-out-strong group-hover:scale-[1.025]"
+                      />
                     </div>
-
-                    {/* Color Variants Stock */}
-                    {product.colorVariants && product.colorVariants.length > 0 && (
-                      <div className="mb-3 pb-3 border-t border-hairline pt-2">
-                        <p className="text-xs text-ink-muted mb-1">Stock by Color:</p>
-                        <div className="flex flex-wrap gap-1">
-                          {product.colorVariants.map((cv, idx) => (
-                            <span key={idx} className="text-xs border border-hairline px-2 py-1 font-mono tabular-nums text-ink-muted">
-                              {cv.color}: {cv.stock}
-                            </span>
-                          ))}
-                        </div>
+                    <div className="flex flex-1 flex-col p-4">
+                      <p className="text-xs font-medium text-ink-muted">{product.category}</p>
+                      <h3 className="mt-1 line-clamp-2 text-base font-semibold leading-snug tracking-tight text-ink">{product.name}</h3>
+                      <div className="mt-2 flex items-center justify-between">
+                        <Money amount={product.price} />
+                        <p className="text-sm text-ink-muted font-mono tabular-nums">{product.quantity} total</p>
                       </div>
-                    )}
 
-                    {/* Storage Variants Stock */}
-                    {product.storageVariants && product.storageVariants.length > 0 && (
-                      <div className="mb-3 pb-3 border-t border-hairline pt-2">
-                        <p className="text-xs text-ink-muted mb-1">Stock by Storage:</p>
-                        <div className="flex flex-wrap gap-1">
-                          {product.storageVariants.map((sv, idx) => (
-                            <span key={idx} className="text-xs border border-hairline px-2 py-1 font-mono tabular-nums text-ink-muted">
-                              {sv.storage}: {sv.stock}
-                            </span>
-                          ))}
+                      {/* Color Variants Stock */}
+                      {product.colorVariants && product.colorVariants.length > 0 && (
+                        <div className="mt-3 border-t border-hairline pt-2">
+                          <p className="text-xs text-ink-muted mb-1">Stock by Color:</p>
+                          <div className="flex flex-wrap gap-1">
+                            {product.colorVariants.map((cv, idx) => (
+                              <span key={idx} className="text-xs border border-hairline px-2 py-1 font-mono tabular-nums text-ink-muted">
+                                {cv.color}: {cv.stock}
+                              </span>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
 
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => navigate(`/seller-products/${product._id}`)}
-                        className="flex-1 p-2 border border-ink text-ink hover:bg-ink hover:text-paper active:scale-[0.98] transition text-sm font-semibold flex items-center justify-center gap-1"
-                      >
-                        <Eye className="w-4 h-4" /> View / Edit
-                      </button>
-                      <button
-                        onClick={() => handleDeleteProduct(product._id)}
-                        className="flex-1 p-2 border border-seal text-seal hover:bg-seal/5 active:scale-[0.98] transition text-sm font-semibold flex items-center justify-center gap-1"
-                      >
-                        <Trash2 className="w-4 h-4" /> Delete
-                      </button>
+                      {/* Storage Variants Stock */}
+                      {product.storageVariants && product.storageVariants.length > 0 && (
+                        <div className="mt-3 border-t border-hairline pt-2">
+                          <p className="text-xs text-ink-muted mb-1">Stock by Storage:</p>
+                          <div className="flex flex-wrap gap-1">
+                            {product.storageVariants.map((sv, idx) => (
+                              <span key={idx} className="text-xs border border-hairline px-2 py-1 font-mono tabular-nums text-ink-muted">
+                                {sv.storage}: {sv.stock}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="mt-auto flex gap-2 pt-4">
+                        <button
+                          onClick={() => navigate(`/seller-products/${product._id}`)}
+                          className="flex-1 p-2 border border-ink text-ink hover:bg-ink hover:text-paper active:scale-[0.98] transition text-sm font-semibold flex items-center justify-center gap-1"
+                        >
+                          <Eye className="w-4 h-4" /> View / Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteProduct(product._id)}
+                          className="flex-1 p-2 border border-seal text-seal hover:bg-seal/5 active:scale-[0.98] transition text-sm font-semibold flex items-center justify-center gap-1"
+                        >
+                          <Trash2 className="w-4 h-4" /> Delete
+                        </button>
+                      </div>
                     </div>
                   </article>
                 ))}

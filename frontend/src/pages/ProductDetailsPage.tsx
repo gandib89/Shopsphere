@@ -896,7 +896,7 @@ function ProductDetailsPage() {
                   <button
                     onClick={handleAddToCart}
                     disabled={isSeller || isAdmin || !product?.quantity || submitting}
-                    className="flex-1 rounded-[var(--radius-control)] border border-ink py-3.5 text-sm font-semibold text-ink transition hover:bg-ink hover:text-paper disabled:cursor-not-allowed disabled:border-hairline disabled:text-ink-muted/50 disabled:hover:bg-transparent disabled:hover:text-ink-muted/50"
+                    className="flex flex-1 items-center justify-center gap-2 rounded-[var(--radius-control)] border border-ink py-3.5 text-sm font-semibold text-ink transition hover:bg-ink hover:text-paper disabled:cursor-not-allowed disabled:border-hairline disabled:text-ink-muted/50 disabled:hover:bg-transparent disabled:hover:text-ink-muted/50"
                   >
                     <ShoppingCart className="w-5 h-5" />
                     Add to Cart
@@ -1146,7 +1146,7 @@ function ProductDetailsPage() {
               )}
 
               {/* ── Reviews ──────────────────────────── */}
-              <div className="bg-paper-raised border border-hairline p-4 sm:p-7">
+              <div className="rounded-[var(--radius-surface)] bg-paper-raised border border-hairline p-4 sm:p-7">
                 <div className="flex items-center justify-between mb-5">
                   <h2 className="text-lg font-bold text-ink">Customer Reviews</h2>
                   <button

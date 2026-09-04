@@ -1,167 +1,69 @@
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { Package, ClipboardList, RefreshCw, CheckCircle, Users, BarChart2, Tag } from "lucide-react";
-import axios from "axios";
-import NavBar from "../components/NavBar";
-import { Button } from "../components/ui/Button";
-import { ActionList, type ActionItem } from "../components/operations/ActionList";
-import { PageHeader } from "../components/operations/PageHeader";
+import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { ArrowRight, ClipboardList, RefreshCw, RotateCcw, Store, Tag, Users, Package } from 'lucide-react';
+import { AdminHeading, OrderStatus } from '../components/admin/AdminUi';
+import { activeOrder, adminDate, adminMoney, getAdminCollection, type AdminOrder } from '../lib/adminData';
 
-const AdminPanel = () => {
-  const navigate = useNavigate();
-  const [productCount, setProductCount] = useState(0);
-  const [orderCount, setOrderCount] = useState(0);
-  const [pendingOrderCount, setPendingOrderCount] = useState(0);
-  const [promoCodeCount, setPromoCodeCount] = useState(0);
+type Seller = { _id: string; shopName?: string };
+export default function AdminPanel() {
+  const [orders, setOrders] = useState<AdminOrder[] | null>(null);
+  const [sellers, setSellers] = useState<Seller[] | null>(null);
   const [loading, setLoading] = useState(true);
-  const token = localStorage.getItem("token");
+  const [error, setError] = useState('');
+  const [period, setPeriod] = useState('30');
+  const load = useCallback(async (signal?: AbortSignal) => {
+    setLoading(true); setError('');
+    const results = await Promise.allSettled([
+      getAdminCollection<AdminOrder>('/api/v1/order/getOrder', signal),
+      getAdminCollection<Seller>('/api/v1/auth/unverified-sellers', signal),
+    ]);
+    if (signal?.aborted) return;
+    setOrders(results[0].status === 'fulfilled' ? results[0].value : null);
+    setSellers(results[1].status === 'fulfilled' ? results[1].value : null);
+    if (results.some(result => result.status === 'rejected')) setError('Some store information could not be loaded. Refresh to try again.');
+    setLoading(false);
+  }, []);
+  useEffect(() => { const controller = new AbortController(); void load(controller.signal); return () => controller.abort(); }, [load]);
 
-  useEffect(() => {
-    if (!token || localStorage.getItem('isAdmin') !== 'true') {
-      window.location.hash = '/auth';
-      return;
-    }
+  const since = Date.now() - Number(period) * 86400000;
+  const filtered = (orders || []).filter(order => period === 'all' || (order.createdAt && new Date(order.createdAt).getTime() >= since));
+  const pending = orders?.filter(activeOrder).length;
+  const returns = orders?.filter(order => ['Return Requested', 'Return Approved'].includes(order.status)).length;
+  const value = filtered.filter(order => !['Cancelled', 'Refund Released'].includes(order.status)).reduce((sum, order) => sum + Number(order.totalPrice), 0);
+  const recent = [...(orders || [])].sort((a,b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()).slice(0, 6);
+  const available = !loading && orders !== null;
 
-    fetchAdminData();
-  }, [token]);
-
-  const fetchAdminData = async () => {
-    try {
-      // Fetch products
-      try {
-        const productsRes = await axios.get(
-          `${import.meta.env.VITE_BACKEND_URL}/api/v1/product/get`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
-        const productCount = Array.isArray(productsRes.data) ? productsRes.data.length : 0;
-        setProductCount(productCount);
-      } catch (err: any) {
-        console.error('Products error:', err?.response?.status, err?.message);
-      }
-
-      // Fetch orders
-      try {
-        const ordersRes = await axios.get(
-          `${import.meta.env.VITE_BACKEND_URL}/api/v1/order/getOrder`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
-        const ordersArray = Array.isArray(ordersRes.data) ? ordersRes.data : (ordersRes.data?.data || []);
-        const orderCount = ordersArray.length || 0;
-        setOrderCount(orderCount);
-
-        const pending = ordersArray.filter((o: any) => {
-          const status = (o?.status || "").toLowerCase();
-          return status !== "delivered" && status !== "cancelled";
-        }).length;
-        setPendingOrderCount(pending);
-      } catch (err: any) {
-        console.error('Orders error:', err?.response?.status, err?.message);
-      }
-
-      // Fetch promo codes (non-critical)
-      try {
-        const promoRes = await axios.get(
-          `${import.meta.env.VITE_BACKEND_URL}/api/v1/promo/all`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
-        const promoCount = promoRes.data.promoCodes?.length || 0;
-        setPromoCodeCount(promoCount);
-      } catch (err: any) {
-        console.warn('Promo codes unavailable:', err?.message);
-      }
-    } catch (err) {
-      console.error('Unexpected error:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const panelCards: ActionItem[] = [
-    {
-      key: 'all-products',
-      icon: <Package className="w-6 h-6" />,
-      title: 'All Products',
-      description: 'Manage and view all products',
-      onSelect: () => navigate('/all-products'),
-      count: productCount,
-    },
-    {
-      key: 'orders',
-      icon: <ClipboardList className="w-6 h-6" />,
-      title: 'All Orders',
-      description: pendingOrderCount > 0 ? `View and manage customer orders — ${pendingOrderCount} pending` : 'View and manage customer orders',
-      onSelect: () => navigate('/admin-orders'),
-      count: orderCount,
-    },
-    {
-      key: 'seller-approvals',
-      icon: <CheckCircle className="w-6 h-6" />,
-      title: 'Seller Approvals',
-      description: 'Verify and approve new sellers',
-      onSelect: () => navigate('/admin/seller-approvals'),
-    },
-    {
-      key: 'promo-codes',
-      icon: <Tag className="w-6 h-6" />,
-      title: 'Promo Codes',
-      description: 'Create and manage discount codes',
-      onSelect: () => navigate('/admin/promo-codes'),
-      count: promoCodeCount,
-    },
-    {
-      key: 'revenue',
-      icon: <BarChart2 className="w-6 h-6" />,
-      title: 'Revenue Dashboard',
-      description: 'View platform revenue and analytics',
-      onSelect: () => navigate('/admin/revenue'),
-    },
-    {
-      key: 'users',
-      icon: <Users className="w-6 h-6" />,
-      title: 'User Management',
-      description: 'Manage users, sellers, and admins',
-      onSelect: () => navigate('/admin/users'),
-    },
-  ];
-
-  return (
-    <>
-      <NavBar />
-      <main className="min-h-screen bg-paper">
-        <PageHeader
-          eyebrow="Administration"
-          title="Marketplace operations"
-          description="Products, orders, seller access, promotions, and platform reporting in one place."
-          action={(
-            <Button variant="secondary" onClick={fetchAdminData} loading={loading}>
-              <RefreshCw className="h-4 w-4" aria-hidden="true" />
-              Refresh data
-            </Button>
-          )}
-        />
-        <div className="container-operate py-7 sm:py-10">
-          <div className="mb-4 flex items-center justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-semibold text-ink">Workspaces</h2>
-              <p className="mt-1 text-sm text-ink-muted">Choose the area you want to manage.</p>
-            </div>
-            {pendingOrderCount > 0 && (
-              <p className="rounded-full bg-brass/10 px-3 py-1 text-sm font-medium text-brass">
-                {pendingOrderCount} orders need attention
-              </p>
-            )}
-          </div>
-          <ActionList label="Admin workspaces" items={panelCards} />
-        </div>
-      </main>
-    </>
-  );
-};
-
-export default AdminPanel;
+  return <main>
+    <AdminHeading title="Home" description="Your store at a glance. Start with what needs your attention.">
+      <button className="admin-button" onClick={() => void load()} disabled={loading}><RefreshCw size={14} aria-hidden="true" />{loading ? 'Refreshing…' : 'Refresh'}</button>
+      <Link className="admin-button admin-button--primary" to="/admin/orders">Manage orders<ArrowRight size={14} aria-hidden="true" /></Link>
+    </AdminHeading>
+    {error && <p className="admin-notice" role="alert">{error}</p>}
+    <section className="admin-panel" aria-labelledby="performance-title">
+      <div className="admin-panel-head"><div><h2 id="performance-title">Store performance</h2><p>Order activity for your selected period</p></div><label className="admin-filters">Date range <select aria-label="Performance date range" value={period} onChange={event => setPeriod(event.target.value)}><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="all">All time</option></select></label></div>
+      <div className="admin-stats" aria-busy={loading}>
+        <div className="admin-stat"><span>Orders placed</span><strong>{available ? filtered.length : '—'}</strong><small>Based on the order creation date</small></div>
+        <div className="admin-stat"><span>Order value</span><strong>{available ? adminMoney(value) : '—'}</strong><small>Excludes cancelled and refunded orders; not settled revenue</small></div>
+        <div className="admin-stat"><span>Delivered orders</span><strong>{available ? filtered.filter(order => order.status === 'Delivered').length : '—'}</strong><small><Link className="admin-text-link" to="/admin/revenue">View revenue & commissions →</Link></small></div>
+      </div>
+    </section>
+    <div className="admin-home-columns">
+      <section className="admin-panel" aria-labelledby="tasks-title">
+        <div className="admin-panel-head"><div><h2 id="tasks-title">Things to do</h2><p>Open work across your marketplace · all time</p></div></div>
+        <Link className="admin-task" to="/admin/orders?status=active"><ClipboardList size={19} aria-hidden="true" /><div><strong>Fulfil customer orders</strong><p>Review pending, processing, and shipped orders.</p></div><span>{loading ? '—' : pending ?? '—'}</span><ArrowRight size={14} aria-hidden="true" /></Link>
+        <Link className="admin-task" to="/admin/seller-approvals"><Store size={19} aria-hidden="true" /><div><strong>Review seller applications</strong><p>Check shops before approving marketplace access.</p></div><span>{loading ? '—' : sellers?.length ?? '—'}</span><ArrowRight size={14} aria-hidden="true" /></Link>
+        <Link className="admin-task" to="/admin/orders?status=returns"><RotateCcw size={19} aria-hidden="true" /><div><strong>Review returns & refunds</strong><p>Resolve return requests and approved refunds.</p></div><span>{loading ? '—' : returns ?? '—'}</span><ArrowRight size={14} aria-hidden="true" /></Link>
+      </section>
+      <section className="admin-panel" aria-labelledby="shortcuts-title">
+        <div className="admin-panel-head"><h2 id="shortcuts-title">Store management</h2></div>
+        <Link className="admin-task" to="/all-products"><Package size={19} aria-hidden="true" /><div><strong>Manage your catalogue</strong><p>Review listings, stock, and prices.</p></div><ArrowRight size={14} aria-hidden="true" /></Link>
+        <Link className="admin-task" to="/admin/promo-codes"><Tag size={19} aria-hidden="true" /><div><strong>Create a promotion</strong><p>Manage your existing coupon tools.</p></div><ArrowRight size={14} aria-hidden="true" /></Link>
+        <Link className="admin-task" to="/admin/users"><Users size={19} aria-hidden="true" /><div><strong>Customers & users</strong><p>Find accounts and manage access.</p></div><ArrowRight size={14} aria-hidden="true" /></Link>
+      </section>
+    </div>
+    <section className="admin-panel" aria-labelledby="recent-title"><div className="admin-panel-head"><h2 id="recent-title">Recent orders</h2><Link className="admin-text-link" to="/admin/orders">View all orders →</Link></div>
+      {loading ? <p className="admin-empty" role="status">Loading orders…</p> : orders === null ? <p className="admin-empty">Orders are unavailable. Use Refresh to try again.</p> : recent.length === 0 ? <p className="admin-empty">New customer orders will appear here.</p> :
+        <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th scope="col">Order / customer</th><th scope="col">Date</th><th scope="col">Status</th><th scope="col">Total</th></tr></thead><tbody>{recent.map(order => <tr key={order._id}><td><Link className="admin-text-link" to={'/admin/orders/' + order._id}>#{order._id.slice(-8)} · {order.firstName} {order.lastName}</Link><small>{order.product?.name || 'Product'}</small></td><td>{adminDate(order.createdAt)}</td><td><OrderStatus status={order.status} /></td><td className="admin-numeric">{adminMoney(order.totalPrice)}</td></tr>)}</tbody></table></div>}
+    </section>
+  </main>;
+}

@@ -1,10 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { Mail, Lock, Store, ArrowLeft, ShoppingBag } from 'lucide-react';
-import { GoogleLogin } from '@react-oauth/google';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { ArrowRight } from 'lucide-react';
+import axios from 'axios';
+import { AuthShell } from '../components/auth/AuthShell';
+import { AuthField, PasswordField, DemoAccess } from '../components/auth/AuthFields';
+import { GoogleLogin, type CredentialResponse } from '@react-oauth/google';
 import { login, register, googleLogin } from '../lib/session';
-
-const isDemo = import.meta.env.VITE_DEMO_MODE !== 'false';
 
 const UserAuth = () => {
   const navigate = useNavigate();
@@ -22,16 +23,18 @@ const UserAuth = () => {
   const [shopDescription, setShopDescription] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState('');
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setSuccess('');
     setLoading(true);
     try {
       const user = await login(email, password);
       navigate(user.seller ? '/seller-panel' : '/');
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Login failed');
+    } catch (err: unknown) {
+      setError((axios.isAxiosError(err) ? err.response?.data?.message : null) || 'Login failed');
     } finally {
       setLoading(false);
     }
@@ -59,26 +62,25 @@ const UserAuth = () => {
       setFirstName(''); setLastName(''); setPhone('');
       setShopName(''); setShopDescription('');
       setIsSignUp(false);
-      if (isSeller) {
-        alert('✅ Account created successfully!\n\n⏳ Your seller account is pending admin approval.\n\nPlease sign in to continue once approved.');
-      } else {
-        alert('✅ Account created successfully!\n\nPlease log in to continue.');
-      }
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Sign up failed');
+      setSuccess(isSeller
+        ? 'Account created. Your seller account is awaiting approval. Sign in once approved to continue.'
+        : 'Your account is ready. Sign in to start shopping.');
+    } catch (err: unknown) {
+      setError((axios.isAxiosError(err) ? err.response?.data?.message : null) || 'Sign up failed');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleGoogleSuccess = async (credentialResponse: any) => {
+  const handleGoogleSuccess = async (credentialResponse: CredentialResponse) => {
     setError('');
     setLoading(true);
     try {
+      if (!credentialResponse.credential) throw new Error('Missing Google credential');
       await googleLogin(credentialResponse.credential);
       navigate('/');
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Google Sign-In failed');
+    } catch (err: unknown) {
+      setError((axios.isAxiosError(err) ? err.response?.data?.message : null) || 'Google Sign-In failed');
     } finally {
       setLoading(false);
     }
@@ -89,224 +91,43 @@ const UserAuth = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-paper">
-      <div className="w-full max-w-md">
-        {/* Back Button */}
-        <button
-          onClick={() => navigate('/auth-landing')}
-          className="flex items-center gap-2 text-ink-muted hover:text-brass mb-6 transition"
-        >
-          <ArrowLeft className="w-5 h-5" />
-          Back to Role Selection
-        </button>
-
-        {/* Card */}
-        <div className="bg-paper-raised border border-hairline overflow-hidden">
-          {/* Header */}
-          <div className="bg-ink p-6 sm:p-8 text-paper border-b border-brass/40">
-            <div className="flex items-center gap-3 mb-3">
-              {isSeller ? <Store className="w-8 h-8 text-brass" /> : <ShoppingBag className="w-8 h-8 text-brass" />}
-              <h1 className="text-2xl sm:text-3xl font-bold">
-                {isSignUp ? 'Create Account' : 'Welcome Back'}
-              </h1>
+    <AuthShell backTo="/auth" backLabel="Account options">
+      <p className="auth-kicker">{isSeller ? 'Seller account' : 'Customer account'}</p>
+      <h1 id="auth-title">{isSignUp ? (isSeller ? 'Your shop starts here.' : 'Make it yours.') : 'Welcome back.'}</h1>
+      <p className="auth-intro">{isSignUp
+        ? (isSeller ? 'Create your seller account. We’ll review your shop before you start selling.' : 'Create an account to keep your purchases and order updates in one place.')
+        : (isSeller ? 'Sign in to manage your products, inventory, and orders.' : 'Sign in to pick up where you left off.')}</p>
+      {error && <p role="alert" className="auth-notice auth-notice--error">{error}</p>}
+      {success && <p role="status" className="auth-notice auth-notice--success">{success}</p>}
+      <form className="auth-form" onSubmit={isSignUp ? handleSignUp : handleSignIn} aria-busy={loading}>
+        <fieldset disabled={loading}>
+          <legend className="sr-only">{isSignUp ? 'Create account details' : 'Sign-in details'}</legend>
+          {isSignUp && <>
+            <div className="auth-name-row">
+              <AuthField id="first-name" name="given-name" label="First name" autoComplete="given-name" value={firstName} onChange={e => setFirstName(e.target.value)} required placeholder="First name" />
+              <AuthField id="last-name" name="family-name" label="Last name" autoComplete="family-name" value={lastName} onChange={e => setLastName(e.target.value)} required placeholder="Last name" />
             </div>
-            <p className="text-paper/60 text-sm">
-              {isSeller ? 'Seller Account' : 'Customer Account'}
-            </p>
-          </div>
-
-          {/* Content */}
-          <div className="p-5 sm:p-8">
-            {isDemo && !isSignUp && (
-              <div className="mb-4 p-4 border border-hairline text-sm">
-                <p className="font-semibold text-ink">Demo credentials</p>
-                <p className="mt-1 font-mono text-ink-muted">
-                  {isSeller ? 'seller1@shopsphere.test' : 'customer1@shopsphere.test'} / ShopSphereDemo!2026
-                </p>
-              </div>
-            )}
-            {error && (
-              <div className="mb-4 p-4 border border-seal/40 bg-seal/5 text-seal text-sm">
-                {error}
-              </div>
-            )}
-
-            <form onSubmit={isSignUp ? handleSignUp : handleSignIn}>
-              {/* Name Fields (Sign Up Only) */}
-              {isSignUp && (
-                <>
-                  <div className="mb-4 grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-ink font-semibold mb-2 text-sm">First Name</label>
-                      <input
-                        type="text"
-                        value={firstName}
-                        onChange={(e) => setFirstName(e.target.value)}
-                        required
-                        className="w-full px-4 py-3 border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition text-sm"
-                        placeholder="Ram"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-ink font-semibold mb-2 text-sm">Last Name</label>
-                      <input
-                        type="text"
-                        value={lastName}
-                        onChange={(e) => setLastName(e.target.value)}
-                        required
-                        className="w-full px-4 py-3 border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition text-sm"
-                        placeholder="Thapa"
-                      />
-                    </div>
-                  </div>
-                  <div className="mb-4">
-                    <label className="block text-ink font-semibold mb-2 text-sm">Phone Number</label>
-                    <input
-                      type="tel"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      className="w-full px-4 py-3 border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition text-sm"
-                      placeholder="+977 9800000000"
-                    />
-                  </div>
-                </>
-              )}
-
-              {/* Email */}
-              <div className="mb-4">
-                <label className="block text-ink font-semibold mb-2 text-sm">Email Address</label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-3.5 w-5 h-5 text-ink-muted" />
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    className="w-full pl-10 pr-4 py-3 border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition text-sm"
-                    placeholder="you@example.com"
-                    autoComplete="email"
-                  />
-                </div>
-              </div>
-
-              {/* Shop Name (Seller Sign Up Only) */}
-              {isSignUp && isSeller && (
-                <div className="mb-4">
-                  <label className="block text-ink font-semibold mb-2 text-sm">Shop Name</label>
-                  <input
-                    type="text"
-                    value={shopName}
-                    onChange={(e) => setShopName(e.target.value)}
-                    required
-                    className="w-full px-4 py-3 border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition text-sm"
-                    placeholder="Your Shop Name"
-                  />
-                </div>
-              )}
-
-              {/* Shop Description (Seller Sign Up Only) */}
-              {isSignUp && isSeller && (
-                <div className="mb-4">
-                  <label className="block text-ink font-semibold mb-2 text-sm">Shop Description</label>
-                  <textarea
-                    value={shopDescription}
-                    onChange={(e) => setShopDescription(e.target.value)}
-                    className="w-full px-4 py-3 border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition text-sm"
-                    placeholder="Tell us about your shop..."
-                    rows={3}
-                  />
-                </div>
-              )}
-
-              {/* Password */}
-              <div className="mb-4">
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-ink font-semibold text-sm">Password</label>
-                  {!isSignUp && (
-                    <button
-                      type="button"
-                      onClick={() => navigate('/forgot-password')}
-                      className="text-brass hover:text-brass-dark transition text-xs font-semibold"
-                    >
-                      Forgot password?
-                    </button>
-                  )}
-                </div>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-3.5 w-5 h-5 text-ink-muted" />
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    className="w-full pl-10 pr-4 py-3 border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition text-sm"
-                    placeholder="••••••••"
-                    autoComplete={isSignUp ? 'new-password' : 'current-password'}
-                  />
-                </div>
-              </div>
-
-              {/* Confirm Password (Sign Up Only) */}
-              {isSignUp && (
-                <div className="mb-6">
-                  <label className="block text-ink font-semibold mb-2 text-sm">Confirm Password</label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-3.5 w-5 h-5 text-ink-muted" />
-                    <input
-                      type="password"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      required
-                      className="w-full pl-10 pr-4 py-3 border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition text-sm"
-                      placeholder="••••••••"
-                      autoComplete="new-password"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Submit */}
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-3 font-semibold text-white bg-brass hover:bg-brass-dark active:scale-[0.97] transition disabled:opacity-50 disabled:active:scale-100"
-              >
-                {loading ? 'Loading...' : isSignUp ? 'Create Account' : 'Sign In'}
-              </button>
-
-              {/* Google Sign-In (Customer Sign In Only) */}
-              {!isSignUp && !isSeller && (
-                <>
-                  <div className="relative my-6">
-                    <div className="absolute inset-0 flex items-center">
-                      <div className="w-full border-t border-hairline"></div>
-                    </div>
-                    <div className="relative flex justify-center text-sm">
-                      <span className="px-2 bg-paper-raised text-ink-muted">Or continue with</span>
-                    </div>
-                  </div>
-                  <div className="flex justify-center">
-                    <GoogleLogin onSuccess={handleGoogleSuccess} onError={handleGoogleError} theme="outline" size="large" />
-                  </div>
-                </>
-              )}
-            </form>
-
-            {/* Toggle Sign In/Up */}
-            <p className="text-center text-ink-muted mt-6 text-sm">
-              {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
-              <button
-                type="button"
-                onClick={() => { setIsSignUp(!isSignUp); setError(''); }}
-                className="text-brass hover:text-brass-dark transition font-semibold"
-              >
-                {isSignUp ? 'Sign In' : 'Sign Up'}
-              </button>
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
+            <AuthField id="phone" name="tel" label="Phone number (optional)" type="tel" autoComplete="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+977" />
+          </>}
+          <AuthField id="email" name="email" label="Email address" type="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="you@example.com" />
+          {isSignUp && isSeller && <>
+            <AuthField id="shop-name" name="organization" label="Shop name" autoComplete="organization" value={shopName} onChange={e => setShopName(e.target.value)} required placeholder="Your shop name" />
+            <div className="auth-field"><div className="auth-label-row"><label htmlFor="shop-description">Shop description (optional)</label></div><textarea id="shop-description" name="shopDescription" value={shopDescription} onChange={e => setShopDescription(e.target.value)} rows={2} placeholder="What does your shop offer?" /></div>
+          </>}
+          <PasswordField id="password" name="password" value={password} onChange={e => setPassword(e.target.value)} required autoComplete={isSignUp ? 'new-password' : 'current-password'} placeholder={isSignUp ? 'Create a password' : 'Enter your password'} aside={!isSignUp && <Link className="auth-text-link" to="/forgot-password">Forgot password?</Link>} />
+          {isSignUp && <PasswordField id="confirm-password" name="confirmPassword" label="Confirm password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required autoComplete="new-password" placeholder="Enter your password again" />}
+          <button type="submit" className="auth-primary" disabled={loading}>{loading ? (isSignUp ? 'Creating account…' : 'Signing in…') : (isSignUp ? 'Create account' : 'Sign in')}<ArrowRight size={18} aria-hidden="true" /></button>
+        </fieldset>
+      </form>
+      {!isSignUp && !isSeller && <>
+        <div className="auth-divider">or continue with</div>
+        <div className="auth-google">{loading ? <p role="status">Signing in…</p> : <GoogleLogin onSuccess={handleGoogleSuccess} onError={handleGoogleError} theme="outline" size="large" />}</div>
+      </>}
+      <p className="auth-switch">{isSignUp ? 'Already have an account?' : 'New to ShopSphere?'}{' '}
+        <button type="button" className="auth-text-link" disabled={loading} onClick={() => { setIsSignUp(!isSignUp); setError(''); setSuccess(''); }}>{isSignUp ? 'Sign in' : 'Create an account'}</button>
+      </p>
+      {!isSignUp && <DemoAccess role={isSeller ? 'seller' : 'user'} onFill={(demoEmail, demoPassword) => { setEmail(demoEmail); setPassword(demoPassword); setError(''); }} />}
+    </AuthShell>
   );
 };
 

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { CheckCircle, XCircle, Clock, RefreshCw, Mail, Phone, Store } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -6,6 +7,7 @@ import NavBar from '../components/NavBar';
 
 interface Seller {
   _id: string;
+  id?: string;
   shopName: string;
   email: string;
   phone?: string;
@@ -44,7 +46,7 @@ const AdminSellerApproval = () => {
       );
       // Handle both array and object with sellers property
       const sellersList = Array.isArray(response.data) ? response.data : (response.data.sellers || []);
-      setSellers(sellersList);
+      setSellers(sellersList.map((seller: Seller) => ({ ...seller, _id: seller._id || seller.id || '' })));
     } catch (error: any) {
       console.error('Error fetching sellers:', error);
       toast.error(error.response?.data?.message || 'Failed to load sellers');
@@ -211,6 +213,7 @@ const AdminSellerApproval = () => {
                         </td>
                         <td className="p-4">
                           <div className="flex gap-3">
+                            <Link className="admin-button" to={'/admin/sellers/' + seller._id}>View details</Link>
                             <button
                               onClick={() => handleApproveSeller(seller._id)}
                               disabled={processingId === seller._id}

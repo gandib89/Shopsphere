@@ -192,7 +192,7 @@ function SellerProductDetails() {
             <p className="text-xl text-seal mb-4">Product not found</p>
             <button
               onClick={() => navigate("/seller-products")}
-              className="bg-brass text-white px-6 py-3 hover:bg-brass-dark active:scale-[0.97] transition font-semibold"
+              className="bg-brass text-white px-6 py-3 rounded-[var(--radius-control)] hover:bg-brass-dark active:scale-[0.97] transition font-semibold"
             >
               Back to My Products
             </button>
@@ -231,7 +231,7 @@ function SellerProductDetails() {
             {/* Main Content */}
             <div className="lg:col-span-2">
               {/* Images Section */}
-              <div className="bg-paper-raised border border-hairline p-4 sm:p-8 mb-6 sm:mb-8">
+              <div className="bg-paper-raised border border-hairline rounded-[var(--radius-surface)] p-4 sm:p-8 mb-6 sm:mb-8">
                 <h2 className="text-2xl font-bold text-ink mb-6 flex items-center gap-2">
                   <ImageIcon className="w-6 h-6 text-brass" />
                   Product Images
@@ -242,21 +242,21 @@ function SellerProductDetails() {
                     {product.images.map((image, index) => (
                       <div
                         key={index}
-                        className="relative bg-paper border border-hairline overflow-hidden"
+                        className="relative bg-paper border border-hairline rounded-[var(--radius-control)] overflow-hidden"
                       >
                         <img
                           src={getImageUrl(image)}
                           alt={`Product ${index + 1}`}
                           className="w-full h-48 object-cover"
                         />
-                        <div className="absolute top-2 right-2 bg-ink text-paper px-2 py-1 text-xs font-bold font-mono tabular-nums">
+                        <div className="absolute top-2 right-2 bg-ink text-paper px-2 py-1 rounded-[var(--radius-control)] text-xs font-bold font-mono tabular-nums">
                           {index + 1}
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="border border-dashed border-hairline p-8 text-center">
+                  <div className="border border-dashed border-hairline rounded-[var(--radius-control)] p-8 text-center">
                     <ImageIcon className="w-12 h-12 text-ink-muted/40 mx-auto mb-4" />
                     <p className="text-ink-muted">No images uploaded</p>
                   </div>
@@ -264,13 +264,13 @@ function SellerProductDetails() {
               </div>
 
               {/* Product Information */}
-              <div className="bg-paper-raised border border-hairline p-4 sm:p-8 mb-6 sm:mb-8">
+              <div className="bg-paper-raised border border-hairline rounded-[var(--radius-surface)] p-4 sm:p-8 mb-6 sm:mb-8">
                 <div className="flex justify-between items-center mb-6">
                   <h2 className="text-2xl font-bold text-ink">Product Information</h2>
                   {!isEditing && (
                     <button
                       onClick={() => setIsEditing(true)}
-                      className="bg-brass text-white px-6 py-2 hover:bg-brass-dark active:scale-[0.97] transition font-semibold flex items-center gap-2"
+                      className="bg-brass text-white px-6 py-2 rounded-[var(--radius-control)] hover:bg-brass-dark active:scale-[0.97] transition font-semibold flex items-center gap-2"
                     >
                       Edit Product
                     </button>
@@ -289,7 +289,7 @@ function SellerProductDetails() {
                         name="name"
                         value={formData.name || ""}
                         onChange={handleInputChange}
-                        className="w-full px-4 py-3 border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition"
+                        className="w-full px-4 py-3 border border-hairline rounded-[var(--radius-control)] bg-paper text-ink focus:outline-none focus:border-brass transition"
                       />
                     ) : (
                       <p className="text-lg text-ink">{product.name}</p>
@@ -307,7 +307,7 @@ function SellerProductDetails() {
                         value={formData.description || ""}
                         onChange={handleInputChange}
                         rows={4}
-                        className="w-full px-4 py-3 border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition"
+                        className="w-full px-4 py-3 border border-hairline rounded-[var(--radius-control)] bg-paper text-ink focus:outline-none focus:border-brass transition"
                       />
                     ) : (
                       <p className="text-ink-muted whitespace-pre-wrap">{product.description}</p>
@@ -325,7 +325,7 @@ function SellerProductDetails() {
                           name="category"
                           value={mapCategory(formData.category || "")}
                           onChange={handleInputChange}
-                          className="w-full px-4 py-3 border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition"
+                          className="w-full px-4 py-3 border border-hairline rounded-[var(--radius-control)] bg-paper text-ink focus:outline-none focus:border-brass transition"
                         >
                           <option value="">Select a category</option>
                           <option value="iPhone">iPhone</option>
@@ -354,7 +354,7 @@ function SellerProductDetails() {
                           name="price"
                           value={formData.price || ""}
                           onChange={handleInputChange}
-                          className="w-full px-4 py-3 border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition font-mono tabular-nums"
+                          className="w-full px-4 py-3 border border-hairline rounded-[var(--radius-control)] bg-paper text-ink focus:outline-none focus:border-brass transition font-mono tabular-nums"
                         />
                       ) : (
                         <p className="text-2xl font-bold text-brass font-mono tabular-nums">
@@ -372,7 +372,7 @@ function SellerProductDetails() {
                           <div className="space-y-3">
                             <p className="text-xs text-ink-muted mb-1">Edit stock per colour — total updates automatically:</p>
                             {formData.colorVariants.map((cv, idx) => (
-                              <div key={idx} className="flex items-center gap-3 border border-hairline px-4 py-2">
+                              <div key={idx} className="flex items-center gap-3 border border-hairline rounded-[var(--radius-control)] px-4 py-2">
                                 <span className="w-5 h-5 border border-hairline shrink-0" style={{ backgroundColor: cv.color.toLowerCase() }} />
                                 <span className="text-sm font-medium text-ink flex-1 capitalize">{cv.color}</span>
                                 <input
@@ -380,11 +380,11 @@ function SellerProductDetails() {
                                   min={0}
                                   value={cv.stock}
                                   onChange={(e) => handleColorStockChange(idx, Number(e.target.value))}
-                                  className="w-24 px-3 py-1.5 border border-hairline bg-paper text-ink text-center focus:outline-none focus:border-brass transition text-sm font-mono tabular-nums"
+                                  className="w-24 px-3 py-1.5 border border-hairline rounded-[var(--radius-control)] bg-paper text-ink text-center focus:outline-none focus:border-brass transition text-sm font-mono tabular-nums"
                                 />
                               </div>
                             ))}
-                            <div className="flex justify-between items-center border border-brass/40 bg-brass/5 px-4 py-2">
+                            <div className="flex justify-between items-center border border-brass/40 bg-brass/5 rounded-[var(--radius-control)] px-4 py-2">
                               <span className="text-sm font-semibold text-brass">Total Stock</span>
                               <span className="text-lg font-bold text-brass font-mono tabular-nums">{formData.quantity}</span>
                             </div>
@@ -395,7 +395,7 @@ function SellerProductDetails() {
                             name="quantity"
                             value={formData.quantity || ""}
                             onChange={handleInputChange}
-                            className="w-full px-4 py-3 border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition font-mono tabular-nums"
+                            className="w-full px-4 py-3 border border-hairline rounded-[var(--radius-control)] bg-paper text-ink focus:outline-none focus:border-brass transition font-mono tabular-nums"
                           />
                         )
                       ) : (
@@ -430,7 +430,7 @@ function SellerProductDetails() {
                         {Object.entries(product.variants).map(([key, values]: [string, any]) => {
                           if (!Array.isArray(values) || values.length === 0) return null;
                           return (
-                            <div key={key} className="border border-hairline p-4">
+                            <div key={key} className="border border-hairline rounded-[var(--radius-control)] p-4">
                               <h4 className="font-semibold text-ink capitalize mb-2">
                                 {key.replace(/([A-Z])/g, " $1")}
                               </h4>
@@ -438,7 +438,7 @@ function SellerProductDetails() {
                                 {values.map((value: string) => (
                                   <span
                                     key={value}
-                                    className="border border-hairline text-ink-muted px-3 py-1 text-sm font-medium"
+                                    className="border border-hairline rounded-[var(--radius-control)] text-ink-muted px-3 py-1 text-sm font-medium"
                                   >
                                     {value}
                                   </span>
@@ -458,7 +458,7 @@ function SellerProductDetails() {
                     <button
                       onClick={handleUpdate}
                       disabled={isSaving}
-                      className="flex-1 bg-brass text-white font-bold py-3 px-4 hover:bg-brass-dark active:scale-[0.97] transition disabled:opacity-50 flex items-center justify-center gap-2"
+                      className="flex-1 bg-brass text-white font-bold py-3 px-4 rounded-[var(--radius-control)] hover:bg-brass-dark active:scale-[0.97] transition disabled:opacity-50 flex items-center justify-center gap-2"
                     >
                       <Save className="w-5 h-5" />
                       {isSaving ? "Saving..." : "Save Changes"}
@@ -468,7 +468,7 @@ function SellerProductDetails() {
                         setIsEditing(false);
                         setFormData(product);
                       }}
-                      className="flex-1 border border-ink text-ink font-bold py-3 px-4 hover:bg-ink hover:text-paper active:scale-[0.98] transition"
+                      className="flex-1 border border-ink text-ink font-bold py-3 px-4 rounded-[var(--radius-control)] hover:bg-ink hover:text-paper active:scale-[0.98] transition"
                     >
                       Cancel
                     </button>
@@ -480,18 +480,18 @@ function SellerProductDetails() {
             {/* Sidebar - Quick Stats */}
             <div className="lg:col-span-1">
               {/* Quick Stats */}
-              <div className="bg-paper-raised border border-hairline p-6 mb-8">
+              <div className="bg-paper-raised border border-hairline rounded-[var(--radius-surface)] p-6 mb-8">
                 <h3 className="text-xl font-bold text-ink mb-4">Quick Stats</h3>
 
                 <div className="space-y-4">
-                  <div className="border border-hairline p-4">
+                  <div className="border border-hairline rounded-[var(--radius-control)] p-4">
                     <p className="text-ink-muted text-sm mb-1">Product Price</p>
                     <p className="text-2xl font-bold text-brass font-mono tabular-nums">
                       Rs. {product.price.toLocaleString()}
                     </p>
                   </div>
 
-                  <div className="border border-hairline p-4">
+                  <div className="border border-hairline rounded-[var(--radius-control)] p-4">
                     <p className="text-ink-muted text-sm mb-1">Stock Status</p>
                     <p className={`text-2xl font-bold font-mono tabular-nums ${stockColor}`}>
                       {product.quantity}
@@ -501,7 +501,7 @@ function SellerProductDetails() {
                     </p>
                   </div>
 
-                  <div className="border border-hairline p-4">
+                  <div className="border border-hairline rounded-[var(--radius-control)] p-4">
                     <p className="text-ink-muted text-sm mb-1">Category</p>
                     <p className="font-bold text-ink">{mapCategory(product.category)}</p>
                   </div>
@@ -509,11 +509,11 @@ function SellerProductDetails() {
               </div>
 
               {/* Discount Management */}
-              <div className="bg-paper-raised border border-hairline p-6 mb-8">
+              <div className="bg-paper-raised border border-hairline rounded-[var(--radius-surface)] p-6 mb-8">
                 <h3 className="text-xl font-bold text-ink mb-4">Discount Management</h3>
 
                 {product.discount && product.discount > 0 ? (
-                  <div className="border border-moss/40 bg-moss/5 p-4 mb-4">
+                  <div className="border border-moss/40 bg-moss/5 rounded-[var(--radius-control)] p-4 mb-4">
                     <p className="text-moss text-sm mb-1">Active Discount</p>
                     <p className="text-3xl font-bold text-moss font-mono tabular-nums">{product.discount}%</p>
                     <p className="text-sm text-ink-muted mt-2">
@@ -521,7 +521,7 @@ function SellerProductDetails() {
                     </p>
                   </div>
                 ) : (
-                  <div className="border border-hairline p-4 mb-4">
+                  <div className="border border-hairline rounded-[var(--radius-control)] p-4 mb-4">
                     <p className="text-ink-muted text-sm">No active discount</p>
                   </div>
                 )}
@@ -537,7 +537,7 @@ function SellerProductDetails() {
                       max="100"
                       value={discountValue}
                       onChange={(e) => setDiscountValue(Number(e.target.value))}
-                      className="w-full px-4 py-3 border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition font-mono tabular-nums"
+                      className="w-full px-4 py-3 border border-hairline rounded-[var(--radius-control)] bg-paper text-ink focus:outline-none focus:border-brass transition font-mono tabular-nums"
                       placeholder="Enter discount percentage"
                     />
                     <p className="text-xs text-ink-muted mt-1">
@@ -548,12 +548,12 @@ function SellerProductDetails() {
                   <button
                     onClick={handleSetDiscount}
                     disabled={isSettingDiscount}
-                    className="w-full bg-brass text-white font-bold py-3 px-4 hover:bg-brass-dark active:scale-[0.97] transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full bg-brass text-white font-bold py-3 px-4 rounded-[var(--radius-control)] hover:bg-brass-dark active:scale-[0.97] transition disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isSettingDiscount ? "Applying..." : "Apply Discount"}
                   </button>
 
-                  <div className="border border-brass/40 bg-brass/5 p-3">
+                  <div className="border border-brass/40 bg-brass/5 rounded-[var(--radius-control)] p-3">
                     <p className="text-xs text-brass">
                       <strong>Tip:</strong> Users who have this product in their cart will be notified about the discount!
                     </p>
@@ -562,11 +562,11 @@ function SellerProductDetails() {
               </div>
 
               {/* Danger Zone */}
-              <div className="bg-paper-raised border border-seal/40 p-6">
+              <div className="bg-paper-raised border border-seal/40 rounded-[var(--radius-surface)] p-6">
                 <h3 className="text-xl font-bold text-seal mb-4">Danger Zone</h3>
                 <button
                   onClick={handleDelete}
-                  className="w-full border border-seal text-seal font-bold py-3 px-4 hover:bg-seal/5 active:scale-[0.98] transition flex items-center justify-center gap-2"
+                  className="w-full border border-seal text-seal font-bold py-3 px-4 rounded-[var(--radius-control)] hover:bg-seal/5 active:scale-[0.98] transition flex items-center justify-center gap-2"
                 >
                   <Trash2 className="w-5 h-5" />
                   Delete Product
