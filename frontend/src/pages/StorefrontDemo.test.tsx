@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { renderRoute } from '../test/render';
@@ -210,6 +210,32 @@ describe('UX demo redesign header', () => {
     expect(within(details).getByRole('button', { name: /Add to cart/ })).toBeVisible();
     await user.click(within(details).getByRole('button', { name: 'Close quick view' }));
     expect(card).toHaveFocus();
+  });
+
+  it('keeps wheel gestures off the product strip and advances one visible group per button click', async () => {
+    const user = userEvent.setup();
+    const clientWidth = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains('ux-demo-product-grid--scroll') ? 768 : 0;
+    });
+    const scrollWidth = vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains('ux-demo-product-grid--scroll') ? 2000 : 0;
+    });
+    try {
+      const { container } = renderRoute(<StorefrontDemo />);
+      const strip = container.querySelector<HTMLElement>('.ux-demo-product-grid--scroll')!;
+      const stripScrollBy = vi.mocked(strip.scrollBy);
+
+      fireEvent.wheel(strip, { deltaY: 120 });
+      fireEvent.wheel(strip, { deltaX: 120 });
+      expect(stripScrollBy).not.toHaveBeenCalled();
+
+      await user.click(screen.getByRole('button', { name: 'Show more products' }));
+      expect(stripScrollBy).toHaveBeenCalledTimes(1);
+      expect(stripScrollBy).toHaveBeenLastCalledWith({ left: 784, behavior: 'smooth' });
+    } finally {
+      clientWidth.mockRestore();
+      scrollWidth.mockRestore();
+    }
   });
 
   it('adds directly from a product card without opening quick view and supports repeat adds', async () => {

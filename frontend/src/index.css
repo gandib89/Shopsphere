@@ -238,3 +238,8 @@ textarea {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Keep customer navigation visible below the sandbox notice. */
+[data-demo-banner='true'] .store-navigation { top: 32px; }
+.store-navigation a[aria-current='page'] { color: rgb(var(--color-brand)); background: rgb(var(--color-brand) / .08); }
+@media (max-width: 600px) { [data-demo-banner='true'] .store-navigation { top: 48px; } }

@@ -34,7 +34,7 @@ export default function AdminPanel() {
   const available = !loading && orders !== null;
 
   return <main>
-    <AdminHeading title="Home" description="Your store at a glance. Start with what needs your attention.">
+    <AdminHeading title="Marketplace overview" description="Monitor your marketplace, review applications, and keep orders moving.">
       <button className="admin-button" onClick={() => void load()} disabled={loading}><RefreshCw size={14} aria-hidden="true" />{loading ? 'Refreshing…' : 'Refresh'}</button>
       <Link className="admin-button admin-button--primary" to="/admin/orders">Manage orders<ArrowRight size={14} aria-hidden="true" /></Link>
     </AdminHeading>
@@ -49,7 +49,7 @@ export default function AdminPanel() {
     </section>
     <div className="admin-home-columns">
       <section className="admin-panel" aria-labelledby="tasks-title">
-        <div className="admin-panel-head"><div><h2 id="tasks-title">Things to do</h2><p>Open work across your marketplace · all time</p></div></div>
+        <div className="admin-panel-head"><div><h2 id="tasks-title">Needs attention</h2><p>Open work across your marketplace · all time</p></div></div>
         <Link className="admin-task" to="/admin/orders?status=active"><ClipboardList size={19} aria-hidden="true" /><div><strong>Fulfil customer orders</strong><p>Review pending, processing, and shipped orders.</p></div><span>{loading ? '—' : pending ?? '—'}</span><ArrowRight size={14} aria-hidden="true" /></Link>
         <Link className="admin-task" to="/admin/seller-approvals"><Store size={19} aria-hidden="true" /><div><strong>Review seller applications</strong><p>Check shops before approving marketplace access.</p></div><span>{loading ? '—' : sellers?.length ?? '—'}</span><ArrowRight size={14} aria-hidden="true" /></Link>
         <Link className="admin-task" to="/admin/orders?status=returns"><RotateCcw size={19} aria-hidden="true" /><div><strong>Review returns & refunds</strong><p>Resolve return requests and approved refunds.</p></div><span>{loading ? '—' : returns ?? '—'}</span><ArrowRight size={14} aria-hidden="true" /></Link>

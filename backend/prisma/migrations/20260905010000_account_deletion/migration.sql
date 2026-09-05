@@ -1,0 +1,7 @@
+ALTER TABLE "products" ADD COLUMN "isArchived" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "revenues" ALTER COLUMN "sellerId" DROP NOT NULL;
+ALTER TABLE "revenues" DROP CONSTRAINT "revenues_sellerId_fkey";
+ALTER TABLE "revenues" ADD CONSTRAINT "revenues_sellerId_fkey" FOREIGN KEY ("sellerId") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "bills" ALTER COLUMN "userId" DROP NOT NULL;
+ALTER TABLE "bills" DROP CONSTRAINT "bills_userId_fkey";
+ALTER TABLE "bills" ADD CONSTRAINT "bills_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;

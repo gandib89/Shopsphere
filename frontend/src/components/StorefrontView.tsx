@@ -18,6 +18,7 @@ import {
 import { Link, useNavigate } from 'react-router-dom';
 import DemoHeader from './DemoHeader';
 import Footer from './Footer';
+import CatalogFilters, { emptyFilters, matchesCatalogFilters, type CatalogFilterValue } from './catalog/CatalogFilters';
 import { Button, IconButton } from './ui/Button';
 import { installSectionScroll } from '../lib/sectionScroll';
 import '../pages/ui-redesign-demo.css';
@@ -27,6 +28,7 @@ export type StorefrontProduct = {
   id: string;
   name: string;
   category: string;
+  brand?: string;
   price: number;
   rating: number;
   reviews: number;
@@ -37,6 +39,7 @@ export type StorefrontProduct = {
   description?: string;
   inStock?: boolean;
   previousPrice?: number;
+  priceFrom?: boolean;
   requiresOptions?: boolean;
 };
 
@@ -52,6 +55,7 @@ type LiveStorefront = {
   catalogControls?: ReactNode;
   accountActions?: ReactNode;
   category: string;
+  query?: string;
 };
 
 // Three columns is what a comparison table can show without turning into a horizontal scroll.
@@ -65,6 +69,7 @@ export default function StorefrontView({ products, live }: { products: Storefron
   const [bagOpen, setBagOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [query, setQuery] = useState('');
+  const [filters, setFilters] = useState<CatalogFilterValue>(emptyFilters);
   const [searchCategory, setSearchCategory] = useState('All');
   const [categoryOpen, setCategoryOpen] = useState(false);
   const searchForm = useRef<HTMLFormElement>(null);
@@ -92,7 +97,7 @@ export default function StorefrontView({ products, live }: { products: Storefron
   // different, often mid-card-cropped, product at that same pixel offset.
   useEffect(() => {
     productScroller.current?.scrollTo({ left: 0 });
-  }, [products]);
+  }, [products, filters, query, searchCategory]);
 
   // Size cards so an exact whole number fill the strip's width — no card is ever left
   // half-cut at the trailing edge. The strip only exists in the DOM once products have loaded
@@ -129,49 +134,30 @@ export default function StorefrontView({ products, live }: { products: Storefron
       atEnd: el.scrollLeft >= el.scrollWidth - el.clientWidth - 1,
     });
   };
-  useEffect(updateScrollEdges, [cardStep, products]);
+  useEffect(updateScrollEdges, [cardStep, products, filters, query, searchCategory]);
 
-  // One card per click, not a whole page: the strip glides a single step so the products
-  // stay visually continuous instead of the entire row swapping out at once.
+  // Advance by one complete visible group while keeping the next group aligned to a card.
+  // The extra gap accounts for the gap after the final card in the current group.
   const slideProducts = (direction: 1 | -1) => {
     const el = productScroller.current;
     if (!el || !cardStep) return;
-    el.scrollBy({ left: direction * cardStep, behavior: 'smooth' });
+    el.scrollBy({ left: direction * (el.clientWidth + cardGap), behavior: 'smooth' });
   };
 
 
-  // A vertical wheel over the strip scrolls it sideways instead of paging the section, so a
-  // plain mouse can browse the row. Registered natively because React's onWheel is passive
-  // and so cannot preventDefault the page-level section snapping.
+  // Wheel and trackpad gestures belong to page navigation here. Block horizontal gestures
+  // while letting vertical ones bubble to the page-level section scroller; the visible
+  // scrollbar remains available for deliberate click-and-drag navigation.
   useEffect(() => {
     const el = productScroller.current;
     if (!el) return;
-    // Each notch extends a target the strip glides towards. A plain smooth scrollBy per notch
-    // would restart from wherever the previous glide had reached, so a quick spin of the wheel
-    // silently lost most of its distance.
-    let target: number | null = null;
-    let forgetTarget = 0;
     const onWheel = (event: WheelEvent) => {
-      if (event.ctrlKey || Math.abs(event.deltaX) > Math.abs(event.deltaY) || !event.deltaY) return;
-      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? el.clientWidth : 1;
-      const max = el.scrollWidth - el.clientWidth;
-      const from = target ?? el.scrollLeft;
-      // Edge release: once the strip has nothing left to give in that direction the wheel goes
-      // back to the page, so scrolling up over the row can never trap the reader inside it.
-      if (event.deltaY > 0 ? from >= max - 1 : from <= 1) { target = null; return; }
-      event.preventDefault();
-      target = Math.max(0, Math.min(max, from + event.deltaY * unit));
-      el.scrollTo({ left: target, behavior: 'smooth' });
-      window.clearTimeout(forgetTarget);
-      forgetTarget = window.setTimeout(() => { target = null; }, 250);
+      if (event.shiftKey || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) event.preventDefault();
     };
     el.addEventListener('wheel', onWheel, { passive: false });
-    return () => {
-      window.clearTimeout(forgetTarget);
-      el.removeEventListener('wheel', onWheel);
-    };
+    return () => el.removeEventListener('wheel', onWheel);
     // cardStep is measured right after the strip mounts, so this re-runs once the node exists.
-  }, [products, cardStep]);
+  }, [products, cardStep, filters, query, searchCategory]);
 
   useLayoutEffect(() => {
     const root = demoRoot.current;
@@ -198,13 +184,16 @@ export default function StorefrontView({ products, live }: { products: Storefron
   }, []);
 
   const routeCategory = live?.category;
+  const routeQuery = live?.query ?? '';
   useEffect(() => {
     if (routeCategory === undefined) return;
+    setFilters(emptyFilters);
     setSearchCategory(routeCategory || 'All');
-    setSearchTerm('');
-    setQuery('');
-    if (routeCategory) requestAnimationFrame(() => catalogue.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
-  }, [routeCategory]);
+    setSearchTerm(routeQuery);
+    setQuery(routeQuery);
+    // The header search lives outside this view, so a ?q= arrival has to land on the catalogue too.
+    if (routeCategory || routeQuery) requestAnimationFrame(() => catalogue.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  }, [routeCategory, routeQuery]);
 
   useEffect(() => {
     if (!addedProductId) return;
@@ -225,9 +214,9 @@ export default function StorefrontView({ products, live }: { products: Storefron
     const normalizedQuery = query.trim().toLowerCase();
     return products.filter((product) => {
       const matchesQuery = !normalizedQuery || `${product.name} ${product.category}`.toLowerCase().includes(normalizedQuery);
-      return matchesQuery && (searchCategory === 'All' || product.category === searchCategory);
+      return matchesQuery && (searchCategory === 'All' || product.category === searchCategory) && matchesCatalogFilters(product, filters);
     });
-  }, [products, query, searchCategory]);
+  }, [products, query, searchCategory, filters]);
 
   // One tile per category the catalogue actually carries, illustrated by its first product —
   // category navigation is the path most shoppers take, and the header dropdown alone hides it.
@@ -242,6 +231,7 @@ export default function StorefrontView({ products, live }: { products: Storefron
   }, [products]);
 
   const browseProducts = () => {
+    setFilters(emptyFilters);
     setQuery('');
     setSearchTerm('');
     setSearchCategory('All');
@@ -258,6 +248,7 @@ export default function StorefrontView({ products, live }: { products: Storefron
   };
 
   const selectSearchCategory = (category: string) => {
+    setFilters(emptyFilters);
     setSearchCategory(category);
     categoryToggle.current?.focus();
     submitSearch();
@@ -324,9 +315,7 @@ export default function StorefrontView({ products, live }: { products: Storefron
     { label: 'Highlight', value: (product) => product.description || product.note },
   ];
 
-  // Browsing — the default strip or a category the shopper picked — reads as one horizontal
-  // row. Only a search drops to the wrapped grid, where scanning the whole result set matters
-  // more than the row format.
+  // Browsing keeps the horizontal product row; search results use a wrapping grid.
   const browsingStrip = !query;
 
 
@@ -340,7 +329,7 @@ export default function StorefrontView({ products, live }: { products: Storefron
       <div className="ux-demo-product-copy">
         <h3 id={`${product.id}-name`}>{product.name}</h3>
         <p id={`${product.id}-note`}>{product.note}</p>
-        {live && <p className="storefront-price">{formatNpr(product.price)} {product.previousPrice && <del>{formatNpr(product.previousPrice)}</del>}</p>}
+        {live && <p className="storefront-price">{product.priceFrom ? `From ${formatNpr(product.price)}` : formatNpr(product.price)} {product.previousPrice && <del>{formatNpr(product.previousPrice)}</del>}</p>}
         <ChevronRight aria-hidden="true" />
       </div>
       <button
@@ -578,6 +567,10 @@ export default function StorefrontView({ products, live }: { products: Storefron
             </div>
           </div>
 
+          <div className={live ? 'storefront-catalog-layout' : undefined}>
+          {live && !live.catalogStatus && <CatalogFilters products={products.filter(product => searchCategory === 'All' || product.category === searchCategory)} value={filters} onChange={setFilters} />}
+          <div className="storefront-catalog-results">
+          {live && !live.catalogStatus && <p className="storefront-result-count" role="status">{visibleProducts.length} {visibleProducts.length === 1 ? 'product' : 'products'}</p>}
           {live?.catalogStatus ?? (visibleProducts.length ? (
             browsingStrip ? (
             <div className="ux-demo-product-slider">
@@ -611,6 +604,8 @@ export default function StorefrontView({ products, live }: { products: Storefron
               <Button className="mt-5" variant="secondary" onClick={browseProducts}>Show all products</Button>
             </div>
           ))}
+          </div>
+          </div>
         </section>
 
         <section id="why-shopsphere" data-scroll-section aria-labelledby="why-title" className="scroll-mt-28 border-y border-hairline">
@@ -787,7 +782,7 @@ export default function StorefrontView({ products, live }: { products: Storefron
               <p className="mt-2 text-xs font-semibold text-brass-dark">{quickView.inStock === false ? 'Sold out' : 'In stock'}</p>
               <h2 id="quick-view-title" className="mt-2 text-2xl font-semibold tracking-[-0.03em]">{quickView.name}</h2>
               <div className="mt-3 flex items-center gap-1.5 text-sm text-ink-muted"><Star className="h-4 w-4 fill-brass text-brass" aria-hidden="true" />{quickView.reviews ? <>{quickView.rating} <span>· {quickView.reviews} reviews</span></> : 'No reviews yet'}</div>
-              <p className="mt-5 font-mono text-xl font-semibold tabular-nums">{formatNpr(quickView.price)}</p>
+              <p className="mt-5 font-mono text-xl font-semibold tabular-nums">{quickView.priceFrom ? `From ${formatNpr(quickView.price)}` : formatNpr(quickView.price)}</p>
               <p className="mt-3 text-sm leading-relaxed text-ink-muted">{live ? quickView.description || quickView.note : `${quickView.note}. This concept keeps stock, seller confidence, delivery, and the next buying action together.`}</p>
               <ul className="mt-6 space-y-3 text-sm">
                 {['Verified seller listing', 'Delivery estimate shown at checkout', 'Secure eSewa payment'].map((item) => <li key={item} className="flex items-center gap-2"><Check className="h-4 w-4 text-brass" aria-hidden="true" />{item}</li>)}

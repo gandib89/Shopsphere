@@ -1,3 +1,4 @@
+import { createAdminSeller, deleteAdminSeller } from '../controller/accountManagement.js';
 import express from "express";
 import {
   getAllUsersAndSellers,
@@ -16,7 +17,10 @@ const userManagementRouter = express.Router();
 // All routes require admin authentication
 userManagementRouter.use(verifyToken, authorizeAdmin);
 
-// Read-only seller directory and profiles, behind the same admin authorization.
+userManagementRouter.post('/sellers', (req, res) => createAdminSeller(req, res));
+userManagementRouter.delete('/sellers/:sellerId', (req, res) => deleteAdminSeller(req, res));
+
+// Seller directory and profiles, behind the same admin authorization.
 userManagementRouter.get('/sellers', (req, res) => listAdminSellers(req, res));
 userManagementRouter.get('/sellers/:sellerId', (req, res) => getAdminSeller(req, res));
 

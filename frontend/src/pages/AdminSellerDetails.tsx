@@ -1,3 +1,4 @@
+import AccountDeletion from '../components/account/AccountDeletion';
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, RefreshCw, Search } from 'lucide-react';
@@ -159,5 +160,6 @@ export default function AdminSellerDetails() {
         {!loading && !error && filteredOrders.length > 0 && <AdminPagination page={current} pages={pages} onPage={setPage} />}
       </section>}
     </>}
+  {seller && <AccountDeletion sellerId={seller.id} name={sellerName(seller)} />}
   </main>;
 }

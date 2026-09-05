@@ -37,6 +37,7 @@ const MyOrdersNew = lazy(() => import('./pages/MyOrdersNew'));
 const AdminOrders = lazy(() => import('./pages/AdminOrders'));
 const Success = lazy(() => import('./pages/Success'));
 const Failure = lazy(() => import('./pages/Failure'));
+const SellerLayout = lazy(() => import('./components/seller/SellerLayout'));
 const SellerPanel = lazy(() => import('./pages/SellerPanel'));
 const SellerProducts = lazy(() => import('./pages/SellerProducts'));
 const SellerProductDetails = lazy(() => import('./pages/SellerProductDetails'));
@@ -120,7 +121,6 @@ function App() {
           <Route path="/auth" element={<AuthLanding />} />
           <Route path="/signin" element={<AuthLanding />} />
           <Route path="/signup" element={<AuthLanding />} />
-          <Route path="/add-product" element={<ProtectedRoute role="seller"><AddProduct /></ProtectedRoute>} />
           <Route path="/cart" element={<Cart />} />
           <Route path="/buy-product" element={<BuyProduct />} />
           <Route path="/product-details-page" element={<ProductDetailsPage />} />
@@ -136,13 +136,17 @@ function App() {
           <Route path="/bill-history" element={<UserBillHistory />} />
           <Route path="/success/:orderId" element={<Success />} />
           <Route path="/failure/:orderId" element={<Failure />} />
-          <Route path="/seller-panel" element={<ProtectedRoute role="seller"><SellerPanel /></ProtectedRoute>} />
-          <Route path="/seller-products" element={<ProtectedRoute role="seller"><SellerProducts /></ProtectedRoute>} />
-          <Route path="/seller-products/:id" element={<ProtectedRoute role="seller"><SellerProductDetails /></ProtectedRoute>} />
-          <Route path="/seller-product-details" element={<ProtectedRoute role="seller"><SellerProductDetails /></ProtectedRoute>} />
-          <Route path="/seller-orders" element={<ProtectedRoute role="seller"><SellerOrders /></ProtectedRoute>} />
-          <Route path="/seller/revenue" element={<ProtectedRoute role="seller"><SellerRevenueDashboard /></ProtectedRoute>} />
-          <Route path="/seller-revenue" element={<ProtectedRoute role="seller"><SellerRevenueDashboard /></ProtectedRoute>} />
+          <Route element={<ProtectedRoute role="seller"><SellerLayout /></ProtectedRoute>}>
+            <Route path="/seller/account" element={<Profile />} />
+            <Route path="/seller-panel" element={<SellerPanel />} />
+            <Route path="/seller-products" element={<SellerProducts />} />
+            <Route path="/seller-products/:id" element={<SellerProductDetails />} />
+            <Route path="/seller-product-details" element={<SellerProductDetails />} />
+            <Route path="/seller-orders" element={<SellerOrders />} />
+            <Route path="/add-product" element={<AddProduct />} />
+            <Route path="/seller/revenue" element={<SellerRevenueDashboard />} />
+            <Route path="/seller-revenue" element={<SellerRevenueDashboard />} />
+          </Route>
           <Route element={<ProtectedRoute role="admin"><AdminLayout /></ProtectedRoute>}>
             <Route path="/product-details-admin/:id" element={<ProductDetailsAdmin />} />
             <Route path="/all-products" element={<AllProducts />} />

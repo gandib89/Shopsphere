@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { Link, useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { getImageUrl } from "../lib/utils";
 import { toast } from "sonner";
 import NavBar from "../components/NavBar";
+import { AdminHeading } from "../components/admin/AdminUi";
 import { ArrowLeft, Save, Trash2, Image as ImageIcon, Package } from "lucide-react";
 
 interface Product {
@@ -49,8 +50,10 @@ function SellerProductDetails() {
   const fetchProductDetails = async () => {
     try {
       setLoading(true);
+      // Seller-scoped read: the public /product/get/:id would happily return another shop's
+      // listing and render it inside this panel with an edit form.
       const response = await axios.get(
-        `${import.meta.env.VITE_BACKEND_URL}/api/v1/product/get/${id}`,
+        `${import.meta.env.VITE_BACKEND_URL}/api/v1/product/seller/product/${id}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -62,6 +65,11 @@ function SellerProductDetails() {
       setDiscountValue(response.data.discount || 0);
     } catch (error) {
       console.error("Error fetching product details:", error);
+      // Clear the previous product: without this the page keeps rendering the last listing
+      // that loaded while the URL (and every save/delete action) points at a different id.
+      setProduct(null);
+      setFormData({});
+      setDiscountValue(0);
       toast.error("Failed to load product details");
     } finally {
       setLoading(false);
@@ -212,20 +220,9 @@ function SellerProductDetails() {
       <NavBar />
       <div className="bg-paper min-h-screen py-6 sm:py-8">
         <div className="container mx-auto px-4 sm:px-6">
-          {/* Header */}
-          <div className="flex items-center gap-4 mb-8">
-            <button
-              onClick={() => navigate("/seller-products")}
-              className="p-2 hover:text-brass transition-colors"
-              title="Back"
-            >
-              <ArrowLeft className="w-6 h-6" />
-            </button>
-            <div className="flex-1">
-              <h1 className="text-2xl sm:text-4xl font-bold text-ink">Product Details</h1>
-              <p className="text-ink-muted mt-1">Manage and update your product information</p>
-            </div>
-          </div>
+          <AdminHeading title={product.name || "Edit product"} description="Manage and update your product information">
+            <Link className="admin-button" to="/seller-products"><ArrowLeft size={14} aria-hidden="true" />All products</Link>
+          </AdminHeading>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Main Content */}

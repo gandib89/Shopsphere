@@ -4,7 +4,12 @@ import path from "node:path";
 import test from "node:test";
 import bcrypt from "bcryptjs";
 
-import { ensureDemoData } from "./seedDemoData.js";
+import {
+  demoProducts,
+  ensureDemoData,
+  getMaximumConfiguredPrice,
+  MAX_DEMO_CONFIGURED_PRICE,
+} from "./seedDemoData.js";
 
 process.env.DEMO_PASSWORD ||= "TestDemoPassword@123";
 
@@ -13,6 +18,8 @@ const expectedAccounts = [
   ["seller2@shopsphere.test", "seller"],
   ["customer1@shopsphere.test", "user"],
   ["customer2@shopsphere.test", "user"],
+  ["customer3@shopsphere.test", "user"],
+  ["customer4@shopsphere.test", "user"],
 ];
 
 const createMemoryPrisma = ({ initialUsers = [], initialProducts = [] } = {}) => {
@@ -49,19 +56,19 @@ test("creates usable demo accounts and pictured products only once", async () =>
   const secondResult = await ensureDemoData(prisma);
 
   assert.deepEqual(firstResult, {
-    usersCreated: 4,
+    usersCreated: 6,
     usersExisting: 0,
-    productsCreated: 12,
+    productsCreated: demoProducts.length,
     productsExisting: 0,
   });
   assert.deepEqual(secondResult, {
     usersCreated: 0,
-    usersExisting: 4,
+    usersExisting: 6,
     productsCreated: 0,
-    productsExisting: 12,
+    productsExisting: demoProducts.length,
   });
-  assert.equal(prisma.users.size, 4);
-  assert.equal(prisma.products.size, 12);
+  assert.equal(prisma.users.size, 6);
+  assert.equal(prisma.products.size, demoProducts.length);
 
   for (const [email, role] of expectedAccounts) {
     const account = prisma.users.get(email);
@@ -93,10 +100,47 @@ test("creates usable demo accounts and pictured products only once", async () =>
 
   assert.ok(
     [...prisma.products.values()].some(
-      (product) => /iphone/i.test(product.name) && product.images[0].includes("iphone"),
+      (product) => product.category === "Mobile Phones" && product.images[0].includes("catalog"),
     ),
-    "an iPhone search result should have an iPhone photo",
+    "an iPhone search result should have an Apple catalog photo",
   );
+});
+
+test("keeps every configuration sandbox-priced and every phone color pictured", () => {
+  const projectRoot = path.resolve(import.meta.dirname, "../..");
+
+  for (const product of demoProducts) {
+    assert.ok(
+      getMaximumConfiguredPrice(product) <= MAX_DEMO_CONFIGURED_PRICE,
+      `${product.name} should stay within the eSewa sandbox ceiling`,
+    );
+
+    const picturedColors = new Map(
+      product.colorVariants.map((variant) => [variant.color, variant.images]),
+    );
+    for (const color of product.variantColor) {
+      const images = picturedColors.get(color);
+      assert.ok(images?.length, `${product.name} ${color} should have an image`);
+      for (const image of images) {
+        assert.equal(
+          existsSync(path.join(projectRoot, "frontend", "public", image)),
+          true,
+          `${product.name} ${color} image should exist: ${image}`,
+        );
+      }
+    }
+  }
+});
+
+test("seeds only verified Apple product names", () => {
+  const unsupportedNames = ["Apple Watch Series 12", "Apple Watch Ultra 4", "AirPods 5"];
+  const allowedPrefixes = ["Apple", "AirPods", "iPhone", "MacBook", "Mac mini", "Magic", "MagSafe", "USB-C"];
+
+  assert.equal(demoProducts.length, 35);
+  assert.equal(demoProducts.every((product) => (
+    allowedPrefixes.some((prefix) => product.name.startsWith(prefix))
+  )), true);
+  assert.equal(demoProducts.some((product) => unsupportedNames.includes(product.name)), false);
 });
 
 test("preserves an existing seller and assigns products to that seller's actual id", async () => {
@@ -116,12 +160,16 @@ test("preserves an existing seller and assigns products to that seller's actual 
 
   const result = await ensureDemoData(prisma);
 
-  assert.equal(result.usersCreated, 3);
+  assert.equal(result.usersCreated, 5);
   assert.equal(result.usersExisting, 1);
   assert.deepEqual(prisma.users.get(existingSeller.email), existingSeller);
   assert.equal(
     [...prisma.products.values()]
-      .filter((product) => product.name.startsWith("iPhone") || product.name.startsWith("Mac") || product.name === "Apple Magic Keyboard")
+      .filter((product) => [
+        "66a200000000000000000001",
+        "66a200000000000000000003",
+        "66a200000000000000000005",
+      ].includes(product.id))
       .every((product) => product.sellerId === existingSeller.id),
     true,
   );
@@ -160,8 +208,8 @@ test("performs existence reads through the transaction client", async () => {
 
   const result = await ensureDemoData(prisma);
 
-  assert.equal(result.usersCreated, 4);
-  assert.equal(transactionClient.products.size, 12);
+  assert.equal(result.usersCreated, 6);
+  assert.equal(transactionClient.products.size, demoProducts.length);
 });
 
 test("retries a serializable transaction conflict", async () => {
@@ -182,5 +230,5 @@ test("retries a serializable transaction conflict", async () => {
   const result = await ensureDemoData(prisma);
 
   assert.equal(attempts, 2);
-  assert.equal(result.productsCreated, 12);
+  assert.equal(result.productsCreated, demoProducts.length);
 });

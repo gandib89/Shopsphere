@@ -99,7 +99,9 @@ export default function Home() {
     }
   };
 
-  const category = storefrontCategory(new URLSearchParams(location.search).get('category') || '');
+  const params = new URLSearchParams(location.search);
+  const category = storefrontCategory(params.get('category') || '');
+  const query = params.get('q') || '';
   return (
     <StorefrontView products={data} live={{
       bagCount,
@@ -111,6 +113,7 @@ export default function Home() {
       onBag: () => navigate(signedIn ? '/cart' : '/auth'),
       accountActions: signedIn ? <div data-section-scroll-ignore><NotificationBell /></div> : undefined,
       category,
+      query,
       catalogStatus: loading ? <LoadingState description="Loading current inventory…" /> : loadError ? (
         <ErrorState title="We couldn’t load the catalogue" description="Check your connection and try again."
           action={<Button onClick={() => setRetry(value => value + 1)}>Try again</Button>} />

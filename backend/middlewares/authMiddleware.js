@@ -1,7 +1,7 @@
 import { prisma } from "../database/prismaClient.js";
 import { verifyAccessToken } from "../utils/tokens.js";
 
-export const authenticate = (req, res, next) => {
+export const authenticate = async (req, res, next, client = prisma) => {
   const authHeader = req.headers["authorization"];
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
 
@@ -11,8 +11,10 @@ export const authenticate = (req, res, next) => {
 
   try {
     const payload = verifyAccessToken(token);
+    const account = await client.user.findUnique({ where: { id: payload.sub }, select: { id: true, role: true } });
+    if (!account) return res.status(401).json({ code: "unauthenticated", message: "This account no longer exists" });
     req.userId = payload.sub;
-    req.user = { id: payload.sub, role: payload.role };
+    req.user = { id: payload.sub, role: account.role };
     next();
   } catch (err) {
     return res.status(401).json({ code: "unauthenticated", message: "Invalid or expired token" });

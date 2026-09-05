@@ -1,9 +1,10 @@
 import axios from "axios";
 import { useState } from "react";
 import { toast } from "sonner";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { X, Upload, Image as ImageIcon, ArrowLeft, Plus, Check, AlertTriangle } from "lucide-react";
 import NavBar from "../components/NavBar";
+import { AdminHeading } from "../components/admin/AdminUi";
 
 interface ColorVariant {
   color: string;
@@ -18,6 +19,7 @@ interface StorageVariant {
 
 function AddProduct() {
   const navigate = useNavigate();
+  const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     category: "",
@@ -44,6 +46,8 @@ function AddProduct() {
     speakerSize: "",
   });
 
+  // Keyed `${kind}:${value}` — what each option adds to the base price.
+  const [optionDeltas, setOptionDeltas] = useState<Record<string, string>>({});
   const [generalImage, setGeneralImage] = useState<File | null>(null);
   const [colorVariants, setColorVariants] = useState<ColorVariant[]>([]);
   const [storageVariants, setStorageVariants] = useState<StorageVariant[]>([]);
@@ -85,6 +89,7 @@ function AddProduct() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
 
     // Validate general image
     if (!generalImage) {
@@ -117,6 +122,7 @@ function AddProduct() {
       }
     }
 
+    setSaving(true);
     try {
       // Upload general image first
       const formDataForGeneralImage = new FormData();
@@ -166,6 +172,7 @@ function AddProduct() {
         variants: variants,
         colorVariants: uploadedColorVariants.length > 0 ? uploadedColorVariants : [],
         storageVariants: storageVariants.length > 0 ? storageVariants : [],
+        options: buildOptions(),
       };
 
 
@@ -181,7 +188,7 @@ function AddProduct() {
 
 
       if (response.status === 201) {
-        toast.success("Product Added Successfully!");
+        toast.success("Product added");
         setFormData({
           name: "",
           category: "",
@@ -199,12 +206,15 @@ function AddProduct() {
         });
         setColorVariants([]);
         setStorageVariants([]);
+        setOptionDeltas({});
         setGeneralImage(null);
-        setTimeout(() => navigate("/"), 1500);
+        navigate("/seller-products");
       }
     } catch (err) {
       console.error("Error adding product:", err);
-      toast.error("Failed to Add Product");
+      toast.error("Could not add your product. Your details are still here; please try again.");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -231,6 +241,24 @@ function AddProduct() {
       setGeneralImage(e.target.files[0]);
     }
   };
+
+  // The five option kinds the catalogue prices; the form's speakerSize list has no column and is
+  // dropped server-side, so it never becomes a priced option either.
+  const PRICED_OPTION_KINDS = ['color', 'storage', 'ram', 'screenSize', 'processor'] as const;
+
+  const selectedOptions = PRICED_OPTION_KINDS.flatMap((kind) =>
+    (variants[kind] || []).map((value) => ({ kind, value })));
+
+  const buildOptions = () => selectedOptions.map(({ kind, value }) => ({
+    kind,
+    value,
+    priceDelta: Number(optionDeltas[`${kind}:${value}`]) || 0,
+    stock: kind === 'color'
+      ? colorVariants.find((cv) => cv.color === value)?.stock ?? null
+      : kind === 'storage'
+        ? storageVariants.find((sv) => sv.storage === value)?.stock ?? null
+        : null,
+  }));
 
   const addVariant = (type: string) => {
     const value = variantInput[type as keyof typeof variantInput]?.trim();
@@ -350,34 +378,23 @@ function AddProduct() {
     <>
       <NavBar />
       <div className="min-h-screen bg-paper pb-10">
-        {/* Page Header */}
-        <div className="bg-ink text-paper py-6 sm:py-8 border-b border-brass/40">
-          <div className="container mx-auto px-4 sm:px-6 max-w-3xl flex items-center gap-4">
-            <button
-              type="button"
-              onClick={() => navigate('/seller-panel')}
-              className="p-2 border border-paper/30 text-paper hover:bg-paper/10 active:scale-[0.97] transition"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <div>
-              <h1 className="font-display text-2xl sm:text-4xl font-bold mb-1">Add New Product</h1>
-              <p className="text-paper/60 text-sm">List your product on the store and reach more customers</p>
-            </div>
-          </div>
+        <div className="container mx-auto px-4 sm:px-6 max-w-3xl">
+          <AdminHeading title="Add new product" description="List your product on the store and reach more customers">
+            <Link className="admin-button" to="/seller-products"><ArrowLeft size={14} aria-hidden="true" />All products</Link>
+          </AdminHeading>
         </div>
         <div className="container mx-auto px-4 sm:px-6 max-w-3xl py-6 sm:py-10">
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="admin-product-form space-y-6" aria-busy={saving}>
             {/* Basic Info */}
             <div className="bg-paper-raised border border-hairline p-6">
               <h2 className="font-display text-xl font-bold text-ink mb-4">Basic Information</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div>
-                  <label className="block text-sm font-semibold text-ink mb-1.5">Product Name</label>
+                  <label htmlFor="product-name" className="block text-sm font-semibold text-ink mb-1.5">Product Name</label>
                   <input
                     type="text"
-                    name="name"
+                    id="product-name" name="name"
                     value={formData.name}
                     onChange={handleInputChange}
                     className="w-full px-4 py-3 border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition"
@@ -386,9 +403,9 @@ function AddProduct() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-ink mb-1.5">Category</label>
+                  <label htmlFor="product-category" className="block text-sm font-semibold text-ink mb-1.5">Category</label>
                   <select
-                    name="category"
+                    id="product-category" name="category"
                     value={formData.category}
                     onChange={handleSelectChange}
                     className="w-full px-4 py-3 border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition"
@@ -405,10 +422,10 @@ function AddProduct() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-ink mb-1.5">Price (Rs.)</label>
+                  <label htmlFor="product-price" className="block text-sm font-semibold text-ink mb-1.5">Price (Rs.)</label>
                   <input
                     type="number"
-                    name="price"
+                    id="product-price" name="price"
                     value={formData.price}
                     onChange={handleInputChange}
                     className="w-full px-4 py-3 border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition font-mono tabular-nums"
@@ -440,9 +457,9 @@ function AddProduct() {
                 </div>
               </div>
               <div className="mt-5">
-                <label className="block text-sm font-semibold text-ink mb-1.5">Description</label>
+                <label htmlFor="product-description" className="block text-sm font-semibold text-ink mb-1.5">Description</label>
                 <textarea
-                  name="description"
+                  id="product-description" name="description"
                   value={formData.description}
                   onChange={handleInputChange}
                   rows={4}
@@ -531,6 +548,43 @@ function AddProduct() {
                     </div>
                   );
                 })}
+              </div>
+            )}
+
+            {/* Price difference per option */}
+            {selectedOptions.length > 0 && (
+              <div className="bg-paper-raised border border-hairline p-6">
+                <h2 className="font-display text-xl font-bold text-ink mb-1">Price per option</h2>
+                <p className="text-sm text-ink-muted mb-5">
+                  What each choice adds to the base price. Leave at 0 for options that cost the same.
+                </p>
+                <div className="border border-hairline divide-y divide-hairline">
+                  {selectedOptions.map(({ kind, value }) => {
+                    const key = `${kind}:${value}`;
+                    const delta = Number(optionDeltas[key]) || 0;
+                    return (
+                      <div key={key} className="flex flex-wrap items-center gap-3 p-4">
+                        <span className="text-xs uppercase tracking-widest text-ink-muted w-24">{kind}</span>
+                        <span className="font-semibold text-ink">{value}</span>
+                        <div className="ml-auto flex items-center gap-2">
+                          <span className="text-sm text-ink-muted">base +</span>
+                          <input
+                            type="number"
+                            step="1"
+                            aria-label={`Price difference for ${value}`}
+                            value={optionDeltas[key] ?? ''}
+                            onChange={(e) => setOptionDeltas((prev) => ({ ...prev, [key]: e.target.value }))}
+                            className="w-32 px-3 py-2 border border-hairline bg-paper text-ink text-right font-mono tabular-nums focus:outline-none focus:border-brass transition"
+                            placeholder="0"
+                          />
+                          <span className="text-sm text-ink-muted font-mono tabular-nums w-32 text-right">
+                            = रु {((Number(formData.price) || 0) + delta).toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
@@ -626,9 +680,10 @@ function AddProduct() {
             {/* Submit */}
             <button
               type="submit"
-              className="w-full py-4 bg-brass text-white hover:bg-brass-dark active:scale-[0.97] transition font-semibold text-lg flex items-center justify-center gap-2"
+              disabled={saving}
+              className="admin-button admin-button--primary admin-product-submit"
             >
-              <Plus className="w-5 h-5" /> Add Product
+              <Plus className="w-5 h-5" aria-hidden="true" /> {saving ? "Uploading and saving…" : "Add product"}
             </button>
           </form>
         </div>

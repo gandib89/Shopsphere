@@ -230,8 +230,8 @@
   gap: 1rem;
   margin-top: 0;
   padding-bottom: 0.75rem;
-  /* A visible, quiet scrollbar: the arrows step card by card, this lets anyone drag or wheel
-     through the row at their own pace. */
+  /* The thumb supports deliberate click-and-drag navigation without assigning the wheel to
+     the product row. */
   scrollbar-width: thin;
   scrollbar-color: rgb(var(--color-line)) transparent;
 }

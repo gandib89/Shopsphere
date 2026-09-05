@@ -49,11 +49,11 @@ describe('seller profiles', () => {
     expect(screen.getByRole('link',{name:'All sellers'})).toHaveAttribute('href','/admin/sellers');
   });
   it('opens products and loads only the selected seller orders', async () => {
-    vi.mocked(authFetch).mockImplementation(async path => response(String(path).includes('view=orders') ? { ...detail, view:'orders', total:1, items:[{id:'order123',firstName:'Asha',lastName:'Gurung',status:'Pending',totalPrice:250,createdAt:'2026-08-01',product:{name:'MacBook'}}] } : {...detail,total:1,items:[{id:'product123',name:'MacBook',category:'Laptop',price:250,quantity:2,images:[]}]}));
+    vi.mocked(authFetch).mockImplementation(async path => response(String(path).includes('view=orders') ? { ...detail, view:'orders', total:1, items:[{_id:'order123',firstName:'Asha',lastName:'Gurung',status:'Pending',totalPrice:250,createdAt:'2026-08-01',product:{name:'MacBook'}}] } : {...detail,total:1,items:[{id:'product123',name:'MacBook',category:'Laptop',price:250,quantity:2,images:[]}]}));
     const user=userEvent.setup(); showProfile();
     expect(await screen.findByRole('link',{name:'View / edit'})).toHaveAttribute('href','/product-details-admin/product123');
     await user.click(screen.getByRole('button',{name:'Orders'}));
-    expect(await screen.findByRole('link',{name:'#order123'})).toHaveAttribute('href','/admin/orders/order123');
+    expect(await screen.findByRole('link',{name:/#order123/})).toHaveAttribute('href','/admin/orders/order123');
     expect(authFetch).toHaveBeenLastCalledWith(expect.stringContaining('/sellers/'+seller.id+'?view=orders'),expect.anything());
     expect(screen.queryByRole('link',{name:'View / edit'})).not.toBeInTheDocument();
   });
@@ -64,7 +64,9 @@ describe('seller profiles', () => {
   });
   it('ignores late responses after switching activity views', async () => {
     let finish!: (value: Response) => void;
-    vi.mocked(authFetch).mockResolvedValueOnce(response(detail)).mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
+    vi.mocked(authFetch).mockImplementation(path => String(path).includes('view=orders')
+      ? new Promise(resolve => { finish = resolve; })
+      : Promise.resolve(response(detail)));
     const user=userEvent.setup();showProfile();await screen.findByText('This seller has not listed any products.');
     await user.click(screen.getByRole('button',{name:'Orders'}));
     // A pending response is aborted when navigating away; it must not restore a profile.

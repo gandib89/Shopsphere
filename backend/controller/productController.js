@@ -22,7 +22,7 @@ const execFileAsync = promisify(execFile);
 // Full embedded-doc shape from the old Mongoose schema: colorVariants/storageVariants/reviews
 // used to live inline on every Product document, so any endpoint that used to return a whole
 // product now needs this include to match the old response shape.
-const PRODUCT_FULL_INCLUDE = { colorVariants: true, storageVariants: true, reviews: true };
+const PRODUCT_FULL_INCLUDE = { colorVariants: true, storageVariants: true, options: true, reviews: true };
 const SELLER_SELECT = { shopName: true, phone: true, firstName: true, lastName: true };
 
 export const formatProductResponse = (product) => {
@@ -80,6 +80,12 @@ const buildProductUpdateData = (body) => {
         stock: sv.stock || 0,
       })),
     };
+  }
+
+  // Only an explicit `options` payload rewrites the priced options: rebuilding them whenever the
+  // plain variant lists change would silently reset every price delta a seller had entered.
+  if (body.options !== undefined) {
+    data.options = { deleteMany: {}, create: buildOptionRows(body, body.options) };
   }
 
   return data;
@@ -186,11 +192,42 @@ const createProductSchema = z.object({
     storage: z.string().optional(),
     stock: z.coerce.number().int().nonnegative().optional(),
   })).optional(),
+  // priceDelta is what this option adds to (or takes off) the base price when chosen.
+  options: z.array(z.object({
+    kind: z.enum(["color", "storage", "ram", "screenSize", "processor"]),
+    value: z.string().min(1),
+    priceDelta: z.coerce.number().optional(),
+    stock: z.coerce.number().int().nonnegative().nullish(),
+  })).optional(),
 });
 
 const updateProductSchema = createProductSchema.partial().extend({
   discount: z.coerce.number().min(0).max(100).optional(),
 });
+
+// Options are the priced side of a product's configuration. A seller who sends explicit
+// `options` gets exactly those; one who only sends the older variant lists still gets a row per
+// value at a zero delta, so both shapes end up in the same table and nothing prices differently
+// until a delta is set.
+const buildOptionRows = (body, options) => {
+  if (options?.length) {
+    return options.map((option) => ({
+      kind: option.kind,
+      value: option.value,
+      priceDelta: Number(option.priceDelta) || 0,
+      stock: option.stock ?? null,
+    }));
+  }
+  const lists = {
+    color: body.variants?.color || [],
+    storage: body.variants?.storage || [],
+    ram: body.variants?.ram || [],
+    screenSize: body.variants?.screenSize || [],
+    processor: body.variants?.processor || [],
+  };
+  return Object.entries(lists).flatMap(([kind, values]) =>
+    values.map((value) => ({ kind, value, priceDelta: 0, stock: null })));
+};
 
 export const createProduct = async (req, res) => {
   const parsed = createProductSchema.safeParse(req.body);
@@ -199,7 +236,7 @@ export const createProduct = async (req, res) => {
   }
 
   try {
-    const { name, price, description, quantity, images, category, variants, colorVariants, storageVariants } = parsed.data;
+    const { name, price, description, quantity, images, category, variants, colorVariants, storageVariants, options } = parsed.data;
 
     const v = variants || {};
     const product = await prisma.product.create({
@@ -230,6 +267,7 @@ export const createProduct = async (req, res) => {
             stock: sv.stock || 0,
           })),
         },
+        options: { create: buildOptionRows(parsed.data, options) },
       },
       include: PRODUCT_FULL_INCLUDE,
     });
@@ -274,10 +312,11 @@ export const getProducts = async (req, res) => {
     const { paginated, page, pageSize, prismaArgs } = parsePagination(req.query);
     const [products, total] = await Promise.all([
       prisma.product.findMany({
+        where: { isArchived: false },
         include: { seller: { select: SELLER_SELECT }, ...PRODUCT_FULL_INCLUDE },
         ...prismaArgs,
       }),
-      paginated ? prisma.product.count() : Promise.resolve(null),
+      paginated ? prisma.product.count({ where: { isArchived: false } }) : Promise.resolve(null),
     ]);
 
     // Ensure all products have category (for backward compatibility with old data)
@@ -299,7 +338,7 @@ export const getProductById = async (req, res) => {
       where: { id: req.params.id },
       include: { seller: { select: SELLER_SELECT }, ...PRODUCT_FULL_INCLUDE },
     });
-    if (!product) return res.status(404).json({ message: "Product not found" });
+    if (!product || product.isArchived) return res.status(404).json({ message: "Product not found" });
 
     res.status(200).json(formatProductResponse(product));
   } catch (error) {
@@ -359,13 +398,13 @@ export const searchProducts = async (req, res) => {
     if (type === "name") {
       // Search by product name (case-insensitive)
       products = await prisma.product.findMany({
-        where: { name: { contains: query, mode: "insensitive" } },
+        where: { isArchived: false, name: { contains: query, mode: "insensitive" } },
         include: PRODUCT_FULL_INCLUDE,
       });
     } else if (type === "category") {
       // Search by category (case-insensitive)
       products = await prisma.product.findMany({
-        where: { category: { contains: query, mode: "insensitive" } },
+        where: { isArchived: false, category: { contains: query, mode: "insensitive" } },
         include: PRODUCT_FULL_INCLUDE,
       });
     } else {
@@ -402,6 +441,25 @@ export const getSellerProducts = async (req, res) => {
   } catch (error) {
     console.error("Error fetching seller products:", error);
     res.status(500).json({ message: "Server error while fetching seller products" });
+  }
+};
+
+// Read one of the seller's own products. The public GET /get/:id serves any product, so the
+// seller workspace must not use it: a seller who guessed or pasted another shop's product id
+// would see that listing (and an edit form for it) inside their own panel. Answers 404 rather
+// than 403 for someone else's product so this can't be used to probe which ids exist.
+export const getSellerProductById = async (req, res, client = prisma) => {
+  try {
+    const product = await client.product.findFirst({
+      where: { id: req.params.id, sellerId: req.user.id },
+      include: PRODUCT_FULL_INCLUDE,
+    });
+    if (!product || product.isArchived) return res.status(404).json({ message: "Product not found" });
+
+    res.status(200).json(formatProductResponse(product));
+  } catch (error) {
+    console.error("Error fetching seller product:", error);
+    res.status(500).json({ message: "Server error while fetching product" });
   }
 };
 
@@ -617,7 +675,7 @@ export const getProductRecommendations = async (req, res) => {
     if (aprioriNames.length > 0) {
       // Fetch all products (excluding current) to do fuzzy matching
       const allDbProducts = await prisma.product.findMany({
-        where: { id: { not: productId } },
+        where: { isArchived: false, id: { not: productId } },
         select: { id: true, name: true, price: true, images: true, category: true, quantity: true },
       });
 
@@ -708,6 +766,7 @@ export const getProductRecommendations = async (req, res) => {
 
     const fallbackProducts = await prisma.product.findMany({
       where: {
+        isArchived: false,
         category: product.category,
         id: { not: productId },
         quantity: { gt: 0 },

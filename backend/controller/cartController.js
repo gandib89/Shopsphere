@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { listPriceWithOptions } from "../utils/productPricing.js";
 import { prisma } from "../database/prismaClient.js";
 import { generateId } from "../utils/generateId.js";
 
@@ -13,7 +14,7 @@ const updateCartItemSchema = z.object({
   quantity: z.coerce.number().int(), // <= 0 is a valid "remove item" signal, checked below
 });
 
-const PRODUCT_SELECT = { id: true, name: true, price: true, images: true, category: true, discount: true };
+const PRODUCT_SELECT = { id: true, name: true, price: true, images: true, category: true, discount: true, options: true };
 
 const withDiscount = (items) => {
   let totalPrice = 0;
@@ -61,10 +62,13 @@ export const addToCart = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    const product = await prisma.product.findUnique({ where: { id: productId } });
-    if (!product) {
+    const product = await prisma.product.findUnique({ where: { id: productId }, include: { options: true } });
+    if (!product || product.isArchived) {
       return res.status(404).json({ message: "Product not found" });
     }
+    // The stored line price is the configured list price; the cart applies any discount on read,
+    // exactly as it did when every product had a single price.
+    const linePrice = listPriceWithOptions(product, variants);
 
     let cart = await prisma.cart.findFirst({ where: { email: user.email }, include: { items: true } });
 
@@ -79,7 +83,7 @@ export const addToCart = async (req, res) => {
               {
                 productId,
                 quantity: quantity || 1,
-                price: product.price,
+                price: linePrice,
                 variants: variants || {},
               },
             ],
@@ -105,7 +109,7 @@ export const addToCart = async (req, res) => {
             cartId: cart.id,
             productId,
             quantity: quantity || 1,
-            price: product.price,
+            price: linePrice,
             variants: variants || {},
           },
         });

@@ -11,6 +11,7 @@ import {
   searchProducts,
   uploadImage,
   getSellerProducts,
+  getSellerProductById,
   updateSellerProduct,
   deleteSellerProduct,
   addProductReview,
@@ -61,6 +62,7 @@ productRouter.post("/:productId/reviews", verifyToken, addProductReview);
 
 // Seller-specific routes
 productRouter.get("/seller/my-products", verifyToken, authorizeSeller, getSellerProducts);
+productRouter.get("/seller/product/:id", verifyToken, authorizeSeller, (req, res) => getSellerProductById(req, res));
 productRouter.put("/seller/update/:id", verifyToken, authorizeSeller, checkSellerVerification, updateSellerProduct);
 productRouter.delete("/seller/delete/:id", verifyToken, authorizeSeller, checkSellerVerification, deleteSellerProduct);
 productRouter.put("/seller/discount/:productId", verifyToken, authorizeSeller, checkSellerVerification, setProductDiscount);

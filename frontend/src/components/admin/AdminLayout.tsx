@@ -13,8 +13,8 @@ type AdminNavItem = { label: string; to: string; icon: LucideIcon; group?: strin
 
 const sections: AdminNavItem[] = [
   { label: 'Home', to: '/admin', icon: Home, group: 'Store management' },
-  { label: 'Orders', to: '/admin/orders', icon: ClipboardList },
-  { label: 'Products', to: '/all-products', icon: Package },
+  { label: 'All orders', to: '/admin/orders', icon: ClipboardList },
+  { label: 'Catalogue', to: '/all-products', icon: Package },
   { label: 'Sellers', to: '/admin/sellers', icon: Store, children: [
     { label: 'Seller directory', to: '/admin/sellers', icon: Store },
     { label: 'Orders', view: 'orders', icon: ClipboardList },
@@ -45,6 +45,9 @@ export default function AdminLayout() {
   useEffect(() => { setMobileOpen(false); window.scrollTo(0, 0); }, [location.pathname]);
   useEffect(() => { if (sellerSectionActive) setSellerMenuOpen(true); }, [sellerSectionActive]);
   useEffect(() => {
+    if (mobileOpen) document.querySelector<HTMLAnchorElement>('#admin-navigation nav a')?.focus();
+  }, [mobileOpen]);
+  useEffect(() => {
     const close = (event: KeyboardEvent) => { if (event.key === 'Escape' && mobileOpen) { setMobileOpen(false); menuRef.current?.focus(); } };
     document.addEventListener('keydown', close);
     return () => document.removeEventListener('keydown', close);
@@ -61,6 +64,7 @@ export default function AdminLayout() {
           <div className="admin-topbar-end"><NotificationBell /><span className="admin-account-label">Administrator</span><button onClick={signOut} disabled={signingOut} aria-label="Sign out"><LogOut size={17} aria-hidden="true" /></button></div>
         </header>
         <aside className="admin-sidebar" id="admin-navigation" aria-label="Admin workspace">
+          <div className="admin-identity"><span className="admin-identity-mark" aria-hidden="true">S</span><div><strong>ShopSphere</strong><small>Marketplace administration</small></div></div>
           <nav aria-label="Admin navigation">
             {sections.map(({ label, to, icon: Icon, group, children }) => <div key={to} className={group ? 'admin-nav-section-start' : undefined} role={children ? 'group' : undefined} aria-label={children ? `${label} section` : undefined}>
               {group && <p className="admin-nav-group">{group}</p>}
@@ -86,6 +90,7 @@ export default function AdminLayout() {
               })}</div>}
             </div>)}
           </nav>
+          <div className="admin-sidebar-footer"><Link to="/"><ExternalLink size={16} aria-hidden="true" /><span>Open storefront</span></Link></div>
           <button className="admin-collapse" onClick={() => setCollapsed(!collapsed)} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>{collapsed ? <ChevronRight size={17} /> : <ChevronLeft size={17} />}<span>Collapse menu</span></button>
         </aside>
         <div className="admin-workspace">

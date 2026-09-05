@@ -42,3 +42,23 @@ test("formats recommendation arrays for product-card actions", () => {
     lift: 1.4,
   });
 });
+
+test("seller product read is scoped to the signed-in seller", async () => {
+  const result = () => ({ statusCode: 200, body: null, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } });
+  const req = { params: { id: "66a200000000000000000003" }, user: { id: "seller-a", role: "seller" } };
+
+  let where;
+  const found = result();
+  await productController.getSellerProductById(req, found, {
+    product: { findFirst: async (args) => { where = args.where; return { id: req.params.id, name: "iPhone 16", category: "Mobile Phones", sellerId: "seller-a" }; } },
+  });
+  assert.deepEqual(where, { id: "66a200000000000000000003", sellerId: "seller-a" });
+  assert.equal(found.statusCode, 200);
+  assert.equal(found.body._id, "66a200000000000000000003");
+
+  // Another seller's product must not leak — the sellerId filter makes it a plain 404.
+  const other = result();
+  await productController.getSellerProductById(req, other, { product: { findFirst: async () => null } });
+  assert.equal(other.statusCode, 404);
+  assert.equal(other.body.message, "Product not found");
+});

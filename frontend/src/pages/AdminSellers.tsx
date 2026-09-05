@@ -1,3 +1,4 @@
+import CreateSeller from '../components/account/CreateSeller';
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { RefreshCw, Search } from 'lucide-react';
@@ -6,6 +7,7 @@ import { adminDate } from '../lib/adminData';
 import { sellerName, sellerStatus, useAdminSellerResource, type SellerList } from '../lib/adminSellers';
 
 export default function AdminSellers() {
+  const [creating, setCreating] = useState(false);
   const [params, setParams] = useSearchParams();
   const q = params.get('q') || '';
   const status = ['verified', 'unverified'].includes(params.get('status') || '') ? params.get('status')! : 'all';
@@ -16,7 +18,8 @@ export default function AdminSellers() {
   const { data, error, loading, reload } = useAdminSellerResource<SellerList>('?' + query);
   const update = (values: Record<string, string>) => setParams({ q, status, page: '1', ...values });
   return <main>
-    <AdminHeading title="Sellers" description="Find a shop and open its account, products, and orders."><button className="admin-button" disabled={loading} onClick={reload}><RefreshCw size={14} aria-hidden="true" />Refresh</button><Link className="admin-button" to="/admin/seller-approvals">Review applications</Link></AdminHeading>
+    <AdminHeading title="Sellers" description="Find a shop and open its account, products, and orders."><button className="admin-button" disabled={loading} onClick={reload}><RefreshCw size={14} aria-hidden="true" />Refresh</button><Link className="admin-button" to="/admin/seller-approvals">Review applications</Link><button className="admin-button admin-button--primary" onClick={() => setCreating(true)}>Add seller</button></AdminHeading>
+    {creating && <CreateSeller onCancel={() => setCreating(false)} />}
     {error && <p role="alert" className="admin-notice">{error} <button className="admin-text-link" onClick={reload}>Try again</button></p>}
     <section className="admin-panel" aria-label="Seller directory">
       <div className="admin-toolbar">

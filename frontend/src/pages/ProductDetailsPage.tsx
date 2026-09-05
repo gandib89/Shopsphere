@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { getBackendOrigin, getImageUrl } from "../lib/utils";
@@ -38,6 +38,17 @@ interface Product {
     storage: string;
     stock: number;
   }>;
+  options?: Array<{
+    kind: string;
+    value: string;
+    priceDelta: number | string;
+    stock?: number | null;
+  }>;
+  variantStorage?: string[];
+  variantColor?: string[];
+  variantRam?: string[];
+  variantScreenSize?: string[];
+  variantProcessor?: string[];
 }
 
 interface RecommendedProduct {
@@ -116,9 +127,54 @@ function ProductDetailsPage() {
   const token = localStorage.getItem("token");
   const isSeller = localStorage.getItem("isSeller") === "true";
   const isAdmin = localStorage.getItem("isAdmin") === "true";
-  const subtotal = quantity * (product?.price || 0);
+
+  // Options can arrive two ways: colorVariants/storageVariants rows that carry their own stock,
+  // or the plain variant lists on the product itself. The page only ever rendered the first, so
+  // a product described with the lists (every seeded one) offered no way to pick a configuration
+  // even while the catalogue card promised "Choose your configuration".
+  const optionGroups = useMemo(() => {
+    if (!product) return [] as Array<{ key: string; label: string; values: Array<{ value: string; priceDelta: number }> }>;
+    const labels: Record<string, string> = { color: 'Color', storage: 'Storage', ram: 'Memory', screenSize: 'Size', processor: 'Processor' };
+    // Priced option rows are the source of truth; the plain lists remain the fallback for
+    // products that predate them, priced flat.
+    const priced = product.options ?? [];
+    const listFor = (kind: string) => ({
+      color: product.colorVariants?.length ? [] : product.variantColor ?? product.variants?.color ?? [],
+      storage: product.storageVariants?.length ? [] : product.variantStorage ?? product.variants?.storage ?? [],
+      ram: product.variantRam ?? product.variants?.ram ?? [],
+      screenSize: product.variantScreenSize ?? product.variants?.screenSize ?? [],
+      processor: product.variantProcessor ?? product.variants?.processor ?? [],
+    }[kind] ?? []);
+    return Object.keys(labels).map(kind => {
+      const rows = priced.filter(option => option.kind === kind);
+      const values = rows.length
+        ? rows.map(option => ({ value: option.value, priceDelta: Number(option.priceDelta) || 0 }))
+        : listFor(kind).map(value => ({ value, priceDelta: 0 }));
+      return { key: kind, label: labels[kind], values };
+    }).filter(group => group.values.length > 0);
+  }, [product]);
+
+  // What the chosen configuration costs: base price plus every selected option's delta.
+  const optionPriceDelta = useMemo(() => optionGroups.reduce((total, group) => {
+    const chosen = group.values.find(option => option.value === selectedVariants[group.key]);
+    return total + (chosen?.priceDelta ?? 0);
+  }, 0), [optionGroups, selectedVariants]);
+
+  const configuredPrice = (product?.price || 0) + optionPriceDelta;
+
+  const subtotal = quantity * configuredPrice;
   const discount = appliedPromo?.discountAmount || 0;
   const totalPrice = subtotal - discount;
+
+  const selectVariant = (key: string, value: string) => {
+    setSelectedVariants(current => ({ ...current, [key]: value }));
+    if (key === 'color') setSelectedColor(value);
+    if (key === 'storage') setSelectedStorage(value);
+    setQuantity(1);
+  };
+
+  // Shared by Add to cart and Buy now so neither can slip an unconfigured item through.
+  const missingOptions = () => optionGroups.filter(group => !selectedVariants[group.key]).map(group => group.label);
 
   // Get available stock based on selected color or total stock
   const getAvailableStock = () => {
@@ -314,6 +370,12 @@ function ProductDetailsPage() {
       return;
     }
 
+    const missing = missingOptions();
+    if (missing.length > 0) {
+      toast.error(`Please select: ${missing.join(", ")}`);
+      return;
+    }
+
     const formattedData = {
       productId: product?._id,
       quantity,
@@ -443,21 +505,10 @@ function ProductDetailsPage() {
     }
 
     // Validate that required variants are selected
-    if (product?.variants) {
-      const hasRequiredVariants = Object.entries(product.variants).some(
-        ([_, values]) => values && values.length > 0
-      );
-
-      if (hasRequiredVariants) {
-        const missingVariants = Object.entries(product.variants)
-          .filter(([key, values]) => values && values.length > 0 && !selectedVariants[key])
-          .map(([key]) => key);
-
-        if (missingVariants.length > 0) {
-          toast.error(`Please select: ${missingVariants.join(", ")}`);
-          return;
-        }
-      }
+    const missingForOrder = missingOptions();
+    if (missingForOrder.length > 0) {
+      toast.error(`Please select: ${missingForOrder.join(", ")}`);
+      return;
     }
 
     // Validate quantity doesn't exceed available stock for selected options
@@ -758,7 +809,7 @@ function ProductDetailsPage() {
                 {/* Price */}
                 <div className="mb-1">
                   <span className="text-3xl sm:text-4xl font-bold tracking-tight text-ink font-mono tabular-nums">
-                    रु {product.price.toLocaleString()}
+                    रु {configuredPrice.toLocaleString()}
                   </span>
                 </div>
 
@@ -849,6 +900,39 @@ function ProductDetailsPage() {
                     </div>
                   </div>
                 )}
+
+                {/* Options described as plain lists on the product (no per-option stock) */}
+                {optionGroups.map(group => (
+                  <div key={group.key} className="mb-6 pb-6 border-b border-hairline">
+                    <p className="text-xs font-semibold uppercase tracking-widest mb-3 text-ink-muted">
+                      {group.label}{selectedVariants[group.key] && ` — ${selectedVariants[group.key]}`}
+                    </p>
+                    <div className="flex flex-wrap gap-2" role="group" aria-label={group.label}>
+                      {group.values.map(option => {
+                        const isSelected = selectedVariants[group.key] === option.value;
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            aria-pressed={isSelected}
+                            onClick={() => selectVariant(group.key, option.value)}
+                            className={`flex min-h-11 items-center gap-2 rounded-[var(--radius-control)] border px-4 py-1.5 text-sm font-medium transition ${
+                              isSelected ? 'border-brass bg-brass/10 text-brass' : 'border-hairline bg-paper text-ink hover:border-brass/50'
+                            }`}
+                          >
+                            {group.key === 'color' && (
+                              <span className="h-4 w-4 shrink-0 rounded-full border border-ink/20" style={{ backgroundColor: option.value.toLowerCase() }} />
+                            )}
+                            {option.value}
+                            {option.priceDelta > 0 && (
+                              <span className="text-xs font-normal tabular-nums text-ink-muted">+रु {option.priceDelta.toLocaleString()}</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
 
                 {/* Quantity */}
                 <div className="mb-6 pb-6 border-b border-hairline">

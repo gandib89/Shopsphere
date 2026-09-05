@@ -19,6 +19,13 @@ describe('global ShopSphere chrome', () => {
     expect(screen.getByRole('button', { name: 'Close menu' })).toHaveAttribute('aria-expanded', 'true');
   });
 
+  it('marks the current customer page in navigation', () => {
+    localStorage.setItem('token', 'test-session');
+    renderRoute(<NavBar />, '/cart');
+    expect(screen.getByRole('link', { name: 'Cart' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Home' })).not.toHaveAttribute('aria-current');
+  });
+
   it('renders a single semantic footer', () => {
     renderRoute(<Footer />);
     expect(screen.getAllByRole('contentinfo')).toHaveLength(1);

@@ -1,337 +1,74 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Plus, Package, ShoppingCart, Eye, Trash2, BarChart2 } from 'lucide-react';
-import { getImageUrl } from '../lib/utils';
-import axios from 'axios';
-import { toast } from 'sonner';
-import NavBar from '../components/NavBar';
-import { ActionList, type ActionItem } from '../components/operations/ActionList';
-import { PageHeader } from '../components/operations/PageHeader';
-import { LoadingState } from '../components/ui/AsyncState';
-import { Money } from '../components/catalog/Money';
+import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { ArrowRight, BarChart3, ClipboardList, Package, Plus, RefreshCw, RotateCcw, AlertTriangle } from 'lucide-react';
+import { AdminHeading, OrderStatus } from '../components/admin/AdminUi';
+import { adminDate, adminMoney } from '../lib/adminData';
+import { getSellerCollection, stockState, type SellerOrder, type SellerProduct } from '../lib/sellerData';
 
-interface Product {
-  _id: string;
-  name: string;
-  category: string;
-  price: number;
-  quantity: number;
-  images: string[];
-  colorVariants?: Array<{
-    color: string;
-    stock: number;
-    images: string[];
-  }>;
-  storageVariants?: Array<{
-    storage: string;
-    stock: number;
-  }>;
-}
-
-interface Order {
-  _id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  product: {
-    _id: string;
-    name: string;
-    price: number;
-  };
-  quantity: number;
-  totalPrice: number;
-  status: string;
-  createdAt: string;
-}
-
-const orderStatusColor = (status: string) => {
-  switch (status) {
-    case 'Delivered': return 'border-moss text-moss';
-    case 'Shipped':
-    case 'Processing': return 'border-brass text-brass';
-    case 'Cancelled': return 'border-seal text-seal';
-    default: return 'border-hairline text-ink-muted';
-  }
-};
-
-function SellerPanel() {
-  const token = localStorage.getItem('token');
-  const navigate = useNavigate();
-  const [sellerInfo, setSellerInfo] = useState<any>(null);
-  const [productCount, setProductCount] = useState(0);
-  const [orderCount, setOrderCount] = useState(0);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
+export default function SellerPanel() {
+  const [orders, setOrders] = useState<SellerOrder[] | null>(null);
+  const [products, setProducts] = useState<SellerProduct[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [period, setPeriod] = useState('30');
 
-  useEffect(() => {
-    if (!token || localStorage.getItem('isSeller') !== 'true') {
-      window.location.hash = '/auth';
-      return;
-    }
+  const load = useCallback(async (signal?: AbortSignal) => {
+    setLoading(true); setError('');
+    const results = await Promise.allSettled([
+      getSellerCollection<SellerOrder>('/api/v1/order/seller/my-orders', 'orders', signal),
+      getSellerCollection<SellerProduct>('/api/v1/product/seller/my-products', 'products', signal),
+    ]);
+    if (signal?.aborted) return;
+    setOrders(results[0].status === 'fulfilled' ? results[0].value : null);
+    setProducts(results[1].status === 'fulfilled' ? results[1].value : null);
+    if (results.some(result => result.status === 'rejected')) setError('Some of your shop information could not be loaded. Refresh to try again.');
+    setLoading(false);
+  }, []);
+  useEffect(() => { const controller = new AbortController(); void load(controller.signal); return () => controller.abort(); }, [load]);
 
-    fetchSellerInfo();
-  }, [token]);
+  const since = Date.now() - Number(period) * 86400000;
+  const inPeriod = (orders || []).filter(order => period === 'all' || (order.createdAt && new Date(order.createdAt).getTime() >= since));
+  const value = inPeriod.filter(order => !['Cancelled', 'Refund Released'].includes(order.status)).reduce((sum, order) => sum + Number(order.totalPrice || 0), 0);
+  const toFulfil = orders?.filter(order => ['Pending', 'Confirmed', 'Processing', 'Shipped'].includes(order.status)).length;
+  const returns = orders?.filter(order => order.status === 'Return Requested').length;
+  const outOfStock = products?.filter(product => stockState(product) === 'outofstock').length;
+  const lowStock = products?.filter(product => stockState(product) === 'lowstock').length;
+  const recent = [...(orders || [])].sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()).slice(0, 6);
+  const available = !loading && orders !== null;
 
-  const fetchSellerInfo = async () => {
-    try {
-      const response = await axios.get(
-        `${import.meta.env.VITE_BACKEND_URL}/api/v1/auth/me`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      setSellerInfo(response.data);
-
-      // Check if seller is verified
-      if (!response.data.isVerified) {
-        toast.error('Your seller account is pending admin approval');
-        setTimeout(() => {
-          window.location.hash = '/';
-        }, 2000);
-        return;
-      }
-
-      fetchSellerData();
-    } catch (err) {
-      console.error('Error fetching seller info:', err);
-      toast.error('Failed to load seller information');
-      setLoading(false);
-    }
-  };
-
-  const fetchSellerData = async () => {
-    try {
-      // Fetch seller's products
-      const productsRes = await axios.get(
-        `${import.meta.env.VITE_BACKEND_URL}/api/v1/product/seller/my-products`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-      setProducts(productsRes.data.products || []);
-      setProductCount(productsRes.data.count || 0);
-
-      // Fetch seller's orders
-      const ordersRes = await axios.get(
-        `${import.meta.env.VITE_BACKEND_URL}/api/v1/order/seller/my-orders`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-      setOrders(ordersRes.data.orders || []);
-      setOrderCount(ordersRes.data.count || 0);
-    } catch (err) {
-      console.error('Error fetching seller data:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDeleteProduct = async (productId: string) => {
-    if (window.confirm('Are you sure you want to delete this product?')) {
-      try {
-        await axios.delete(
-          `${import.meta.env.VITE_BACKEND_URL}/api/v1/product/seller/delete/${productId}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
-        toast.success('Product deleted successfully');
-        setProducts(products.filter(p => p._id !== productId));
-        setProductCount(productCount - 1);
-      } catch (err) {
-        console.error('Error deleting product:', err);
-        toast.error('Failed to delete product');
-      }
-    }
-  };
-
-  const panelCards: ActionItem[] = [
-    {
-      key: 'add-product',
-      icon: <Plus className="w-6 h-6" />,
-      title: 'Add Product',
-      description: 'Add new products to your store',
-      onSelect: () => navigate('/add-product'),
-      count: undefined,
-    },
-    {
-      key: 'products',
-      icon: <Package className="w-6 h-6" />,
-      title: 'My Products',
-      description: 'Manage and view your products',
-      onSelect: () => navigate('/seller-products'),
-      count: productCount,
-    },
-    {
-      key: 'orders',
-      icon: <ShoppingCart className="w-6 h-6" />,
-      title: 'Orders',
-      description: 'View and manage customer orders',
-      onSelect: () => navigate('/seller-orders'),
-      count: orderCount,
-    },
-    {
-      key: 'revenue',
-      icon: <BarChart2 className="w-6 h-6" />,
-      title: 'Revenue Dashboard',
-      description: 'View your sales and earnings',
-      onSelect: () => navigate('/seller/revenue'),
-    },
-  ];
-
-  return (
-    <>
-      <NavBar />
-      <main className="min-h-screen bg-paper">
-        <PageHeader
-          eyebrow={sellerInfo?.shopName || 'Seller workspace'}
-          title="Store operations"
-          description="Manage listings, orders, and the performance of your shop."
-        />
-
-        {loading ? (
-          <LoadingState description="Loading your shop workspace" />
-        ) : (
-        <div className="container-operate py-7 sm:py-10">
-          <div className="mb-4">
-            <h2 className="text-lg font-semibold text-ink">Workspaces</h2>
-            <p className="mt-1 text-sm text-ink-muted">Choose the part of your shop you want to work on.</p>
-          </div>
-          <ActionList label="Seller workspaces" items={panelCards} />
-
-          {/* Recent Products Section */}
-          <section className="mt-8 rounded-[var(--radius-surface)] border border-hairline bg-paper-raised p-5 shadow-sm sm:p-8">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="font-display text-2xl font-bold text-ink">Your Recent Products</h2>
-              <button
-                onClick={() => navigate('/seller-products')}
-                className="text-brass hover:text-brass-dark font-semibold text-sm"
-              >
-                View All →
-              </button>
-            </div>
-            {products.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {products.slice(0, 3).map((product) => (
-                  <article key={product._id} className="group flex h-full flex-col overflow-hidden rounded-[var(--radius-surface)] border border-hairline bg-paper-raised transition-colors hover:border-ink-muted/45">
-                    <div className="relative aspect-[4/3] w-full overflow-hidden bg-paper">
-                      <img
-                        src={getImageUrl(product.images?.[0])}
-                        alt={product.name}
-                        loading="lazy"
-                        className="h-full w-full object-cover transition-transform duration-200 ease-out-strong group-hover:scale-[1.025]"
-                      />
-                    </div>
-                    <div className="flex flex-1 flex-col p-4">
-                      <p className="text-xs font-medium text-ink-muted">{product.category}</p>
-                      <h3 className="mt-1 line-clamp-2 text-base font-semibold leading-snug tracking-tight text-ink">{product.name}</h3>
-                      <div className="mt-2 flex items-center justify-between">
-                        <Money amount={product.price} />
-                        <p className="text-sm text-ink-muted font-mono tabular-nums">{product.quantity} total</p>
-                      </div>
-
-                      {/* Color Variants Stock */}
-                      {product.colorVariants && product.colorVariants.length > 0 && (
-                        <div className="mt-3 border-t border-hairline pt-2">
-                          <p className="text-xs text-ink-muted mb-1">Stock by Color:</p>
-                          <div className="flex flex-wrap gap-1">
-                            {product.colorVariants.map((cv, idx) => (
-                              <span key={idx} className="text-xs border border-hairline px-2 py-1 font-mono tabular-nums text-ink-muted">
-                                {cv.color}: {cv.stock}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Storage Variants Stock */}
-                      {product.storageVariants && product.storageVariants.length > 0 && (
-                        <div className="mt-3 border-t border-hairline pt-2">
-                          <p className="text-xs text-ink-muted mb-1">Stock by Storage:</p>
-                          <div className="flex flex-wrap gap-1">
-                            {product.storageVariants.map((sv, idx) => (
-                              <span key={idx} className="text-xs border border-hairline px-2 py-1 font-mono tabular-nums text-ink-muted">
-                                {sv.storage}: {sv.stock}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="mt-auto flex gap-2 pt-4">
-                        <button
-                          onClick={() => navigate(`/seller-products/${product._id}`)}
-                          className="flex-1 p-2 border border-ink text-ink hover:bg-ink hover:text-paper active:scale-[0.98] transition text-sm font-semibold flex items-center justify-center gap-1"
-                        >
-                          <Eye className="w-4 h-4" /> View / Edit
-                        </button>
-                        <button
-                          onClick={() => handleDeleteProduct(product._id)}
-                          className="flex-1 p-2 border border-seal text-seal hover:bg-seal/5 active:scale-[0.98] transition text-sm font-semibold flex items-center justify-center gap-1"
-                        >
-                          <Trash2 className="w-4 h-4" /> Delete
-                        </button>
-                      </div>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <p className="text-ink-muted text-center py-8">No products yet. <button onClick={() => navigate('/add-product')} className="text-brass hover:text-brass-dark font-semibold">Add your first product</button></p>
-            )}
-          </section>
-
-          {/* Recent Orders Section */}
-          <section className="mt-6 rounded-[var(--radius-surface)] border border-hairline bg-paper-raised p-5 shadow-sm sm:p-8">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="font-display text-2xl font-bold text-ink">Recent Orders</h2>
-              <button
-                onClick={() => navigate('/seller-orders')}
-                className="text-brass hover:text-brass-dark font-semibold text-sm"
-              >
-                View All →
-              </button>
-            </div>
-            {orders.length > 0 ? (
-              <div className="space-y-3">
-                {orders.slice(0, 5).map((order) => (
-                  <article key={order._id} className="rounded-[var(--radius-control)] border border-hairline p-4 transition-colors hover:bg-paper">
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <p className="font-semibold text-ink">{order.product.name}</p>
-                        <p className="text-sm text-ink-muted">Order by {order.firstName} {order.lastName}</p>
-                        <p className="text-xs text-ink-muted/70 mt-1 font-mono tabular-nums">{new Date(order.createdAt).toLocaleDateString()}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-bold text-ink font-mono tabular-nums">Rs. {order.totalPrice.toLocaleString()}</p>
-                        <p className={`text-xs font-semibold px-2 py-0.5 border mt-1 inline-block ${orderStatusColor(order.status)}`}>
-                          {order.status}
-                        </p>
-                      </div>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <p className="text-ink-muted text-center py-8">No orders yet. Once customers purchase your products, orders will appear here.</p>
-            )}
-          </section>
-        </div>
-        )}
-      </main>
-    </>
-  );
+  return <main>
+    <AdminHeading title="Shop overview" description="Track your sales, keep stock ready, and take care of your customers.">
+      <button className="admin-button" onClick={() => void load()} disabled={loading}><RefreshCw size={14} aria-hidden="true" />{loading ? 'Refreshing…' : 'Refresh'}</button>
+      <Link className="admin-button admin-button--primary" to="/add-product"><Plus size={14} aria-hidden="true" />Add product</Link>
+    </AdminHeading>
+    {error && <p className="admin-notice" role="alert">{error}</p>}
+    <section className="admin-panel" aria-labelledby="seller-performance-title">
+      <div className="admin-panel-head"><div><h2 id="seller-performance-title">Shop performance</h2><p>Order activity for your selected period</p></div><label className="admin-filters">Date range <select aria-label="Performance date range" value={period} onChange={event => setPeriod(event.target.value)}><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="all">All time</option></select></label></div>
+      <div className="admin-stats" aria-busy={loading}>
+        <div className="admin-stat"><span>Orders received</span><strong>{available ? inPeriod.length : '—'}</strong><small>Based on the order creation date</small></div>
+        <div className="admin-stat"><span>Order value</span><strong>{available ? adminMoney(value) : '—'}</strong><small>Excludes cancelled and refunded orders; before the 5% commission</small></div>
+        <div className="admin-stat"><span>Products listed</span><strong>{!loading && products !== null ? products.length : '—'}</strong><small><Link className="admin-text-link" to="/seller-products">Manage your products →</Link></small></div>
+      </div>
+    </section>
+    <div className="admin-home-columns">
+      <section className="admin-panel" aria-labelledby="seller-tasks-title">
+        <div className="admin-panel-head"><div><h2 id="seller-tasks-title">Needs attention</h2><p>Open work in your shop · all time</p></div></div>
+        <Link className="admin-task" to="/seller-orders?status=processing"><ClipboardList size={19} aria-hidden="true" /><div><strong>Fulfil customer orders</strong><p>Move paid orders through processing, shipping, and delivery.</p></div><span>{loading ? '—' : toFulfil ?? '—'}</span><ArrowRight size={14} aria-hidden="true" /></Link>
+        <Link className="admin-task" to="/seller-orders?status=returns"><RotateCcw size={19} aria-hidden="true" /><div><strong>Answer return requests</strong><p>Approve or reject returns customers have raised.</p></div><span>{loading ? '—' : returns ?? '—'}</span><ArrowRight size={14} aria-hidden="true" /></Link>
+        <Link className="admin-task" to="/seller-products?stock=outofstock"><AlertTriangle size={19} aria-hidden="true" /><div><strong>Restock sold-out products</strong><p>Listings customers cannot buy right now.</p></div><span>{loading ? '—' : outOfStock ?? '—'}</span><ArrowRight size={14} aria-hidden="true" /></Link>
+        <Link className="admin-task" to="/seller-products?stock=lowstock"><Package size={19} aria-hidden="true" /><div><strong>Review low stock</strong><p>Listings with five or fewer units left.</p></div><span>{loading ? '—' : lowStock ?? '—'}</span><ArrowRight size={14} aria-hidden="true" /></Link>
+      </section>
+      <section className="admin-panel" aria-labelledby="seller-shortcuts-title">
+        <div className="admin-panel-head"><h2 id="seller-shortcuts-title">Shop management</h2></div>
+        <Link className="admin-task" to="/add-product"><Plus size={19} aria-hidden="true" /><div><strong>Add a product</strong><p>List something new for sale.</p></div><ArrowRight size={14} aria-hidden="true" /></Link>
+        <Link className="admin-task" to="/seller-products"><Package size={19} aria-hidden="true" /><div><strong>Manage your catalogue</strong><p>Edit listings, stock, prices, and discounts.</p></div><ArrowRight size={14} aria-hidden="true" /></Link>
+        <Link className="admin-task" to="/seller/revenue"><BarChart3 size={19} aria-hidden="true" /><div><strong>Analytics</strong><p>Track sales, commission, and earnings.</p></div><ArrowRight size={14} aria-hidden="true" /></Link>
+      </section>
+    </div>
+    <section className="admin-panel" aria-labelledby="seller-recent-title">
+      <div className="admin-panel-head"><h2 id="seller-recent-title">Recent orders</h2><Link className="admin-text-link" to="/seller-orders">View all orders →</Link></div>
+      {loading ? <p className="admin-empty" role="status">Loading orders…</p> : orders === null ? <p className="admin-empty">Orders are unavailable. Use Refresh to try again.</p> : recent.length === 0 ? <p className="admin-empty">Once customers buy your products, their orders will appear here.</p> :
+        <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th scope="col">Order / customer</th><th scope="col">Date</th><th scope="col">Status</th><th scope="col">Total</th></tr></thead><tbody>{recent.map(order => <tr key={order._id}><td><Link className="admin-text-link" to={`/seller-orders?q=${encodeURIComponent(order._id)}`}>#{order._id.slice(-8)} · {order.firstName} {order.lastName}</Link><small>{order.product?.name || 'Product'}</small></td><td className="admin-numeric">{adminDate(order.createdAt)}</td><td><OrderStatus status={order.status} /></td><td className="admin-numeric">{adminMoney(order.totalPrice)}</td></tr>)}</tbody></table></div>}
+    </section>
+  </main>;
 }
-
-export default SellerPanel;

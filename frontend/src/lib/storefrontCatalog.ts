@@ -4,6 +4,8 @@ import { getImageUrl } from './utils';
 
 export type LiveProduct = CatalogProduct & {
   id?: string;
+  brand?: string;
+  options?: Array<{ kind: string; value: string; priceDelta: number | string }>;
   variants?: Record<string, string[]>;
   variantStorage?: string[];
   variantColor?: string[];
@@ -34,6 +36,7 @@ export function toStorefrontProduct(product: LiveProduct): StorefrontProduct {
   return {
     id: product._id || product.id || '',
     name: product.name,
+    brand: product.brand,
     category: storefrontCategory(product.category),
     price: product.price * (1 - discount / 100),
     previousPrice: discount ? product.price : undefined,
@@ -46,5 +49,7 @@ export function toStorefrontProduct(product: LiveProduct): StorefrontProduct {
     description: product.description,
     inStock,
     requiresOptions,
+    // Upgrades exist, so the catalogue price is a starting point rather than the price.
+    priceFrom: (product.options || []).some(option => Number(option.priceDelta) > 0),
   };
 }

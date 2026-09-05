@@ -1,3 +1,4 @@
+import AccountDeletion from '../components/account/AccountDeletion';
 import { useEffect, useState } from "react";
 import NavBar from "../components/NavBar";
 import { ArrowLeft, User, Pencil, X, Store, Phone, Mail, Check, Lock, Eye, EyeOff } from "lucide-react";
@@ -16,6 +17,7 @@ interface UserProfile {
   shopDescription: string;
   isVerified?: boolean;
   googleId?: string;
+  hasPassword?: boolean;
   createdAt: string;
 }
 
@@ -488,6 +490,7 @@ const Profile = () => {
               </>
             )}
           </div>
+          {profile && ["user", "seller"].includes(profile.role) && <AccountDeletion name={profile.firstName} hasPassword={profile.hasPassword ?? !profile.googleId} googleLinked={!!profile.googleId} />}
         </div>
       </div>
     </>

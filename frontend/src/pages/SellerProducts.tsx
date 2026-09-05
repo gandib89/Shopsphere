@@ -1,245 +1,137 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Eye, Trash2, Package, Search } from 'lucide-react';
-import { getImageUrl } from '../lib/utils';
-import axios from 'axios';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { Plus, RefreshCw, Search } from 'lucide-react';
 import { toast } from 'sonner';
-import NavBar from '../components/NavBar';
+import { authFetch } from '../lib/session';
+import { getImageUrl } from '../lib/utils';
+import { AdminHeading, AdminPagination } from '../components/admin/AdminUi';
+import { adminDate, adminMoney } from '../lib/adminData';
+import { categoryName, getSellerCollection, matchesProductFilter, productFilters, stockLabel, stockState, type SellerProduct } from '../lib/sellerData';
 
-interface Product {
-  _id: string;
-  name: string;
-  category: string;
-  price: number;
-  quantity: number;
-  images: string[];
-}
+const stockTone = { instock: 'success', lowstock: 'attention', outofstock: 'muted' } as const;
 
-function SellerProducts() {
-  const token = localStorage.getItem('token');
-  const navigate = useNavigate();
-  const [products, setProducts] = useState<Product[]>([]);
+export default function SellerProducts() {
+  const [params, setParams] = useSearchParams();
+  const stock = productFilters.some(filter => filter.key === params.get('stock')) ? params.get('stock')! : 'all';
+  const search = params.get('q') || '';
+  const category = params.get('category') || 'all';
+  const [products, setProducts] = useState<SellerProduct[]>([]);
   const [loading, setLoading] = useState(true);
-  const [categoryFilter, setCategoryFilter] = useState('all');
-  const [searchTerm, setSearchTerm] = useState('');
+  const [error, setError] = useState('');
+  const [sort, setSort] = useState('newest');
+  const [size, setSize] = useState(20);
+  const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [showCategory, setShowCategory] = useState(true);
+  const [showAdded, setShowAdded] = useState(true);
+  const pending = useRef(false);
 
-  const mapCategory = (cat: string) =>
-    ({ 'Mobile Phones': 'iPhone', 'Laptops': 'MacBook', 'Smartwatches': 'Apple Watch', 'Tablets': 'iPad' } as Record<string, string>)[cat] ?? cat;
+  const load = useCallback(async (signal?: AbortSignal) => {
+    setLoading(true); setError('');
+    try { const rows = await getSellerCollection<SellerProduct>('/api/v1/product/seller/my-products', 'products', signal); if (!signal?.aborted) setProducts(rows); }
+    catch (err) { if (!signal?.aborted) setError(err instanceof Error ? err.message : 'Could not load your products.'); }
+    finally { if (!signal?.aborted) setLoading(false); }
+  }, []);
+  useEffect(() => { const controller = new AbortController(); void load(controller.signal); return () => controller.abort(); }, [load]);
+  useEffect(() => { setPage(1); setSelected([]); }, [stock, search, category, sort, size]);
 
-  const categories = ['all', ...Array.from(new Set(products.map(p => p.category))).sort()];
+  const query = (key: string, value: string) => { const next = new URLSearchParams(params); if (!value || value === 'all') next.delete(key); else next.set(key, value); setParams(next, { replace: true }); };
+  const categories = Array.from(new Set(products.map(product => product.category).filter(Boolean))).sort();
+  const filtered = products
+    .filter(product => matchesProductFilter(product, stock)
+      && (category === 'all' || product.category === category)
+      && product.name.toLowerCase().includes(search.trim().toLowerCase()))
+    .sort((a, b) => sort === 'name' ? a.name.localeCompare(b.name)
+      : sort === 'price' ? Number(b.price) - Number(a.price)
+      : sort === 'stock' ? a.quantity - b.quantity
+      : new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+  const pages = Math.max(1, Math.ceil(filtered.length / size));
+  const currentPage = Math.min(page, pages);
+  const rows = filtered.slice((currentPage - 1) * size, currentPage * size);
+  const pageSelected = rows.length > 0 && rows.every(product => selected.includes(product._id));
 
-  const filteredProducts = products.filter(p =>
-    (categoryFilter === 'all' || p.category === categoryFilter) &&
-    p.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  useEffect(() => {
-    if (!token || localStorage.getItem('isSeller') !== 'true') {
-      window.location.hash = '/auth';
-      return;
-    }
-
-    fetchSellerProducts();
-  }, [token]);
-
-  const fetchSellerProducts = async () => {
+  const remove = async (ids: string[]) => {
+    if (pending.current || !ids.length) return;
+    if (!window.confirm(ids.length === 1 ? 'Delete this product? Customers will no longer be able to buy it.' : `Delete ${ids.length} products? Customers will no longer be able to buy them.`)) return;
+    pending.current = true; setBusy(true);
     try {
-      const res = await axios.get(
-        `${import.meta.env.VITE_BACKEND_URL}/api/v1/product/seller/my-products`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-      setProducts(res.data.products);
-    } catch (err) {
-      console.error('Error fetching products:', err);
-      toast.error('Failed to fetch products');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDelete = async (productId: string) => {
-    if (window.confirm('Are you sure you want to delete this product?')) {
-      try {
-        await axios.delete(
-          `${import.meta.env.VITE_BACKEND_URL}/api/v1/product/seller/delete/${productId}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
-        toast.success('Product deleted successfully');
-        setProducts(products.filter(p => p._id !== productId));
-      } catch (err) {
-        console.error('Error deleting product:', err);
-        toast.error('Failed to delete product');
+      const results = await Promise.allSettled(ids.map(async id => {
+        const response = await authFetch(`${import.meta.env.VITE_BACKEND_URL}/api/v1/product/seller/delete/${id}`, { method: 'DELETE' });
+        if (!response.ok) throw new Error(id);
+        return id;
+      }));
+      const deleted = results.flatMap(result => result.status === 'fulfilled' ? [result.value] : []);
+      if (deleted.length) {
+        setProducts(previous => previous.filter(product => !deleted.includes(product._id)));
+        setSelected(previous => previous.filter(id => !deleted.includes(id)));
+        toast.success(deleted.length === 1 ? 'Product deleted' : `${deleted.length} products deleted`);
       }
-    }
+      if (deleted.length < ids.length) toast.error(`${ids.length - deleted.length} product(s) could not be deleted.`);
+    } finally { pending.current = false; setBusy(false); }
   };
 
-  if (loading) {
-    return (
-      <>
-        <NavBar />
-        <div className="min-h-screen flex items-center justify-center bg-paper">
-          <div className="text-center">
-            <Package className="w-10 h-10 mx-auto mb-4 text-brass animate-pulse" />
-            <p className="text-ink-muted">Loading products...</p>
-          </div>
-        </div>
-      </>
-    );
-  }
-
-  return (
-    <>
-      <NavBar />
-      <div className="min-h-screen bg-paper">
-        <div className="container mx-auto px-4 sm:px-6 py-6 sm:py-8">
-          {/* Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 sm:mb-8">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => navigate('/seller-panel')}
-                className="p-2 hover:text-brass transition-colors shrink-0"
-                title="Back"
-              >
-                <ArrowLeft className="w-5 h-5 sm:w-6 sm:h-6" />
-              </button>
-              <div>
-                <h1 className="text-2xl sm:text-4xl font-bold text-ink">My Products</h1>
-                <p className="text-ink-muted mt-0.5 text-sm font-mono tabular-nums">{filteredProducts.length} of {products.length} products</p>
-              </div>
-            </div>
-            <button
-              onClick={() => navigate('/add-product')}
-              className="self-start sm:self-auto bg-brass text-white px-4 sm:px-6 py-2.5 sm:py-3 hover:bg-brass-dark active:scale-[0.97] transition font-semibold text-sm sm:text-base"
-            >
-              + Add Product
-            </button>
-          </div>
-
-          {/* Search + Category Filter */}
-          <div className="mb-6 flex flex-col gap-3">
-            <div className="flex items-center border border-hairline bg-paper-raised overflow-hidden transition-colors duration-150 focus-within:border-brass">
-              <div className="px-3.5 flex items-center border-r border-hairline">
-                <Search size={16} className="text-brass" />
-              </div>
-              <input
-                type="text"
-                placeholder="Search products..."
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-                className="flex-1 px-3.5 py-2.5 text-sm text-ink bg-transparent outline-none"
-              />
-              {searchTerm && (
-                <button onClick={() => setSearchTerm('')} className="px-3.5 text-ink-muted hover:text-ink text-lg leading-none">×</button>
-              )}
-            </div>
-            {categories.length > 1 && (
-              <div className="flex flex-wrap gap-1.5">
-                {categories.map(cat => (
-                  <button
-                    key={cat}
-                    onClick={() => setCategoryFilter(cat)}
-                    className={`px-3.5 py-1.5 text-[13px] font-medium border transition-colors duration-150 ${
-                      categoryFilter === cat
-                        ? 'bg-ink text-paper border-ink'
-                        : 'bg-transparent text-ink-muted border-hairline hover:border-brass hover:text-brass'
-                    }`}
-                  >
-                    {cat === 'all' ? 'All' : mapCategory(cat)}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Products Table */}
-          {filteredProducts.length > 0 ? (
-            <div className="bg-paper-raised border border-hairline overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr className="border-b-2 border-ink">
-                      <th className="p-4 text-left font-semibold text-ink text-xs uppercase tracking-wide">Product</th>
-                      <th className="p-4 text-left font-semibold text-ink text-xs uppercase tracking-wide">Category</th>
-                      <th className="p-4 text-left font-semibold text-ink text-xs uppercase tracking-wide">Price</th>
-                      <th className="p-4 text-left font-semibold text-ink text-xs uppercase tracking-wide">Stock</th>
-                      <th className="p-4 text-left font-semibold text-ink text-xs uppercase tracking-wide">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredProducts.map((product) => (
-                      <tr key={product._id} className="border-b border-hairline hover:bg-paper transition-colors">
-                        <td className="p-4">
-                          <div className="flex items-center gap-3">
-                            <img
-                              src={getImageUrl(product.images?.[0])}
-                              alt={product.name}
-                              className="w-12 h-12 object-cover border border-hairline"
-                            />
-                            <span className="font-semibold text-ink">{product.name}</span>
-                          </div>
-                        </td>
-                        <td className="p-4">
-                          <span className="text-ink-muted text-xs font-semibold uppercase tracking-wide">
-                            {mapCategory(product.category || 'Uncategorized')}
-                          </span>
-                        </td>
-                        <td className="p-4 font-semibold text-ink font-mono tabular-nums">
-                          Rs. {product.price.toLocaleString()}
-                        </td>
-                        <td className="p-4">
-                          <span className={`font-semibold font-mono tabular-nums text-sm ${product.quantity > 0 ? 'text-moss' : 'text-seal'}`}>
-                            {product.quantity > 0 ? `${product.quantity} in stock` : 'Out of stock'}
-                          </span>
-                        </td>
-                        <td className="p-4">
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => navigate(`/seller-products/${product._id}`)}
-                              className="p-2 border border-ink text-ink hover:bg-ink hover:text-paper active:scale-[0.98] transition"
-                              title="View/Edit"
-                            >
-                              <Eye className="w-5 h-5" />
-                            </button>
-                            <button
-                              onClick={() => handleDelete(product._id)}
-                              className="p-2 border border-seal text-seal hover:bg-seal/5 active:scale-[0.98] transition"
-                              title="Delete"
-                            >
-                              <Trash2 className="w-5 h-5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ) : (
-            <div className="border border-dashed border-hairline p-12 text-center">
-              <Package className="w-16 h-16 text-ink-muted/40 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-ink mb-2">No products yet</h3>
-              <p className="text-ink-muted mb-6">Start adding products to your store</p>
-              <button
-                onClick={() => navigate('/add-product')}
-                className="bg-brass text-white px-6 py-3 hover:bg-brass-dark active:scale-[0.97] transition font-semibold"
-              >
-                Add Your First Product
-              </button>
-            </div>
-          )}
+  return <main>
+    <AdminHeading title="Products" description="Manage your listings, stock, and pricing.">
+      <button className="admin-button" disabled={loading || busy} onClick={() => void load()}><RefreshCw size={14} aria-hidden="true" />Refresh</button>
+      <Link className="admin-button admin-button--primary" to="/add-product"><Plus size={14} aria-hidden="true" />Add product</Link>
+    </AdminHeading>
+    <details className="admin-screen-options"><summary>Screen options</summary><div>
+      <label><input type="checkbox" checked={showCategory} onChange={event => setShowCategory(event.target.checked)} />Category</label>
+      <label><input type="checkbox" checked={showAdded} onChange={event => setShowAdded(event.target.checked)} />Date added</label>
+      <label>Rows per page <select aria-label="Products per page" value={size} onChange={event => setSize(Number(event.target.value))}><option>20</option><option>50</option><option>100</option></select></label>
+    </div></details>
+    <div className="admin-tabs" aria-label="Stock filters">{productFilters.map(filter => <button key={filter.key} aria-pressed={stock === filter.key} onClick={() => query('stock', filter.key)}>{filter.label}<span>({loading || error ? '—' : products.filter(product => matchesProductFilter(product, filter.key)).length})</span></button>)}</div>
+    {error && <p className="admin-notice" role="alert">{error}</p>}
+    <section className="admin-panel" aria-label="Product list">
+      <div className="admin-toolbar">
+        <label className="admin-search"><Search size={15} aria-hidden="true" /><input type="search" aria-label="Search products" placeholder="Search products…" value={search} onChange={event => query('q', event.target.value)} /></label>
+        <div className="admin-filters">
+          {categories.length > 1 && <label>Category<select aria-label="Filter by category" value={category} onChange={event => query('category', event.target.value)}><option value="all">All categories</option>{categories.map(item => <option key={item} value={item}>{categoryName(item)}</option>)}</select></label>}
+          <label>Sort by<select aria-label="Sort products" value={sort} onChange={event => setSort(event.target.value)}><option value="newest">Date added (newest first)</option><option value="name">Product name</option><option value="price">Highest price</option><option value="stock">Lowest stock</option></select></label>
+          {(search || stock !== 'all' || category !== 'all') && <button className="admin-button" onClick={() => setParams({})}>Clear filters</button>}
         </div>
       </div>
-    </>
-  );
+      {!loading && !error && rows.length > 0 && <div className="admin-toolbar">
+        <div className="admin-bulk">
+          <button className="admin-button admin-button--danger" disabled={!selected.length || busy} onClick={() => void remove(selected)}>Delete selected</button>
+          <span aria-live="polite">{selected.length ? `${selected.length} selected` : `${filtered.length} product${filtered.length === 1 ? '' : 's'}`}</span>
+        </div>
+      </div>}
+      {loading ? <p className="admin-empty" role="status">Loading products…</p>
+        : error ? <p className="admin-empty">Refresh to load your product list.</p>
+        : !rows.length ? <p className="admin-empty">{products.length ? 'No products match these filters.' : 'You have not listed any products yet.'} <Link className="admin-text-link" to="/add-product">Add your first product →</Link></p>
+        : <div className="admin-table-wrap"><table className="admin-table">
+          <thead><tr>
+            <th scope="col" className="admin-check"><input type="checkbox" aria-label="Select all products on this page" checked={pageSelected} onChange={event => setSelected(event.target.checked ? Array.from(new Set([...selected, ...rows.map(product => product._id)])) : selected.filter(id => !rows.some(product => product._id === id)))} /></th>
+            <th scope="col">Product</th>
+            {showCategory && <th scope="col">Category</th>}
+            <th scope="col">Stock</th>
+            <th scope="col">Price</th>
+            {showAdded && <th scope="col">Added</th>}
+          </tr></thead>
+          <tbody>{rows.map(product => <tr key={product._id}>
+            <td className="admin-check"><input type="checkbox" aria-label={`Select ${product.name}`} checked={selected.includes(product._id)} onChange={event => setSelected(event.target.checked ? [...selected, product._id] : selected.filter(id => id !== product._id))} /></td>
+            <td>
+              <div className="admin-product-cell">
+                <img src={getImageUrl(product.images?.[0])} alt="" loading="lazy" />
+                <div>
+                  <Link className="admin-text-link" to={`/seller-products/${product._id}`}>{product.name}</Link>
+                  <div className="admin-row-actions">
+                    <Link to={`/seller-products/${product._id}`}>Edit</Link><span aria-hidden="true">|</span>
+                    <Link to={`/product-details-page?productId=${product._id}`}>View</Link><span aria-hidden="true">|</span>
+                    <button className="is-danger" disabled={busy} onClick={() => void remove([product._id])}>Delete</button>
+                  </div>
+                </div>
+              </div>
+            </td>
+            {showCategory && <td>{categoryName(product.category)}</td>}
+            <td><span className={`admin-status admin-status--${stockTone[stockState(product)]}`}>{stockLabel(product)}</span></td>
+            <td className="admin-numeric">{adminMoney(product.price)}{Number(product.discount) > 0 && <small>{Number(product.discount)}% off</small>}</td>
+            {showAdded && <td className="admin-numeric">{adminDate(product.createdAt)}</td>}
+          </tr>)}</tbody>
+        </table></div>}
+      {!loading && !error && rows.length > 0 && <AdminPagination page={currentPage} pages={pages} onPage={setPage} />}
+    </section>
+  </main>;
 }
-
-export default SellerProducts;

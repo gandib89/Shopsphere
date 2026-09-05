@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { effectiveProductPrice } from "../utils/productPricing.js";
 import { prisma } from "../database/prismaClient.js";
 import { generateId } from "../utils/generateId.js";
 import { sendEmail } from "../utils/emailService.js";
@@ -21,11 +22,7 @@ const ORDER_STATUS_TRANSITIONS = Object.freeze({
 export const canTransitionOrderStatus = (currentStatus, nextStatus) =>
   currentStatus === nextStatus || Boolean(ORDER_STATUS_TRANSITIONS[currentStatus]?.includes(nextStatus));
 
-export const effectiveProductPrice = (product) => {
-  const price = Number(product.price);
-  const discount = Math.min(100, Math.max(0, Number(product.discount) || 0));
-  return Math.round(price * (1 - discount / 100) * 100) / 100;
-};
+export { effectiveProductPrice } from "../utils/productPricing.js";
 
 const deliveryAddressSchema = z.object({
   street: z.string().optional(),
@@ -380,9 +377,9 @@ export const createOrder = async (req, res) => {
     // Fetch product details
     const productDetails = await prisma.product.findUnique({
       where: { id: product },
-      include: { colorVariants: true, storageVariants: true },
+      include: { colorVariants: true, storageVariants: true, options: true },
     });
-    if (!productDetails) {
+    if (!productDetails || productDetails.isArchived) {
       return res.status(404).json({ message: "Product not found" });
     }
 
@@ -427,8 +424,9 @@ export const createOrder = async (req, res) => {
         .json({ message: `Only ${availableStock} units available` });
     }
 
-    // Calculate total price
-    const subtotal = quantity * effectiveProductPrice(productDetails);
+    // Price the configuration the buyer actually chose, never the bare base price.
+    const orderedVariants = { ...(variants || {}), ...(selectedColor ? { color: selectedColor } : {}) };
+    const subtotal = quantity * effectiveProductPrice(productDetails, orderedVariants);
 
     // Get user ID from token
     const userId = req.user?.id;
@@ -562,9 +560,9 @@ export const createBulkOrderFromCart = async (req, res) => {
     for (const item of cartItems) {
       const productDetails = await prisma.product.findUnique({
         where: { id: item.productId },
-        include: { colorVariants: true, storageVariants: true },
+        include: { colorVariants: true, storageVariants: true, options: true },
       });
-      if (!productDetails) {
+      if (!productDetails || productDetails.isArchived) {
         console.error(`Product not found: ${item.productId}`);
         continue; // Skip invalid products
       }
@@ -594,8 +592,9 @@ export const createBulkOrderFromCart = async (req, res) => {
         });
       }
 
-      // Calculate price
-      const itemTotal = item.quantity * effectiveProductPrice(productDetails);
+      // Calculate price for the chosen configuration, not the base product.
+      const itemVariants = { ...(item.variants || {}), ...(selectedColor ? { color: selectedColor } : {}) };
+      const itemTotal = item.quantity * effectiveProductPrice(productDetails, itemVariants);
       totalBeforeDiscount += itemTotal;
       totalAmount += itemTotal;
 
@@ -745,7 +744,7 @@ export const updateOrder = async (req, res) => {
     }
 
     const productDetails = await prisma.product.findUnique({ where: { id: order.productId } });
-    if (!productDetails) {
+    if (!productDetails || productDetails.isArchived) {
       return res.status(404).json({ message: "Product not found" });
     }
 

@@ -1,3 +1,4 @@
+import { deleteMyAccount } from '../controller/accountManagement.js';
 import express from "express";
 import rateLimit from "express-rate-limit";
 import {
@@ -41,6 +42,8 @@ authRouter.post('/google-signin', credentialsLimiter, googleSignIn);
 authRouter.post('/forgot-password', credentialsLimiter, forgotPassword);
 authRouter.post('/reset-password', credentialsLimiter, (req, res) => resetPassword(req, res));
 
+authRouter.delete('/account', authenticate, credentialsLimiter, (req, res) => deleteMyAccount(req, res));
+
 authRouter.get('/getUser', authenticate, authorizeAdmin, getAllUsers);
 authRouter.get('/me', authenticate, async (req, res) => {
   try {
@@ -49,7 +52,7 @@ authRouter.get('/me', authenticate, async (req, res) => {
       return res.status(404).json({ code: "not_found", message: "User not found" });
     }
     const { password, ...userWithoutPassword } = user;
-    res.json(userWithoutPassword);
+    res.json({ ...userWithoutPassword, hasPassword: !!password });
   } catch (error) {
     res.status(500).json({ code: "internal_error", message: "Server error" });
   }

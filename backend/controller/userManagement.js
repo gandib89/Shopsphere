@@ -1,3 +1,4 @@
+import { deleteAccount, AccountDeletionError } from '../utils/deleteAccount.js';
 import { prisma } from "../database/prismaClient.js";
 import nodemailer from "nodemailer";
 import { parsePagination } from "../utils/pagination.js";
@@ -95,23 +96,10 @@ export const updateUserDetails = async (req, res) => {
 // Delete user
 export const deleteUser = async (req, res) => {
   try {
-    const { userId } = req.params;
-
-    const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-    await prisma.user.delete({ where: { id: userId } });
-
-    console.log("✅ User deleted:", userId, user.email);
-
-    res.status(200).json({
-      message: "User deleted successfully",
-      deletedUser: user.email
-    });
+    await deleteAccount(req.params.userId);
+    res.json({ message: 'Account permanently deleted.' });
   } catch (error) {
-    console.error("❌ Error deleting user:", error.message);
-    res.status(500).json({ message: "Server error while deleting user", error: error.message });
+    res.status(error instanceof AccountDeletionError ? error.status : 409).json({ message: error instanceof AccountDeletionError ? error.message : 'Could not delete this account. Resolve outstanding activity and try again.' });
   }
 };
 

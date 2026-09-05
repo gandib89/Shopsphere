@@ -23,7 +23,8 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5173,
+    // 5173 by default; PORT lets a harness or container assign a free one instead of failing.
+    port: Number(process.env.PORT) || 5173,
     host: '0.0.0.0',
   },
   test: {

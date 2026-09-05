@@ -204,3 +204,40 @@ describe('live storefront integration', () => {
     expect(screen.queryByRole('button', { name: 'Shopping bag with 0 items' })).not.toBeInTheDocument();
   });
 });
+
+
+describe('catalog sidebar filters', () => {
+  it('applies discounted price bounds, combines stock and brand, and resets results', async () => {
+    const user = userEvent.setup();
+    renderHome();
+    await screen.findByRole('button', { name: 'Seller MacBook' });
+    const minimum = screen.getByLabelText('Minimum price');
+    await user.clear(minimum);
+    await user.type(minimum, '85000');
+    expect(screen.getByRole('button', { name: 'Seller iPhone' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(screen.queryByRole('button', { name: 'Seller iPhone' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Seller MacBook' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Reset filters' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Apple' }));
+    expect(screen.queryByRole('button', { name: 'Seller Watch' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('checkbox', { name: 'In stock' }));
+    expect(screen.queryByRole('button', { name: 'Seller iPhone' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('checkbox', { name: 'iPhone' }));
+    expect(screen.getByText('No matching products')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Show all products' }));
+    expect(screen.getByRole('button', { name: 'Seller Watch' })).toBeInTheDocument();
+  });
+  it('rejects inverted price bounds and keeps slider inputs synchronized', async () => {
+    const user = userEvent.setup();
+    renderHome();
+    await screen.findByRole('button', { name: 'Seller MacBook' });
+    fireEvent.change(screen.getByLabelText('Minimum price slider'), { target: { value: '70000' } });
+    expect(screen.getByLabelText('Minimum price')).toHaveValue(70000);
+    fireEvent.change(screen.getByLabelText('Maximum price'), { target: { value: '60000' } });
+    expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Seller MacBook' })).toBeInTheDocument();
+    await user.click(screen.getByText('Filters', { selector: 'summary' }));
+    expect(screen.getByText('Filters', { selector: 'summary' }).parentElement).not.toHaveAttribute('open');
+  });
+});
