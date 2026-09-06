@@ -5,7 +5,7 @@ import { getImageUrl } from "../lib/utils";
 import { toast } from "sonner";
 import NavBar from "../components/NavBar";
 import { AdminHeading } from "../components/admin/AdminUi";
-import { ArrowLeft, Save, Trash2, Image as ImageIcon, Package } from "lucide-react";
+import { ArrowLeft, Save, Trash2, Image as ImageIcon, Package, Upload } from "lucide-react";
 
 interface Product {
   _id: string;
@@ -38,6 +38,9 @@ function SellerProductDetails() {
   const [formData, setFormData] = useState<Partial<Product>>({});
   const [discountValue, setDiscountValue] = useState<number>(0);
   const [isSettingDiscount, setIsSettingDiscount] = useState(false);
+  // Photos picked for a colour in this edit session, uploaded on save. A colour with no photo
+  // shows the placeholder on the storefront until one lands here.
+  const [colorFiles, setColorFiles] = useState<Record<string, File[]>>({});
   const token = localStorage.getItem("token");
 
   useEffect(() => {
@@ -95,18 +98,38 @@ function SellerProductDetails() {
     });
   };
 
+  const uploadColorPhotos = async (files: File[]) => {
+    const body = new FormData();
+    files.forEach((file) => body.append("images", file));
+    const response = await axios.post(
+      `${import.meta.env.VITE_BACKEND_URL}/api/v1/product/uploadImage`,
+      body,
+      { headers: { Authorization: `Bearer ${token}`, "Content-Type": "multipart/form-data" } }
+    );
+    return response.data.imageUrls as string[];
+  };
+
   const handleUpdate = async () => {
     try {
       setIsSaving(true);
+      let colorVariants = formData.colorVariants;
+      // Newly chosen photos replace that colour's images; every other colour is left as it was.
+      if (Object.keys(colorFiles).length > 0 && colorVariants) {
+        colorVariants = await Promise.all(colorVariants.map(async (cv) => {
+          const files = colorFiles[cv.color];
+          return files?.length ? { ...cv, images: await uploadColorPhotos(files) } : cv;
+        }));
+      }
       await axios.put(
         `${import.meta.env.VITE_BACKEND_URL}/api/v1/product/seller/update/${id}`,
-        formData,
+        { ...formData, colorVariants },
         {
           headers: {
             Authorization: `Bearer ${token}`,
           },
         }
       );
+      setColorFiles({});
       toast.success("Product updated successfully!");
       setIsEditing(false);
       fetchProductDetails();
@@ -259,6 +282,58 @@ function SellerProductDetails() {
                   </div>
                 )}
               </div>
+
+              {/* Colour photos - a colour without one shows a placeholder in the storefront */}
+              {product.colorVariants && product.colorVariants.length > 0 && (
+                <div className="bg-paper-raised border border-hairline rounded-[var(--radius-surface)] p-4 sm:p-8 mb-6 sm:mb-8">
+                  <h2 className="text-2xl font-bold text-ink mb-2 flex items-center gap-2">
+                    <ImageIcon className="w-6 h-6 text-brass" />
+                    Colour Photos
+                  </h2>
+                  <p className="text-sm text-ink-muted mb-6">
+                    Shoppers slide through these when they pick a colour. Colours without a photo show a placeholder.
+                  </p>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    {(formData.colorVariants ?? product.colorVariants).map((cv) => {
+                      const picked = colorFiles[cv.color]?.length ?? 0;
+                      const photo = cv.images?.[0];
+                      return (
+                        <div key={cv.color} className="border border-hairline rounded-[var(--radius-control)] overflow-hidden bg-paper">
+                          {photo ? (
+                            <img src={getImageUrl(photo)} alt={cv.color} className="h-40 w-full object-cover" />
+                          ) : (
+                            <div className="flex h-40 w-full flex-col items-center justify-center gap-2 bg-paper text-ink-muted">
+                              <ImageIcon className="h-8 w-8 opacity-40" />
+                              <span className="text-xs font-medium">Photo coming soon</span>
+                            </div>
+                          )}
+                          <div className="border-t border-hairline p-3">
+                            <p className="text-sm font-semibold capitalize text-ink">{cv.color}</p>
+                            {isEditing && (
+                              <label className="mt-2 flex cursor-pointer items-center gap-2 border border-dashed border-hairline p-2 transition hover:border-brass">
+                                <Upload className="h-4 w-4 text-brass" />
+                                <span className="text-xs font-medium text-ink">
+                                  {picked > 0 ? `${picked} photo(s) ready` : photo ? "Replace photo" : "Add photo"}
+                                </span>
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  multiple
+                                  className="hidden"
+                                  onChange={(e) => setColorFiles((current) => ({
+                                    ...current,
+                                    [cv.color]: Array.from(e.target.files ?? []).slice(0, 3),
+                                  }))}
+                                />
+                              </label>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Product Information */}
               <div className="bg-paper-raised border border-hairline rounded-[var(--radius-surface)] p-4 sm:p-8 mb-6 sm:mb-8">

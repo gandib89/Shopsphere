@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import CompareBar from './CompareBar';
+import { useCompare, MAX_COMPARE, type CompareItem } from '../lib/compareStore';
 import {
   ArrowRight,
   Check,
@@ -58,9 +60,6 @@ type LiveStorefront = {
   query?: string;
 };
 
-// Three columns is what a comparison table can show without turning into a horizontal scroll.
-const MAX_COMPARE = 3;
-
 const formatNpr = (amount: number) => `NPR ${new Intl.NumberFormat('en-NP').format(amount)}`;
 
 export default function StorefrontView({ products, live }: { products: StorefrontProduct[]; live?: LiveStorefront }) {
@@ -80,9 +79,7 @@ export default function StorefrontView({ products, live }: { products: Storefron
   const [addedProductId, setAddedProductId] = useState<string | null>(null);
   const [quickView, setQuickView] = useState<StorefrontProduct | null>(null);
   const quickViewTrigger = useRef<HTMLButtonElement | null>(null);
-  const [compareIds, setCompareIds] = useState<string[]>([]);
-  const [compareOpen, setCompareOpen] = useState(false);
-  const compareTrigger = useRef<HTMLButtonElement | null>(null);
+  const compare = useCompare();
   const catalogue = useRef<HTMLElement>(null);
   const demoRoot = useRef<HTMLDivElement>(null);
   const productScroller = useRef<HTMLDivElement | null>(null);
@@ -282,38 +279,27 @@ export default function StorefrontView({ products, live }: { products: Storefron
 
   const disablePurchase = (product: StorefrontProduct) => Boolean(live?.canPurchase && (product.inStock === false || live.pendingProduct));
 
-  const compareProducts = compareIds
-    .map((id) => products.find((product) => product.id === id))
-    .filter((product): product is StorefrontProduct => Boolean(product));
-  // A phone against a watch shares no row worth reading across, so the first pick fixes the
-  // category and every card outside it stops offering the toggle.
-  const compareCategory = compareProducts[0]?.category ?? null;
-  const comparing = (product: StorefrontProduct) => compareIds.includes(product.id);
-  const compareFull = compareIds.length >= MAX_COMPARE;
-  const compareLocked = (product: StorefrontProduct) =>
-    !comparing(product) && Boolean((compareCategory && product.category !== compareCategory) || compareFull);
+  // The list itself lives in the shared store, so a product added here is still selected after
+  // the shopper opens a product page.
+  const toCompareItem = (product: StorefrontProduct): CompareItem => ({
+    id: product.id,
+    name: product.name,
+    category: product.category,
+    price: product.price,
+    previousPrice: product.previousPrice,
+    rating: product.rating,
+    reviews: product.reviews,
+    image: product.image,
+    imageBackground: product.imageBackground,
+    inStock: product.inStock,
+    description: product.description || product.note,
+  });
 
-  const toggleCompare = (product: StorefrontProduct) => {
-    setCompareIds((current) => {
-      if (current.includes(product.id)) return current.filter((id) => id !== product.id);
-      if (compareLocked(product)) return current;
-      return [...current, product.id];
-    });
-  };
-
-  const closeCompare = () => {
-    setCompareOpen(false);
-    compareTrigger.current?.focus();
-  };
-
-  const compareRows: Array<{ label: string; value: (product: StorefrontProduct) => string }> = [
-    { label: 'Price', value: (product) => formatNpr(product.price) },
-    { label: 'Previous price', value: (product) => (product.previousPrice ? formatNpr(product.previousPrice) : '—') },
-    { label: 'Rating', value: (product) => (product.reviews ? `${product.rating} out of 5` : 'No reviews yet') },
-    { label: 'Reviews', value: (product) => `${product.reviews}` },
-    { label: 'Availability', value: (product) => (product.inStock === false ? 'Sold out' : 'In stock') },
-    { label: 'Highlight', value: (product) => product.description || product.note },
-  ];
+  const compareCategory = compare.category;
+  const compareFull = compare.items.length >= MAX_COMPARE;
+  const comparing = (product: StorefrontProduct) => compare.has(product.id);
+  const compareLocked = (product: StorefrontProduct) => compare.locked(toCompareItem(product));
+  const toggleCompare = (product: StorefrontProduct) => compare.toggle(toCompareItem(product));
 
   // Browsing keeps the horizontal product row; search results use a wrapping grid.
   const browsingStrip = !query;
@@ -558,7 +544,7 @@ export default function StorefrontView({ products, live }: { products: Storefron
           <div className="flex flex-col gap-5 border-b border-hairline pb-6 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="text-sm font-semibold text-brass">Selected by ShopSphere</p>
-              <h2 id="products-title" aria-live="polite" className="mt-1 text-2xl font-semibold tracking-[-0.03em] sm:text-3xl">{query ? `Search results for “${query}”` : searchCategory !== 'All' ? searchCategory : 'Popular right now'}</h2>
+              <h2 id="products-title" aria-live="polite" className="mt-1 text-2xl font-semibold tracking-[-0.03em] sm:text-3xl">{query ? `Search results for “${query}”` : searchCategory !== 'All' ? searchCategory : 'Popular Right Now'}</h2>
               <p className="mt-1 text-sm text-ink-muted">{searchCategory !== 'All' ? `Searching in ${searchCategory}` : 'Fresh picks from approved sellers'}</p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
@@ -677,81 +663,20 @@ export default function StorefrontView({ products, live }: { products: Storefron
         </div>
       )}
 
-      {compareProducts.length > 0 && (
-        <div className="ux-demo-compare-tray" role="region" aria-label="Compare products">
-          <p className="text-sm font-semibold">Comparing {compareCategory}</p>
-          <ul className="ux-demo-compare-chips">
-            {compareProducts.map((product) => (
-              <li key={product.id}>
-                <span>{product.name}</span>
-                <button type="button" aria-label={`Remove ${product.name} from comparison`} onClick={() => toggleCompare(product)}>
-                  <X aria-hidden="true" />
-                </button>
-              </li>
-            ))}
-          </ul>
-          <div className="ml-auto flex items-center gap-2">
-            <Button variant="quiet" onClick={() => setCompareIds([])}>Clear</Button>
-            <Button
-              disabled={compareProducts.length < 2}
-              onClick={(event) => { compareTrigger.current = event.currentTarget; setCompareOpen(true); }}
-            >
-              {compareProducts.length < 2 ? 'Pick one more' : `Compare ${compareProducts.length}`}
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {compareOpen && compareProducts.length > 1 && (
-        <div className="fixed inset-0 z-50 flex bg-ink/35 p-4 sm:p-8" role="presentation" onClick={closeCompare} onKeyDown={(event) => { if (event.key === 'Escape') closeCompare(); }}>
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="compare-title"
-            className="m-auto flex max-h-full w-full max-w-3xl flex-col overflow-hidden rounded-[var(--radius-surface)] border border-hairline bg-paper-raised shadow-float"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-hairline px-5 py-4">
-              <h2 id="compare-title" className="font-semibold">Comparing {compareCategory}</h2>
-              <IconButton autoFocus label="Close comparison" onClick={closeCompare}><X className="h-5 w-5" /></IconButton>
-            </div>
-            <div className="overflow-auto p-5">
-              <table className="ux-demo-compare-table">
-                <caption className="sr-only">{compareProducts.map((product) => product.name).join(' compared with ')}</caption>
-                <thead>
-                  <tr>
-                    <td />
-                    {compareProducts.map((product) => (
-                      <th key={product.id} scope="col">
-                        <span className="ux-demo-product-media block aspect-[4/3]" data-background={product.imageBackground}>
-                          <img src={product.image} alt="" className="h-full w-full object-contain" />
-                        </span>
-                        <span className="mt-2 block text-sm font-semibold">{product.name}</span>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {compareRows.map((row) => (
-                    <tr key={row.label}>
-                      <th scope="row">{row.label}</th>
-                      {compareProducts.map((product) => <td key={product.id}>{row.value(product)}</td>)}
-                    </tr>
-                  ))}
-                  <tr>
-                    <th scope="row">Buy</th>
-                    {compareProducts.map((product) => (
-                      <td key={product.id}>
-                        <Button className="w-full" disabled={disablePurchase(product)} onClick={() => addToCart(product)}>{actionLabel(product)}</Button>
-                      </td>
-                    ))}
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
+      <CompareBar
+        onBuy={(item) => {
+          const product = products.find((entry) => entry.id === item.id);
+          if (product) addToCart(product);
+        }}
+        buyLabel={(item) => {
+          const product = products.find((entry) => entry.id === item.id);
+          return product ? actionLabel(product) : 'View product';
+        }}
+        buyDisabled={(item) => {
+          const product = products.find((entry) => entry.id === item.id);
+          return product ? disablePurchase(product) : false;
+        }}
+      />
 
       {quickView && (
         <div className="fixed inset-0 z-50 bg-ink/35 pt-10 sm:pt-8" role="presentation" onClick={closeQuickView} onKeyDown={(event) => { if (event.key === 'Escape') closeQuickView(); }}>
@@ -788,7 +713,7 @@ export default function StorefrontView({ products, live }: { products: Storefron
                 {['Verified seller listing', 'Delivery estimate shown at checkout', 'Secure eSewa payment'].map((item) => <li key={item} className="flex items-center gap-2"><Check className="h-4 w-4 text-brass" aria-hidden="true" />{item}</li>)}
               </ul>
               {live && <Button variant="secondary" className="my-5 w-full" onClick={() => live.onDetails(quickView)}>View full product details</Button>}
-              <Button size="lg" className="mt-auto w-full" disabled={disablePurchase(quickView)} onClick={() => addToCart(quickView)}>{actionLabel(quickView)} · {formatNpr(quickView.price)}</Button>
+              {(!live || live.canPurchase) && <Button size="lg" className="mt-auto w-full" disabled={disablePurchase(quickView)} onClick={() => addToCart(quickView)}>{actionLabel(quickView)} · {formatNpr(quickView.price)}</Button>}
             </div>
           </aside>
         </div>

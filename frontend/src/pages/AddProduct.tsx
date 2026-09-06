@@ -97,12 +97,12 @@ function AddProduct() {
       return;
     }
 
-    // Validate color variants have images
+    // A colour without a photo is allowed: the storefront shows a placeholder for it and the
+    // seller can upload the real photo later from the product page.
     if (colorVariants.length > 0) {
       const missingImages = colorVariants.filter(cv => cv.images.length === 0);
       if (missingImages.length > 0) {
-        toast.error(`Please upload images for ${missingImages[0].color}`);
-        return;
+        toast.warning(`No photo yet for ${missingImages.map(cv => cv.color).join(", ")} - a placeholder shows until you add one`);
       }
       
       // Validate color stock matches total quantity
@@ -143,6 +143,13 @@ function AddProduct() {
       // Upload color-specific images
       const uploadedColorVariants: any[] = [];
       for (const colorVariant of colorVariants) {
+        // No files chosen: store the colour with no images so the storefront falls back to the
+        // placeholder, rather than posting an empty upload.
+        if (colorVariant.images.length === 0) {
+          uploadedColorVariants.push({ color: colorVariant.color, images: [], stock: colorVariant.stock });
+          continue;
+        }
+
         const formDataForColorImages = new FormData();
         colorVariant.images.forEach((file) => {
           formDataForColorImages.append("images", file);
@@ -618,7 +625,7 @@ function AddProduct() {
                           </label>
                           {cv.images.length > 0
                             ? <p className="text-xs text-moss font-semibold mt-1.5 flex items-center gap-1"><Check className="w-3 h-3" /> {cv.images.length} image(s) selected</p>
-                            : <p className="text-xs text-seal mt-1.5 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Images required</p>}
+                            : <p className="text-xs text-ink-muted mt-1.5 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Optional - a placeholder shows until you add one</p>}
                         </div>
                         <div>
                           <label className="block text-sm font-semibold text-ink mb-1.5">Stock for {cv.color}</label>

@@ -61,7 +61,7 @@ describe('live storefront integration', () => {
     renderHome();
     await screen.findByRole('button', { name: 'Seller MacBook' });
     await user.selectOptions(screen.getByLabelText('Sort products'), 'low-to-high');
-    const cards = screen.getByRole('region', { name: 'Popular right now' }).querySelectorAll('article');
+    const cards = screen.getByRole('region', { name: 'Popular Right Now' }).querySelectorAll('article');
     expect(cards[0]).toHaveTextContent('Seller Watch');
     const input = screen.getByRole('searchbox');
     await user.type(input, 'Seller');
@@ -168,6 +168,7 @@ describe('live storefront integration', () => {
     expect(within(dialog).getByText('No reviews yet')).toBeVisible();
     expect(within(dialog).getByText('Sold out')).toBeVisible();
     expect(within(dialog).getByText('Sold-out device')).toBeVisible();
+    expect(within(dialog).queryByRole('button', { name: /^View details ·/ })).not.toBeInTheDocument();
     await user.click(within(dialog).getByRole('button', { name: 'View full product details' }));
     expect(screen.getByTestId('route')).toHaveTextContent('/product-details-page?productId=server-phone');
   });

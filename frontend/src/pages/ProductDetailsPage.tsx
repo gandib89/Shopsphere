@@ -1,11 +1,16 @@
-import React, { useEffect, useMemo, useState, useRef } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useState, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { getBackendOrigin, getImageUrl } from "../lib/utils";
 import { toast } from "sonner";
 import { v4 as uuidv4 } from "uuid";
-import { ShoppingCart, Star, ArrowLeft, Plus, Minus, Truck, Shield, Store, Tag, X, Loader } from "lucide-react";
+import { ShoppingCart, Star, ArrowLeft, Plus, Minus, Truck, Shield, Store, Tag, X, Loader, Scale,
+  Camera, Cpu, BatteryFull, Monitor, MemoryStick, HardDrive, Usb, Watch, Droplets, Bluetooth, Zap, Smartphone } from "lucide-react";
 import NavBar from "../components/NavBar";
+import CompareBar from "../components/CompareBar";
+import { useCompare, MAX_COMPARE, type CompareItem } from "../lib/compareStore";
+import { storefrontCategory } from "../lib/storefrontCatalog";
+import { productSpecs, productHighlights, isDemoSpec, WARRANTY } from "../lib/productSpecs";
 
 interface Product {
   _id: string;
@@ -65,6 +70,10 @@ interface RecommendedProduct {
   };
 }
 
+type GalleryFrame = { src: string; color: string | null; placeholder: boolean };
+
+const PLACEHOLDER_IMAGE = "/images/product-placeholder.svg";
+
 interface UserDetails {
   firstName: string;
   lastName: string;
@@ -77,6 +86,41 @@ interface UserDetails {
   country: string;
 }
 
+// Marketing colour names ("Sky Blue", "Midnight") are not CSS colours, so the swatch rendered
+// blank. Map the ones we ship, fall back to the CSS colour when the name happens to be one.
+const SWATCH_COLORS: Record<string, string> = {
+  midnight: "#1d1d1f",
+  starlight: "#f6f1e7",
+  skyblue: "#a7c2dd",
+  spacegray: "#4b4f54",
+  spacegrey: "#4b4f54",
+  spaceblack: "#2c2c2e",
+  graphite: "#3b3b3d",
+  naturaltitanium: "#c6c2bb",
+  desertitanium: "#c0a892",
+};
+
+const swatchColor = (name: string) => {
+  const key = name.trim().toLowerCase().replace(/\s+/g, "");
+  if (SWATCH_COLORS[key]) return SWATCH_COLORS[key];
+  return CSS.supports("color", key) ? key : "rgb(var(--color-line))";
+};
+
+// One chip look for every option group: white surface (the page texture made the old bg-paper
+// chips look grainy), hairline border, selection carried by a doubled brass edge instead of a tint.
+const optionChipClass = (isSelected: boolean, outOfStock = false) =>
+  `flex min-h-11 items-center gap-2.5 rounded-full border px-4 py-2 text-sm font-medium transition ${
+    isSelected
+      ? "border-brass bg-brass/5 text-brass shadow-[inset_0_0_0_1px_rgb(var(--color-brand))]"
+      : "border-hairline bg-paper-raised text-ink hover:border-ink-muted"
+  } ${outOfStock ? "cursor-not-allowed text-ink-muted line-through decoration-hairline" : "cursor-pointer"}`;
+
+const HIGHLIGHT_ICONS: Record<string, typeof Cpu> = {
+  Chip: Cpu, Display: Monitor, Memory: MemoryStick, Storage: HardDrive, Battery: BatteryFull,
+  Ports: Usb, 'Rear cameras': Camera, Camera: Camera, 'Case sizes': Watch,
+  'Water resistance': Droplets, Connectivity: Bluetooth, Charging: Zap, Compatibility: Smartphone,
+};
+
 function ProductDetailsPage() {
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
@@ -86,10 +130,9 @@ function ProductDetailsPage() {
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [selectedImage, setSelectedImage] = useState(0);
+  const [frameIndex, setFrameIndex] = useState(0);
   const [selectedColor, setSelectedColor] = useState<string>("");
   const [selectedStorage, setSelectedStorage] = useState<string>("");
-  const [currentImages, setCurrentImages] = useState<string[]>([]);
   const [quantity, setQuantity] = useState(1);
   const [selectedVariants, setSelectedVariants] = useState<{
     [key: string]: string;
@@ -123,10 +166,17 @@ function ProductDetailsPage() {
   } | null>(null);
   const [validatingPromo, setValidatingPromo] = useState(false);
 
+  const compare = useCompare();
   const checkoutFormRef = useRef<HTMLDivElement>(null);
   const token = localStorage.getItem("token");
   const isSeller = localStorage.getItem("isSeller") === "true";
   const isAdmin = localStorage.getItem("isAdmin") === "true";
+
+  // Client-side routing preserves the catalogue's document position. Reset before paint so
+  // this page—and another product opened from recommendations—always starts at its header.
+  useLayoutEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  }, [productId]);
 
   // Options can arrive two ways: colorVariants/storageVariants rows that carry their own stock,
   // or the plain variant lists on the product itself. The page only ever rendered the first, so
@@ -154,11 +204,35 @@ function ProductDetailsPage() {
     }).filter(group => group.values.length > 0);
   }, [product]);
 
+  // Color and storage with stock-aware variant rows have dedicated controls below. Keep their
+  // option groups for price calculation and validation, but do not render the same choices twice.
+  const additionalOptionGroups = optionGroups.filter(group =>
+    !(group.key === 'color' && product?.colorVariants?.length) &&
+    !(group.key === 'storage' && product?.storageVariants?.length)
+  );
+
   // What the chosen configuration costs: base price plus every selected option's delta.
   const optionPriceDelta = useMemo(() => optionGroups.reduce((total, group) => {
     const chosen = group.values.find(option => option.value === selectedVariants[group.key]);
     return total + (chosen?.priceDelta ?? 0);
   }, 0), [optionGroups, selectedVariants]);
+
+  // The gallery is one strip of frames laid out left to right, grouped by colour, so choosing a
+  // colour slides to that colour's first frame instead of swapping the image source. A colour the
+  // seller has not photographed yet still gets a frame - a placeholder they can replace later.
+  const frames = useMemo<GalleryFrame[]>(() => {
+    if (!product) return [];
+    if (product.colorVariants?.length) {
+      return product.colorVariants.flatMap(cv => (
+        cv.images?.length
+          ? cv.images.map(src => ({ src, color: cv.color, placeholder: false }))
+          : [{ src: PLACEHOLDER_IMAGE, color: cv.color, placeholder: true }]
+      ));
+    }
+    const images = product.images?.length ? product.images : [PLACEHOLDER_IMAGE];
+    return images.map(src => ({ src, color: null, placeholder: src === PLACEHOLDER_IMAGE }));
+  }, [product]);
+
 
   const configuredPrice = (product?.price || 0) + optionPriceDelta;
 
@@ -227,19 +301,14 @@ function ProductDetailsPage() {
   // Update images when product loads or color changes
   useEffect(() => {
     if (product) {
-      if (selectedColor && product.colorVariants) {
-        const colorVariant = product.colorVariants.find(cv => cv.color === selectedColor);
-        if (colorVariant && colorVariant.images.length > 0) {
-          setCurrentImages(colorVariant.images);
-          setSelectedImage(0);
-        } else {
-          setCurrentImages(product.images);
-        }
-      } else {
-        setCurrentImages(product.images);
+      // Only jump when the frame on screen belongs to another colour, so a thumbnail pick within
+      // the selected colour is not dragged back to that colour's first photo.
+      if (selectedColor && frames[frameIndex]?.color !== selectedColor) {
+        const first = frames.findIndex(frame => frame.color === selectedColor);
+        if (first >= 0) setFrameIndex(first);
       }
     }
-  }, [product, selectedColor]);
+  }, [product, selectedColor, frames]);
 
   const fetchProduct = async () => {
     try {
@@ -248,10 +317,7 @@ function ProductDetailsPage() {
         `${import.meta.env.VITE_BACKEND_URL}/api/v1/product/get/${productId}`
       );
       setProduct(response.data);
-      // Initialize current images with product images
-      if (response.data.images) {
-        setCurrentImages(response.data.images);
-      }
+      setFrameIndex(0);
       // Fetch reviews for this product
       fetchProductReviews(productId);
       // Fetch recommendations for this product
@@ -360,11 +426,6 @@ function ProductDetailsPage() {
       navigate("/auth");
       return;
     }
-    if (isAdmin) {
-      toast.error("Admins cannot add items to cart");
-      return;
-    }
-
     if (quantity > (product?.quantity || 0)) {
       toast.error(`Only ${product?.quantity || 0} items available in stock`);
       return;
@@ -640,14 +701,9 @@ function ProductDetailsPage() {
     // Reset quantity to 1 when color changes to prevent exceeding new stock limit
     setQuantity(1);
 
-    // Immediately update images when color is selected
-    if (product?.colorVariants) {
-      const colorVariant = product.colorVariants.find(cv => cv.color === color);
-      if (colorVariant && colorVariant.images && colorVariant.images.length > 0) {
-        setCurrentImages(colorVariant.images);
-        setSelectedImage(0);
-      }
-    }
+    // Slide the strip to where this colour starts.
+    const first = frames.findIndex(frame => frame.color === color);
+    if (first >= 0) setFrameIndex(first);
   };
 
   const handleStorageSelect = (storage: string) => {
@@ -708,6 +764,38 @@ function ProductDetailsPage() {
     );
   }
 
+  // Compare entries carry the storefront's category label, so a product added here joins the
+  // same list as one added from the catalogue.
+  const toCompareItem = (item: {
+    _id: string; name: string; category: string; price: number; images?: string[]; quantity?: number; description?: string;
+  }): CompareItem => ({
+    id: item._id,
+    name: item.name,
+    category: storefrontCategory(item.category),
+    price: item.price,
+    image: getImageUrl(item.images?.[0]),
+    inStock: (item.quantity ?? 0) > 0,
+    description: item.description,
+  });
+
+  const compareEntry: CompareItem = {
+    ...toCompareItem(product),
+    rating: averageRating,
+    reviews: reviews.length,
+  };
+  const inCompare = compare.has(product._id);
+  const compareBlocked = compare.locked(compareEntry);
+
+  const specs = productSpecs(product.name, product.category);
+  const highlights = productHighlights(product.name, product.category);
+  // scrollIntoView lands on an ancestor that clips overflow, so scroll the window like the
+  // checkout jump does, leaving room for the sticky navigation.
+  const showSpecs = () => {
+    const section = document.getElementById('specifications');
+    if (!section) return;
+    window.scrollTo({ top: section.getBoundingClientRect().top + window.scrollY - 90, behavior: 'smooth' });
+  };
+
   return (
     <>
       <NavBar />
@@ -723,21 +811,38 @@ function ProductDetailsPage() {
             Back to Products
           </button>
 
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
 
             {/* ── Left: Image Gallery ─────────────────── */}
-            <div className="lg:col-span-2">
-              <div className="overflow-hidden rounded-[var(--radius-surface)] border border-hairline bg-paper-raised shadow-sm sm:sticky sm:top-24">
+            <div className="md:col-span-2">
+              <div className="overflow-hidden rounded-[var(--radius-surface)] border border-hairline bg-paper-raised shadow-sm">
                 {/* Main Image */}
-                <div className="aspect-square bg-paper flex items-center justify-center overflow-hidden relative">
-                  {currentImages && currentImages[selectedImage] ? (
-                    <img
-                      src={getImageUrl(currentImages[selectedImage])}
-                      alt={product.name}
-                      className={`w-full h-full object-cover ${!product.quantity ? 'grayscale' : ''}`}
-                    />
+                <div className="aspect-square max-h-[55vh] bg-paper overflow-hidden relative">
+                  {frames.length > 0 ? (
+                    <div
+                      className="flex h-full w-full transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
+                      style={{ transform: `translateX(-${frameIndex * 100}%)` }}
+                    >
+                      {frames.map((frame, index) => (
+                        <div key={`${frame.color ?? 'default'}-${index}`} className="relative h-full w-full shrink-0 bg-paper">
+                          <img
+                            src={frame.placeholder ? frame.src : getImageUrl(frame.src)}
+                            alt={frame.color ? `${product.name} in ${frame.color}` : product.name}
+                            loading={index === 0 ? undefined : 'lazy'}
+                            className={`h-full w-full ${frame.placeholder ? 'object-contain p-10 opacity-60' : 'object-cover'} ${!product.quantity ? 'grayscale' : ''}`}
+                          />
+                          {frame.placeholder && (
+                            <span className="absolute inset-x-0 bottom-3 mx-auto w-fit rounded-full border border-hairline bg-paper-raised/95 px-3 py-1 text-xs font-medium text-ink-muted">
+                              Photo coming soon
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   ) : (
-                    <ShoppingCart className="w-16 h-16 text-hairline" />
+                    <div className="flex h-full w-full items-center justify-center">
+                      <ShoppingCart className="w-16 h-16 text-hairline" />
+                    </div>
                   )}
                   {!product.quantity && (
                     <div className="absolute inset-0 flex items-center justify-center">
@@ -749,18 +854,30 @@ function ProductDetailsPage() {
                     </div>
                   )}
                 </div>
-                {/* Thumbnail Strip */}
-                {currentImages && currentImages.length > 1 && (
+                {/* Thumbnail Strip - every frame, so it never empties when a colour is picked */}
+                {frames.length > 1 && (
                   <div className="p-3 flex gap-2 overflow-x-auto border-t border-hairline">
-                    {currentImages.map((img, idx) => (
+                    {frames.map((frame, index) => (
                       <button
-                        key={idx}
-                        onClick={() => setSelectedImage(idx)}
+                        key={index}
+                        type="button"
+                        aria-label={frame.color ? `View ${frame.color}` : `View image ${index + 1}`}
+                        aria-current={frameIndex === index}
+                        onClick={() => {
+                          // A thumbnail from another colour switches the configuration too, so
+                          // the swatches and the picture never disagree.
+                          if (frame.color && frame.color !== selectedColor) handleColorSelect(frame.color);
+                          setFrameIndex(index);
+                        }}
                         className={`h-14 w-14 shrink-0 overflow-hidden rounded-[var(--radius-control)] border-2 transition ${
-                          selectedImage === idx ? 'border-brass' : 'border-transparent hover:border-hairline'
+                          frameIndex === index ? 'border-brass' : 'border-transparent hover:border-hairline'
                         }`}
                       >
-                        <img src={getImageUrl(img)} alt={`${product.name} ${idx + 1}`} className="w-full h-full object-cover" />
+                        <img
+                          src={frame.placeholder ? frame.src : getImageUrl(frame.src)}
+                          alt=""
+                          className={`w-full h-full ${frame.placeholder ? 'object-contain p-1.5 opacity-60' : 'object-cover'}`}
+                        />
                       </button>
                     ))}
                   </div>
@@ -769,7 +886,7 @@ function ProductDetailsPage() {
             </div>
 
             {/* ── Right: Product Info ──────────────────── */}
-            <div className="lg:col-span-3 space-y-4">
+            <div className="md:col-span-3 space-y-4">
 
               {/* Main Info Card */}
               <div className="rounded-[var(--radius-surface)] border border-hairline bg-paper-raised p-4 shadow-sm sm:p-7">
@@ -831,11 +948,6 @@ function ProductDetailsPage() {
                   )}
                 </div>
 
-                {/* Description */}
-                <p className="text-sm leading-relaxed mb-6 pb-6 border-b border-hairline text-ink-muted">
-                  {product.description}
-                </p>
-
                 {/* Color Variants */}
                 {product.colorVariants && product.colorVariants.length > 0 && (
                   <div className="mb-6 pb-6 border-b border-hairline">
@@ -852,16 +964,17 @@ function ProductDetailsPage() {
                             onClick={() => !outOfStock && handleColorSelect(cv.color)}
                             disabled={outOfStock}
                             title={outOfStock ? `${cv.color} — Out of stock` : cv.color}
-                            className={`flex min-h-11 items-center gap-2 rounded-[var(--radius-control)] border px-3.5 py-1.5 transition ${
-                              isSelected ? 'border-brass bg-brass/10' : 'border-hairline bg-paper hover:border-brass/50'
-                            } ${outOfStock ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+                            type="button"
+                            aria-pressed={isSelected}
+                            className={optionChipClass(isSelected, outOfStock)}
                           >
                             <span
-                              className="h-4 w-4 shrink-0 rounded-full border border-ink/20"
-                              style={{ backgroundColor: cv.color.toLowerCase() }}
+                              aria-hidden="true"
+                              className="h-4 w-4 shrink-0 rounded-full ring-1 ring-inset ring-ink/15"
+                              style={{ background: swatchColor(cv.color) }}
                             />
-                            <span className={`text-sm font-medium ${isSelected ? 'text-brass' : 'text-ink'}`}>{cv.color}</span>
-                            {outOfStock && <span className="text-xs text-seal">·sold out</span>}
+                            <span>{cv.color}</span>
+                            {outOfStock && <span className="text-xs no-underline text-seal">sold out</span>}
                           </button>
                         );
                       })}
@@ -889,11 +1002,11 @@ function ProductDetailsPage() {
                             key={idx}
                             onClick={() => !outOfStock && handleStorageSelect(sv.storage)}
                             disabled={outOfStock}
-                            className={`min-h-11 rounded-[var(--radius-control)] border px-4 py-1.5 text-sm font-medium tabular-nums transition ${
-                              isSelected ? 'border-brass bg-brass/10 text-brass' : 'border-hairline bg-paper text-ink hover:border-brass/50'
-                            } ${outOfStock ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+                            type="button"
+                            aria-pressed={isSelected}
+                            className={`${optionChipClass(isSelected, outOfStock)} tabular-nums`}
                           >
-                            {sv.storage}{outOfStock && ' ·sold out'}
+                            {sv.storage}{outOfStock && <span className="ml-1.5 text-xs no-underline text-seal">sold out</span>}
                           </button>
                         );
                       })}
@@ -902,7 +1015,7 @@ function ProductDetailsPage() {
                 )}
 
                 {/* Options described as plain lists on the product (no per-option stock) */}
-                {optionGroups.map(group => (
+                {additionalOptionGroups.map(group => (
                   <div key={group.key} className="mb-6 pb-6 border-b border-hairline">
                     <p className="text-xs font-semibold uppercase tracking-widest mb-3 text-ink-muted">
                       {group.label}{selectedVariants[group.key] && ` — ${selectedVariants[group.key]}`}
@@ -916,12 +1029,10 @@ function ProductDetailsPage() {
                             type="button"
                             aria-pressed={isSelected}
                             onClick={() => selectVariant(group.key, option.value)}
-                            className={`flex min-h-11 items-center gap-2 rounded-[var(--radius-control)] border px-4 py-1.5 text-sm font-medium transition ${
-                              isSelected ? 'border-brass bg-brass/10 text-brass' : 'border-hairline bg-paper text-ink hover:border-brass/50'
-                            }`}
+                            className={optionChipClass(isSelected)}
                           >
                             {group.key === 'color' && (
-                              <span className="h-4 w-4 shrink-0 rounded-full border border-ink/20" style={{ backgroundColor: option.value.toLowerCase() }} />
+                              <span aria-hidden="true" className="h-4 w-4 shrink-0 rounded-full ring-1 ring-inset ring-ink/15" style={{ background: swatchColor(option.value) }} />
                             )}
                             {option.value}
                             {option.priceDelta > 0 && (
@@ -961,8 +1072,45 @@ function ProductDetailsPage() {
                   </div>
                 </div>
 
+                {/* Action Buttons */}
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={handleAddToCart}
+                    disabled={!product?.quantity || submitting}
+                    className="flex flex-1 items-center justify-center gap-2 rounded-[var(--radius-control)] border border-ink py-3.5 text-sm font-semibold text-ink transition hover:bg-ink hover:text-paper disabled:cursor-not-allowed disabled:border-hairline disabled:text-ink-muted/50 disabled:hover:bg-transparent disabled:hover:text-ink-muted/50"
+                  >
+                    <ShoppingCart className="w-5 h-5" />
+                    Add to Cart
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleBuyNowClick}
+                    disabled={!product?.quantity || submitting}
+                    className="flex-1 rounded-[var(--radius-control)] bg-brass py-3.5 text-sm font-semibold text-white transition hover:bg-brass-dark disabled:cursor-not-allowed disabled:bg-hairline disabled:text-ink-muted/50"
+                  >
+                    Buy Now
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => compare.toggle(compareEntry)}
+                  disabled={compareBlocked}
+                  aria-pressed={inCompare}
+                  title={compareBlocked
+                    ? compare.items.length >= MAX_COMPARE
+                      ? `Comparing ${MAX_COMPARE} products already`
+                      : `Only ${compare.category} products can join this comparison`
+                    : undefined}
+                  className={`mt-3 flex w-full items-center justify-center gap-2 rounded-[var(--radius-control)] border py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:border-hairline disabled:text-ink-muted/50 ${inCompare ? 'border-brass bg-brass/5 text-brass' : 'border-hairline text-ink hover:border-brass hover:text-brass'}`}
+                >
+                  <Scale className="h-4 w-4" aria-hidden="true" />
+                  {inCompare ? 'Added to compare' : 'Compare'}
+                </button>
+
                 {/* Trust row */}
-                <div className="grid grid-cols-3 gap-3 mb-6">
+                <div className="grid grid-cols-3 gap-3 mt-6">
                   {[
                     { icon: <Shield className="w-5 h-5 text-brass" />, label: 'Secure Payment' },
                     { icon: <Truck className="w-5 h-5 text-brass" />, label: 'Fast Delivery' },
@@ -975,25 +1123,76 @@ function ProductDetailsPage() {
                   ))}
                 </div>
 
-                {/* Action Buttons */}
-                <div className="flex gap-3">
-                  <button
-                    onClick={handleAddToCart}
-                    disabled={isSeller || isAdmin || !product?.quantity || submitting}
-                    className="flex flex-1 items-center justify-center gap-2 rounded-[var(--radius-control)] border border-ink py-3.5 text-sm font-semibold text-ink transition hover:bg-ink hover:text-paper disabled:cursor-not-allowed disabled:border-hairline disabled:text-ink-muted/50 disabled:hover:bg-transparent disabled:hover:text-ink-muted/50"
-                  >
-                    <ShoppingCart className="w-5 h-5" />
-                    Add to Cart
-                  </button>
-                  <button
-                    onClick={handleBuyNowClick}
-                    disabled={isSeller || isAdmin || !product?.quantity || submitting}
-                    className="flex-1 rounded-[var(--radius-control)] bg-brass py-3.5 text-sm font-semibold text-white transition hover:bg-brass-dark disabled:cursor-not-allowed disabled:bg-hairline disabled:text-ink-muted/50"
-                  >
-                    Buy Now
-                  </button>
-                </div>
+                {/* Description */}
+                <p className="text-sm leading-relaxed mt-6 pt-6 border-t border-hairline text-ink-muted">
+                  {product.description}
+                </p>
+
+                {/* Highlights — the four rows worth reading before the full table */}
+                {highlights.length > 0 && (
+                  <div className="mt-6 pt-6 border-t border-hairline">
+                    <div className="flex items-center justify-between gap-3">
+                      <h3 className="text-base font-bold text-ink">Highlights</h3>
+                      <button
+                        type="button"
+                        onClick={showSpecs}
+                        className="shrink-0 text-sm font-medium text-brass transition hover:underline"
+                      >
+                        Read full specs →
+                      </button>
+                    </div>
+                    <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4">
+                      {highlights.map(row => {
+                        const Icon = HIGHLIGHT_ICONS[row.label] || Cpu;
+                        return (
+                          <div key={row.label} className="flex min-w-0 items-start gap-3">
+                            <Icon className="mt-0.5 h-5 w-5 shrink-0 text-ink-muted" aria-hidden="true" />
+                            <div className="min-w-0">
+                              <p className="text-xs tracking-wide text-ink-muted">{row.label}</p>
+                              <p className="text-sm font-medium text-ink">{row.value}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
+
+              {/* ── Specifications & warranty ────────── */}
+              {specs.length > 0 && (
+                <section id="specifications" className="scroll-mt-24 rounded-[var(--radius-surface)] border border-hairline bg-paper-raised p-4 shadow-sm sm:p-7">
+                  <h2 className="text-lg font-bold text-ink">Specifications</h2>
+                  <p className="mt-1 text-xs text-ink-muted">
+                    {isDemoSpec(product.name)
+                      ? 'Illustrative specifications — this is a demo-only product.'
+                      : "Published by Apple. Every product in this category lists the same rows, so two can be compared line by line."}
+                  </p>
+                  <dl className="mt-4 divide-y divide-hairline border-t border-hairline">
+                    {specs.map(row => (
+                      <div key={row.label} className="grid gap-1 py-3 sm:grid-cols-[11rem_1fr] sm:gap-6">
+                        <dt className="text-xs font-semibold uppercase tracking-widest text-ink-muted">{row.label}</dt>
+                        <dd className="text-sm text-ink">{row.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </section>
+              )}
+
+              <section className="rounded-[var(--radius-surface)] border border-hairline bg-paper-raised p-4 shadow-sm sm:p-7">
+                <div className="flex items-center gap-2">
+                  <Shield className="h-5 w-5 text-brass" />
+                  <h2 className="text-lg font-bold text-ink">{WARRANTY.headline}</h2>
+                </div>
+                <ul className="mt-4 space-y-2.5">
+                  {WARRANTY.points.map(point => (
+                    <li key={point} className="flex gap-2.5 text-sm leading-relaxed text-ink-muted">
+                      <span aria-hidden="true" className="mt-2 h-1 w-1 shrink-0 rounded-full bg-brass" />
+                      <span>{point}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
 
               {/* ── Recommended ──────────────────────── */}
               <div className="rounded-[var(--radius-surface)] border border-hairline bg-paper-raised p-4 shadow-sm sm:p-7">
@@ -1047,6 +1246,19 @@ function ProductDetailsPage() {
                               </div>
                             </div>
                           </button>
+                          <div className="px-3 pb-2">
+                            <button
+                              type="button"
+                              aria-pressed={compare.has(item._id)}
+                              aria-label={`Compare ${item.name}`}
+                              disabled={compare.locked(toCompareItem(item))}
+                              onClick={() => compare.toggle(toCompareItem(item))}
+                              className="flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-control)] border border-hairline py-1.5 text-[13px] font-medium text-ink-muted transition hover:border-brass hover:text-brass disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              <Scale className="h-3.5 w-3.5" aria-hidden="true" />
+                              {compare.has(item._id) ? 'Selected' : 'Compare'}
+                            </button>
+                          </div>
                           {!isSeller && !isAdmin && (
                             <div className="px-3 pb-3">
                               <button
@@ -1304,6 +1516,7 @@ function ProductDetailsPage() {
           </div>
         </div>
       </div>
+      <CompareBar />
     </>
   );
 }

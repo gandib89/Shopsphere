@@ -38,7 +38,7 @@ describe('UX demo redesign header', () => {
     const sections = container.querySelectorAll('[data-scroll-section]');
     expect(sections).toHaveLength(4);
     expect(sections[0]).toContainElement(screen.getByRole('heading', { name: 'Choose better technology.' }));
-    expect(sections[1]).toBe(screen.getByRole('region', { name: 'Popular right now' }));
+    expect(sections[1]).toBe(screen.getByRole('region', { name: 'Popular Right Now' }));
     expect(sections[2]).toHaveAttribute('id', 'why-shopsphere');
     expect(sections[3]).toHaveAttribute('id', 'contact-us');
   });
@@ -87,7 +87,7 @@ describe('UX demo redesign header', () => {
     const input = within(search).getByRole('searchbox', { name: 'Search products' });
     expect(input).toHaveAttribute('placeholder', 'Search products...');
     await user.type(input, 'MacBook');
-    expect(screen.getByRole('region', { name: 'Popular right now' })).toBeVisible();
+    expect(screen.getByRole('region', { name: 'Popular Right Now' })).toBeVisible();
     await user.click(within(search).getByRole('button', { name: 'Search' }));
     const results = screen.getByRole('region', { name: 'Search results for “MacBook”' });
     expect(within(results).getByRole('heading', { name: 'MacBook Air M4' })).toBeVisible();
@@ -104,7 +104,7 @@ describe('UX demo redesign header', () => {
     expect(within(results).getByRole('heading', { name: 'MacBook Air M4' })).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'Clear filters' }));
     expect(input).toHaveValue('');
-    expect(screen.getByRole('region', { name: 'Popular right now' })).toBeVisible();
+    expect(screen.getByRole('region', { name: 'Popular Right Now' })).toBeVisible();
   });
 
   it('handles no matches and an empty search', async () => {
@@ -115,7 +115,7 @@ describe('UX demo redesign header', () => {
     expect(screen.getByRole('heading', { name: 'No demo products match' })).toBeVisible();
     await user.clear(input);
     await user.click(screen.getByRole('button', { name: 'Search' }));
-    expect(screen.getByRole('region', { name: 'Popular right now' })).toBeVisible();
+    expect(screen.getByRole('region', { name: 'Popular Right Now' })).toBeVisible();
     expect(screen.queryByRole('heading', { name: 'No demo products match' })).not.toBeInTheDocument();
   });
 
@@ -136,7 +136,7 @@ describe('UX demo redesign header', () => {
     expect(screen.getByText('Your bag is empty')).toBeVisible();
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    const catalogue = screen.getByRole('region', { name: 'Popular right now' });
+    const catalogue = screen.getByRole('region', { name: 'Popular Right Now' });
     await user.click(within(catalogue).getByRole('button', { name: 'iPhone 17 Pro Max' }));
     await user.click(within(screen.getByRole('dialog', { name: 'iPhone 17 Pro Max' })).getByRole('button', { name: /Add to cart/ }));
     await user.click(screen.getByRole('button', { name: 'Shopping bag with 1 items' }));
@@ -155,7 +155,7 @@ describe('UX demo redesign header', () => {
     await user.type(input, 'MacBook{Enter}');
     await user.click(within(screen.getByRole('navigation', { name: 'Demo navigation' })).getByRole('button', { name: 'Shop' }));
     expect(input).toHaveValue('');
-    expect(within(screen.getByRole('region', { name: 'Popular right now' })).getByRole('heading', { name: 'iPhone 17 Pro Max' })).toBeVisible();
+    expect(within(screen.getByRole('region', { name: 'Popular Right Now' })).getByRole('heading', { name: 'iPhone 17 Pro Max' })).toBeVisible();
     await user.type(input, 'MacBook{Enter}');
     await user.click(screen.getByRole('button', { name: 'Sign in to ShopSphere' }));
     expect(screen.getByRole('status', { name: 'Current route' })).toHaveTextContent('/auth');
@@ -180,7 +180,7 @@ describe('UX demo redesign header', () => {
     expect(screen.queryByRole('button', { name: 'Shop by categories' })).not.toBeInTheDocument();
     expect(screen.queryByText('Start with what you need')).not.toBeInTheDocument();
     const hero = screen.getByRole('heading', { name: 'Choose better technology.' }).closest('section');
-    expect(hero?.nextElementSibling).toBe(screen.getByRole('region', { name: 'Popular right now' }));
+    expect(hero?.nextElementSibling).toBe(screen.getByRole('region', { name: 'Popular Right Now' }));
   });
 
   it('removes the hero trust strip while preserving the information section', () => {
@@ -195,7 +195,7 @@ describe('UX demo redesign header', () => {
   it('uses image-led product cards with quick add and details in the drawer', async () => {
     const user = userEvent.setup();
     renderRoute(<StorefrontDemo />);
-    const catalogue = screen.getByRole('region', { name: 'Popular right now' });
+    const catalogue = screen.getByRole('region', { name: 'Popular Right Now' });
     const card = within(catalogue).getByRole('button', { name: 'MacBook Air M4' });
     expect(card).toHaveAccessibleDescription('13-inch · 16GB memory');
     expect(card).toHaveAttribute('aria-haspopup', 'dialog');
@@ -300,7 +300,7 @@ describe('UX demo redesign header', () => {
     expect(within(results).queryByRole('button', { name: 'iPhone 17 Pro Max' })).not.toBeInTheDocument();
     expect(screen.getByRole('searchbox')).toHaveAttribute('placeholder', 'Search MacBook...');
     await user.click(screen.getByRole('button', { name: 'Clear filters' }));
-    expect(screen.getByRole('region', { name: 'Popular right now' })).toBeVisible();
+    expect(screen.getByRole('region', { name: 'Popular Right Now' })).toBeVisible();
     expect(screen.getByRole('searchbox')).toHaveAttribute('placeholder', 'Search products...');
   });
 
