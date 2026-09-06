@@ -32,12 +32,13 @@ export default function AdminLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const menuRef = useRef<HTMLButtonElement>(null);
-  const selectedSellerId = location.pathname.match(/^\/admin\/sellers\/([^/]+)$/)?.[1];
+  const selectedSellerId = location.pathname.match(/^\/admin\/sellers\/([^/]+)(?:\/|$)/)?.[1];
+  const addingSellerProduct = /^\/admin\/sellers\/[^/]+\/products\/new$/.test(location.pathname);
   const sellerView = new URLSearchParams(location.search).get('view') === 'orders' ? 'orders' : 'products';
   const path = aliases[location.pathname] || (location.pathname.startsWith('/product-details-admin/') ? '/all-products' : location.pathname.startsWith('/admin/orders/') ? '/admin/orders' : location.pathname.startsWith('/admin/sellers/') ? '/admin/sellers' : location.pathname);
   const sellerSectionActive = path === '/admin/sellers' || path === '/admin/seller-approvals';
   const [sellerMenuOpen, setSellerMenuOpen] = useState(sellerSectionActive);
-  const current = selectedSellerId ? sellerView === 'orders' ? 'Orders' : 'Products' : sections.find(item => item.to.split('?')[0] === path)?.label || (path === '/admin/seller-approvals' ? 'Seller approvals' : 'Administration');
+  const current = addingSellerProduct ? 'Add product' : selectedSellerId ? sellerView === 'orders' ? 'Orders' : 'Products' : sections.find(item => item.to.split('?')[0] === path)?.label || (path === '/admin/seller-approvals' ? 'Seller approvals' : 'Administration');
 
   useEffect(() => { setMobileOpen(false); window.scrollTo(0, 0); }, [location.pathname]);
   useEffect(() => { if (sellerSectionActive) setSellerMenuOpen(true); }, [sellerSectionActive]);

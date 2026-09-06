@@ -52,6 +52,7 @@ describe('seller profiles', () => {
     vi.mocked(authFetch).mockImplementation(async path => response(String(path).includes('view=orders') ? { ...detail, view:'orders', total:1, items:[{_id:'order123',firstName:'Asha',lastName:'Gurung',status:'Pending',totalPrice:250,createdAt:'2026-08-01',product:{name:'MacBook'}}] } : {...detail,total:1,items:[{id:'product123',name:'MacBook',category:'Laptop',price:250,quantity:2,images:[]}]}));
     const user=userEvent.setup(); showProfile();
     expect(await screen.findByRole('link',{name:'View / edit'})).toHaveAttribute('href','/product-details-admin/product123');
+    expect(screen.getByRole('link',{name:'Add product'})).toHaveAttribute('href','/admin/sellers/'+seller.id+'/products/new');
     await user.click(screen.getByRole('button',{name:'Orders'}));
     expect(await screen.findByRole('link',{name:/#order123/})).toHaveAttribute('href','/admin/orders/order123');
     expect(authFetch).toHaveBeenLastCalledWith(expect.stringContaining('/sellers/'+seller.id+'?view=orders'),expect.anything());

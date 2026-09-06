@@ -4,6 +4,7 @@ import crypto from "crypto";
 import path from "path";
 import {
   createProduct,
+  createAdminSellerProduct,
   getProducts,
   getProductById,
   updateProduct,
@@ -52,6 +53,8 @@ productRouter.get("/:productId/recommendations", getProductRecommendations);
 
 // Protected routes (authentication required)
 productRouter.post("/create", verifyToken, authorizeSeller, checkSellerVerification, createProduct);
+productRouter.post("/admin/uploadImage", verifyToken, authorizeAdmin, upload.array("images", 3), uploadImage);
+productRouter.post("/admin/sellers/:sellerId", verifyToken, authorizeAdmin, createAdminSellerProduct);
 // Admin-only catalog override (ProductDetailsAdmin.tsx) — not seller-scoped, so this must
 // never be reachable with just authorizeSeller: any seller could edit/delete any other
 // seller's product. Sellers manage their own catalog through the /seller/* routes below.

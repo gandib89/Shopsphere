@@ -62,3 +62,47 @@ test("seller product read is scoped to the signed-in seller", async () => {
   assert.equal(other.statusCode, 404);
   assert.equal(other.body.message, "Product not found");
 });
+
+test("admin product creation assigns the selected seller", async () => {
+  const sellerId = "66a100000000000000000001";
+  const res = { statusCode: 200, body: null, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } };
+  let createdData;
+  const client = {
+    user: {
+      findUnique: async ({ where }) => where.id === sellerId ? { id: sellerId, role: "seller" } : null,
+      findMany: async () => [],
+    },
+    product: {
+      create: async ({ data }) => {
+        createdData = data;
+        return { ...data, colorVariants: [], storageVariants: [], options: [], reviews: [] };
+      },
+    },
+    notification: { createMany: async () => ({ count: 0 }) },
+  };
+
+  await productController.createAdminSellerProduct({
+    params: { sellerId },
+    body: { name: "Admin-listed MacBook", price: 120000, quantity: 3, images: ["/uploads/macbook.jpg"], category: "MacBook" },
+  }, res, client);
+
+  assert.equal(res.statusCode, 201);
+  assert.equal(createdData.sellerId, sellerId);
+  assert.equal(res.body.product.name, "Admin-listed MacBook");
+});
+
+test("admin product creation rejects a non-seller target", async () => {
+  const res = { statusCode: 200, body: null, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } };
+  let created = false;
+  await productController.createAdminSellerProduct({
+    params: { sellerId: "66a100000000000000000009" },
+    body: { name: "Should not exist", price: 10, quantity: 1, images: ["/uploads/test.jpg"], category: "Accessories" },
+  }, res, {
+    user: { findUnique: async () => ({ id: "66a100000000000000000009", role: "user" }) },
+    product: { create: async () => { created = true; } },
+  });
+
+  assert.equal(res.statusCode, 404);
+  assert.equal(res.body.message, "Seller not found");
+  assert.equal(created, false);
+});

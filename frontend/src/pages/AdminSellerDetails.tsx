@@ -1,7 +1,7 @@
 import AccountDeletion from '../components/account/AccountDeletion';
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, RefreshCw, Search } from 'lucide-react';
+import { ArrowLeft, Plus, RefreshCw, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { authFetch } from '../lib/session';
 import { AdminHeading, AdminPagination, OrderStatus } from '../components/admin/AdminUi';
@@ -121,7 +121,7 @@ export default function AdminSellerDetails() {
       <div className="admin-tabs" aria-label="Seller activity"><button aria-pressed={view === 'products'} onClick={() => setParams({ view: 'products' })}>Products</button><button aria-pressed={view === 'orders'} onClick={() => setParams({ view: 'orders' })}>Orders</button></div>
 
       {view === 'products' ? <section className="admin-panel" aria-label="Product catalogue">
-        <div className="admin-panel-head"><div><h2>Products from this shop</h2><p>Open a listing to review or edit it.</p></div></div>
+        <div className="admin-panel-head"><div><h2>Products from this shop</h2><p>Open a listing to review or edit it.</p></div><Link className="admin-button admin-button--primary" to={`/admin/sellers/${encodeURIComponent(sellerId)}/products/new`}><Plus size={15} aria-hidden="true" />Add product</Link></div>
         {error && <p className="admin-notice" role="alert">{error}</p>}
         <div className="admin-toolbar">
           <label className="admin-search"><Search size={15} aria-hidden="true" /><input type="search" aria-label="Search products" placeholder="Search product, category…" value={search} onChange={event => setSearch(event.target.value)} /></label>

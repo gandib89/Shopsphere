@@ -17,7 +17,12 @@ interface StorageVariant {
   stock: number;
 }
 
-function AddProduct() {
+type AddProductProps = {
+  sellerId?: string;
+  sellerName?: string;
+};
+
+function AddProduct({ sellerId, sellerName }: AddProductProps) {
   const navigate = useNavigate();
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
@@ -52,6 +57,12 @@ function AddProduct() {
   const [colorVariants, setColorVariants] = useState<ColorVariant[]>([]);
   const [storageVariants, setStorageVariants] = useState<StorageVariant[]>([]);
   const token = localStorage.getItem("token");
+  const isAdminProduct = Boolean(sellerId);
+  const uploadPath = isAdminProduct ? "/api/v1/product/admin/uploadImage" : "/api/v1/product/uploadImage";
+  const createPath = sellerId
+    ? `/api/v1/product/admin/sellers/${encodeURIComponent(sellerId)}`
+    : "/api/v1/product/create";
+  const productsPath = sellerId ? `/admin/sellers/${encodeURIComponent(sellerId)}?view=products` : "/seller-products";
 
   // Predefined variant options based on category
   const variantOptions: {
@@ -129,7 +140,7 @@ function AddProduct() {
       formDataForGeneralImage.append("images", generalImage);
       
       const generalImageUploadResponse = await axios.post(
-        `${import.meta.env.VITE_BACKEND_URL}/api/v1/product/uploadImage`,
+        `${import.meta.env.VITE_BACKEND_URL}${uploadPath}`,
         formDataForGeneralImage,
         {
           headers: {
@@ -141,7 +152,7 @@ function AddProduct() {
       const uploadedGeneralImages = generalImageUploadResponse.data.imageUrls;
 
       // Upload color-specific images
-      const uploadedColorVariants: any[] = [];
+      const uploadedColorVariants: Array<{ color: string; images: string[]; stock: number }> = [];
       for (const colorVariant of colorVariants) {
         // No files chosen: store the colour with no images so the storefront falls back to the
         // placeholder, rather than posting an empty upload.
@@ -156,7 +167,7 @@ function AddProduct() {
         });
 
         const colorImageUploadResponse = await axios.post(
-          `${import.meta.env.VITE_BACKEND_URL}/api/v1/product/uploadImage`,
+          `${import.meta.env.VITE_BACKEND_URL}${uploadPath}`,
           formDataForColorImages,
           {
             headers: {
@@ -184,7 +195,7 @@ function AddProduct() {
 
 
       const response = await axios.post(
-        `${import.meta.env.VITE_BACKEND_URL}/api/v1/product/create`,
+        `${import.meta.env.VITE_BACKEND_URL}${createPath}`,
         productData,
         {
           headers: {
@@ -215,11 +226,11 @@ function AddProduct() {
         setStorageVariants([]);
         setOptionDeltas({});
         setGeneralImage(null);
-        navigate("/seller-products");
+        navigate(productsPath);
       }
     } catch (err) {
       console.error("Error adding product:", err);
-      toast.error("Could not add your product. Your details are still here; please try again.");
+      toast.error(`Could not add ${isAdminProduct ? "this seller's" : "your"} product. Your details are still here; please try again.`);
     } finally {
       setSaving(false);
     }
@@ -229,7 +240,7 @@ function AddProduct() {
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target;
-    setFormData((prev: any) => ({
+    setFormData((prev) => ({
       ...prev,
       [name]: value,
     }));
@@ -237,7 +248,7 @@ function AddProduct() {
 
   const handleSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData((prev: any) => ({
+    setFormData((prev) => ({
       ...prev,
       [name]: value,
     }));
@@ -386,8 +397,11 @@ function AddProduct() {
       <NavBar />
       <div className="min-h-screen bg-paper pb-10">
         <div className="container mx-auto px-4 sm:px-6 max-w-3xl">
-          <AdminHeading title="Add new product" description="List your product on the store and reach more customers">
-            <Link className="admin-button" to="/seller-products"><ArrowLeft size={14} aria-hidden="true" />All products</Link>
+          <AdminHeading
+            title={isAdminProduct ? `Add product for ${sellerName || "seller"}` : "Add new product"}
+            description={isAdminProduct ? "Create a listing owned and managed by this seller." : "List your product on the store and reach more customers"}
+          >
+            <Link className="admin-button" to={productsPath}><ArrowLeft size={14} aria-hidden="true" />{isAdminProduct ? "Seller products" : "All products"}</Link>
           </AdminHeading>
         </div>
         <div className="container mx-auto px-4 sm:px-6 max-w-3xl py-6 sm:py-10">

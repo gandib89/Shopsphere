@@ -229,7 +229,7 @@ const buildOptionRows = (body, options) => {
     values.map((value) => ({ kind, value, priceDelta: 0, stock: null })));
 };
 
-export const createProduct = async (req, res) => {
+const createProductForSeller = async (req, res, sellerId, client = prisma) => {
   const parsed = createProductSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ message: parsed.error.issues[0].message });
@@ -239,7 +239,7 @@ export const createProduct = async (req, res) => {
     const { name, price, description, quantity, images, category, variants, colorVariants, storageVariants, options } = parsed.data;
 
     const v = variants || {};
-    const product = await prisma.product.create({
+    const product = await client.product.create({
       data: {
         id: generateId(),
         name,
@@ -253,7 +253,7 @@ export const createProduct = async (req, res) => {
         variantRam: v.ram || [],
         variantScreenSize: v.screenSize || [],
         variantProcessor: v.processor || [],
-        sellerId: req.user.role === 'seller' ? req.user.id : null, // Store seller ID if user is a seller
+        sellerId,
         colorVariants: {
           create: (colorVariants || []).map((cv) => ({
             color: cv.color,
@@ -277,10 +277,10 @@ export const createProduct = async (req, res) => {
 
     // Fan out new-product notifications to all regular users (non-blocking)
     try {
-      const allUsers = await prisma.user.findMany({ where: { role: "user" }, select: { id: true } });
+      const allUsers = await client.user.findMany({ where: { role: "user" }, select: { id: true } });
       if (allUsers.length > 0) {
         const seller = product.sellerId
-          ? await prisma.user.findUnique({ where: { id: product.sellerId }, select: { shopName: true, firstName: true } })
+          ? await client.user.findUnique({ where: { id: product.sellerId }, select: { shopName: true, firstName: true } })
           : null;
         const shopLabel = seller?.shopName || seller?.firstName || "A seller";
         const notifDocs = allUsers.map((u) => ({
@@ -293,7 +293,7 @@ export const createProduct = async (req, res) => {
           productName: product.name,
           productImage: product.images?.[0] || null,
         }));
-        await prisma.notification.createMany({ data: notifDocs });
+        await client.notification.createMany({ data: notifDocs });
         console.log(`New-product notifications sent to ${allUsers.length} users`);
       }
     } catch (notifErr) {
@@ -304,6 +304,28 @@ export const createProduct = async (req, res) => {
   } catch (error) {
     console.error("Error creating product:", error); // Debugging
     res.status(500).json({ message: "Server error while creating product" });
+  }
+};
+
+export const createProduct = async (req, res, client = prisma) =>
+  createProductForSeller(req, res, req.user.id, client);
+
+export const createAdminSellerProduct = async (req, res, client = prisma) => {
+  if (!/^[a-f\d]{24}$/i.test(req.params.sellerId || "")) {
+    return res.status(404).json({ message: "Seller not found" });
+  }
+  try {
+    const seller = await client.user.findUnique({
+      where: { id: req.params.sellerId },
+      select: { id: true, role: true },
+    });
+    if (!seller || seller.role !== "seller") {
+      return res.status(404).json({ message: "Seller not found" });
+    }
+    return createProductForSeller(req, res, seller.id, client);
+  } catch (error) {
+    console.error("Error finding seller for product creation:", error);
+    return res.status(500).json({ message: "Server error while finding seller" });
   }
 };
 

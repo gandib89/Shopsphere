@@ -26,6 +26,7 @@ const AdminPanel = lazy(() => import('./pages/AdminPanel'));
 const AdminSellerApproval = lazy(() => import('./pages/AdminSellerApproval'));
 const AdminSellers = lazy(() => import('./pages/AdminSellers'));
 const AdminSellerDetails = lazy(() => import('./pages/AdminSellerDetails'));
+const AdminAddSellerProduct = lazy(() => import('./pages/AdminAddSellerProduct'));
 const AdminRevenueDashboard = lazy(() => import('./pages/AdminRevenueDashboard'));
 const AdminUserManagement = lazy(() => import('./pages/AdminUserManagement'));
 const PromoManagement = lazy(() => import('./pages/PromoManagement'));
@@ -153,6 +154,7 @@ function App() {
             <Route path="/admin" element={<AdminPanel />} />
             <Route path="/admin/sellers" element={<AdminSellers />} />
             <Route path="/admin/sellers/:sellerId" element={<AdminSellerDetails />} />
+            <Route path="/admin/sellers/:sellerId/products/new" element={<AdminAddSellerProduct />} />
             <Route path="/admin/seller-approvals" element={<AdminSellerApproval />} />
             <Route path="/admin/seller-approval" element={<AdminSellerApproval />} />
             <Route path="/admin/revenue" element={<AdminRevenueDashboard />} />
