@@ -36,11 +36,13 @@ describe('UX demo redesign header', () => {
   it('registers the hero, products, about and footer as scroll destinations', () => {
     const { container } = renderRoute(<StorefrontDemo />);
     const sections = container.querySelectorAll('[data-scroll-section]');
-    expect(sections).toHaveLength(4);
-    expect(sections[0]).toContainElement(screen.getByRole('heading', { name: 'Choose better technology.' }));
+    expect(sections).toHaveLength(5);
+    expect(sections[0]).toContainElement(screen.getByRole('heading', { name: 'Choose Better Technology.' }));
     expect(sections[1]).toBe(screen.getByRole('region', { name: 'Popular Right Now' }));
-    expect(sections[2]).toHaveAttribute('id', 'why-shopsphere');
-    expect(sections[3]).toHaveAttribute('id', 'contact-us');
+    expect(sections[2]).toBe(screen.getByRole('region', { name: 'Shop All Products' }));
+    expect(sections[2].querySelector('.storefront-catalog-heading')).toContainElement(screen.getByRole('heading', { name: 'Shop All Products' }));
+    expect(sections[3]).toHaveAttribute('id', 'why-shopsphere');
+    expect(sections[4]).toHaveAttribute('id', 'contact-us');
   });
 
   it('uses white backgrounds for dark products and charcoal for light products', () => {
@@ -125,7 +127,7 @@ describe('UX demo redesign header', () => {
     expect(container.querySelector('.ux-demo-header-theme')).toHaveClass('theme-light');
     expect(container.querySelector('.theme-dark')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Use (dark|light) theme/, hidden: true })).not.toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Choose better technology.' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Choose Better Technology.' })).toBeVisible();
     expect(screen.getByRole('img', { name: /arranged on a dark studio surface/ })).toHaveAttribute('src', '/images/shopsphere-redesign-hero.webp');
   });
 
@@ -137,7 +139,7 @@ describe('UX demo redesign header', () => {
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     const catalogue = screen.getByRole('region', { name: 'Popular Right Now' });
-    await user.click(within(catalogue).getByRole('button', { name: 'iPhone 17 Pro Max' }));
+    await user.click(within(catalogue).getByRole('button', { name: 'Popular product: iPhone 17 Pro Max' }));
     await user.click(within(screen.getByRole('dialog', { name: 'iPhone 17 Pro Max' })).getByRole('button', { name: /Add to cart/ }));
     await user.click(screen.getByRole('button', { name: 'Shopping bag with 1 items' }));
     const bag = screen.getByRole('dialog', { name: 'Your bag' });
@@ -179,13 +181,13 @@ describe('UX demo redesign header', () => {
     expect(screen.queryByRole('heading', { name: 'Shop by category' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Shop by categories' })).not.toBeInTheDocument();
     expect(screen.queryByText('Start with what you need')).not.toBeInTheDocument();
-    const hero = screen.getByRole('heading', { name: 'Choose better technology.' }).closest('section');
+    const hero = screen.getByRole('heading', { name: 'Choose Better Technology.' }).closest('section');
     expect(hero?.nextElementSibling).toBe(screen.getByRole('region', { name: 'Popular Right Now' }));
   });
 
   it('removes the hero trust strip while preserving the information section', () => {
     renderRoute(<StorefrontDemo />);
-    const hero = screen.getByRole('heading', { name: 'Choose better technology.' }).closest('section') as HTMLElement;
+    const hero = screen.getByRole('heading', { name: 'Choose Better Technology.' }).closest('section') as HTMLElement;
     expect(within(hero).queryByText('Approved sellers')).not.toBeInTheDocument();
     expect(within(hero).queryByText('Secure eSewa')).not.toBeInTheDocument();
     expect(within(hero).queryByText('Delivery across Nepal')).not.toBeInTheDocument();
@@ -196,11 +198,11 @@ describe('UX demo redesign header', () => {
     const user = userEvent.setup();
     renderRoute(<StorefrontDemo />);
     const catalogue = screen.getByRole('region', { name: 'Popular Right Now' });
-    const card = within(catalogue).getByRole('button', { name: 'MacBook Air M4' });
+    const card = within(catalogue).getByRole('button', { name: 'Popular product: MacBook Air M4' });
     expect(card).toHaveAccessibleDescription('13-inch · 16GB memory');
     expect(card).toHaveAttribute('aria-haspopup', 'dialog');
     expect(card.closest('article')?.querySelector('img')).toHaveAttribute('src', '/images/macairmidnight.jpg');
-    expect(within(catalogue).getByRole('button', { name: 'Add to cart: MacBook Air M4' })).toBeInTheDocument();
+    expect(within(catalogue).getByRole('button', { name: 'Popular product: Add to cart: MacBook Air M4' })).toBeInTheDocument();
     expect(within(catalogue).queryByText(/NPR/)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Next products' })).not.toBeInTheDocument();
     await user.click(card);
@@ -327,7 +329,7 @@ describe('UX demo redesign header', () => {
     expect(screen.queryByRole('group', { name: 'Search by category' })).not.toBeInTheDocument();
     expect(screen.getByRole('searchbox')).toHaveFocus();
     await user.click(screen.getByRole('searchbox'));
-    await user.click(screen.getByRole('heading', { name: 'Choose better technology.' }));
+    await user.click(screen.getByRole('heading', { name: 'Choose Better Technology.' }));
     expect(screen.queryByRole('group', { name: 'Search by category' })).not.toBeInTheDocument();
   });
 

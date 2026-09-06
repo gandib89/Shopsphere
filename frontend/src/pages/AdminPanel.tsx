@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, ClipboardList, RefreshCw, RotateCcw, Store, Tag, Users, Package } from 'lucide-react';
+import { ArrowRight, ClipboardList, RotateCcw, Store, Tag, Users, Package } from 'lucide-react';
 import { AdminHeading, OrderStatus } from '../components/admin/AdminUi';
 import { activeOrder, adminDate, adminMoney, getAdminCollection, type AdminOrder } from '../lib/adminData';
 
@@ -20,7 +20,7 @@ export default function AdminPanel() {
     if (signal?.aborted) return;
     setOrders(results[0].status === 'fulfilled' ? results[0].value : null);
     setSellers(results[1].status === 'fulfilled' ? results[1].value : null);
-    if (results.some(result => result.status === 'rejected')) setError('Some store information could not be loaded. Refresh to try again.');
+    if (results.some(result => result.status === 'rejected')) setError('Some store information could not be loaded. Reload the page to try again.');
     setLoading(false);
   }, []);
   useEffect(() => { const controller = new AbortController(); void load(controller.signal); return () => controller.abort(); }, [load]);
@@ -35,7 +35,6 @@ export default function AdminPanel() {
 
   return <main>
     <AdminHeading title="Marketplace overview" description="Monitor your marketplace, review applications, and keep orders moving.">
-      <button className="admin-button" onClick={() => void load()} disabled={loading}><RefreshCw size={14} aria-hidden="true" />{loading ? 'Refreshing…' : 'Refresh'}</button>
       <Link className="admin-button admin-button--primary" to="/admin/orders">Manage orders<ArrowRight size={14} aria-hidden="true" /></Link>
     </AdminHeading>
     {error && <p className="admin-notice" role="alert">{error}</p>}
@@ -62,7 +61,7 @@ export default function AdminPanel() {
       </section>
     </div>
     <section className="admin-panel" aria-labelledby="recent-title"><div className="admin-panel-head"><h2 id="recent-title">Recent orders</h2><Link className="admin-text-link" to="/admin/orders">View all orders →</Link></div>
-      {loading ? <p className="admin-empty" role="status">Loading orders…</p> : orders === null ? <p className="admin-empty">Orders are unavailable. Use Refresh to try again.</p> : recent.length === 0 ? <p className="admin-empty">New customer orders will appear here.</p> :
+      {loading ? <p className="admin-empty" role="status">Loading orders…</p> : orders === null ? <p className="admin-empty">Orders are unavailable. Reload the page to try again.</p> : recent.length === 0 ? <p className="admin-empty">New customer orders will appear here.</p> :
         <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th scope="col">Order / customer</th><th scope="col">Date</th><th scope="col">Status</th><th scope="col">Total</th></tr></thead><tbody>{recent.map(order => <tr key={order._id}><td><Link className="admin-text-link" to={'/admin/orders/' + order._id}>#{order._id.slice(-8)} · {order.firstName} {order.lastName}</Link><small>{order.product?.name || 'Product'}</small></td><td>{adminDate(order.createdAt)}</td><td><OrderStatus status={order.status} /></td><td className="admin-numeric">{adminMoney(order.totalPrice)}</td></tr>)}</tbody></table></div>}
     </section>
   </main>;

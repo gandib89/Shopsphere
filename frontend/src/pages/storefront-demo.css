@@ -47,6 +47,9 @@
   background: rgb(var(--color-surface));
 }
 
+.ux-demo-products-panel--popular { margin-bottom: 1rem; }
+.ux-demo-products-panel--catalogue { margin-top: 0; }
+
 .ux-demo .ux-demo-header-theme {
   min-height: 0;
   padding-top: 0;

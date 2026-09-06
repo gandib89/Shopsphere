@@ -216,7 +216,7 @@ export default function UiRedesignDemo() {
             <div className="ui-hero-shade" aria-hidden="true" />
             <div className="ui-hero-copy">
               <p className="ui-eyebrow">A better way to buy Apple</p>
-              <h1>Choose better technology.</h1>
+              <h1>Choose Better Technology.</h1>
               <p>Verified Apple products, local support, and clear delivery for every purchase in Nepal.</p>
               <div className="ui-hero-buttons">
                 <button type="button" className="ui-primary-button" onClick={() => browseCategory('All')}>Shop the collection <ArrowRight aria-hidden="true" /></button>

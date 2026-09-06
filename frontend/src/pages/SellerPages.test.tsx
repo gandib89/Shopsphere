@@ -32,6 +32,7 @@ describe('seller workspace shell', () => {
     expect(screen.getByRole('link', { name: 'Home' })).not.toHaveAttribute('aria-current');
     expect(screen.getByText('Workspace content')).toBeVisible();
     expect(screen.queryByRole('link', { name: /Cart/ })).not.toBeInTheDocument();
+    expect(document.querySelector('.admin-app')).toHaveClass('seller-app');
   });
   it('has one product destination and returns focus when mobile navigation closes', async () => {
     vi.mocked(authFetch).mockResolvedValue(response({ shopName: 'Asha Devices', isVerified: true }));
@@ -59,6 +60,8 @@ describe('seller home', () => {
       ? { orders: [order('one'), order('two', 'Return Requested'), order('three', 'Delivered')] }
       : { products: [product('mac', 0), product('air', 3), product('pro', 40)] }));
     renderRoute(<SellerPanel />);
+    expect(screen.getByText('Seller workspace')).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Shop overview' }).closest('header')).toHaveClass('admin-page-heading');
     expect(await screen.findByRole('link', { name: /Restock sold-out products/ })).toHaveTextContent('1');
     expect(screen.getByRole('link', { name: /Review low stock/ })).toHaveTextContent('1');
     expect(screen.getByRole('link', { name: /Answer return requests/ })).toHaveTextContent('1');

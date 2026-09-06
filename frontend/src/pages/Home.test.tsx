@@ -42,35 +42,41 @@ afterEach(() => localStorage.clear());
 describe('live storefront integration', () => {
   it('shows real listings to guests with the approved hero and no demo products', async () => {
     const { container } = renderHome();
-    expect(screen.getByRole('heading', { name: 'Choose better technology.' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Choose Better Technology.' })).toBeVisible();
     const card = await screen.findByRole('button', { name: 'Seller MacBook' });
     expect(card.closest('article')?.querySelector('img')).toHaveAttribute('src', '/uploads/mac.webp');
     expect(within(card.closest('article')!).getByText('NPR 90,000')).toBeVisible();
     expect(screen.queryByText('iPhone 17 Pro Max')).not.toBeInTheDocument();
     expect(screen.queryByText(/Demo bag only/)).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'ShopSphere home' })).toHaveAttribute('href', '/');
-    // Hero, Shop by category, products, about and footer.
-    expect(container.querySelectorAll('[data-scroll-section]')).toHaveLength(5);
-    const categories = screen.getByRole('region', { name: 'Shop by category' });
+    // Hero, Shop by category, popular products, full catalogue, about and footer.
+    expect(container.querySelectorAll('[data-scroll-section]')).toHaveLength(6);
+    const categories = screen.getByRole('region', { name: 'Shop By Category' });
     expect(within(categories).getByRole('link', { name: /MacBook/ })).toHaveAttribute('href', '/?category=MacBook');
     expect(get).toHaveBeenCalledTimes(1);
   });
 
-  it('filters by search and categories, and sorts the real discounted prices', async () => {
+  it('keeps Popular Right Now top-rated and independent from catalogue controls', async () => {
     const user = userEvent.setup();
     renderHome();
     await screen.findByRole('button', { name: 'Seller MacBook' });
-    await user.selectOptions(screen.getByLabelText('Sort products'), 'low-to-high');
-    const cards = screen.getByRole('region', { name: 'Popular Right Now' }).querySelectorAll('article');
-    expect(cards[0]).toHaveTextContent('Seller Watch');
+    expect(screen.queryByLabelText('Sort products')).not.toBeInTheDocument();
+    const popular = screen.getByRole('region', { name: 'Popular Right Now' });
+    const cards = popular.querySelectorAll('article');
+    expect(cards[0]).toHaveTextContent('Seller MacBook');
+    const popularStrip = popular.querySelector('.ux-demo-product-grid--scroll') as HTMLElement;
+    const popularScrollCalls = () => vi.mocked(popularStrip.scrollTo).mock.contexts.filter(context => context === popularStrip).length;
+    await waitFor(() => expect(popularScrollCalls()).toBeGreaterThan(0));
+    const callsBeforeFiltering = popularScrollCalls();
+    await user.click(screen.getByRole('checkbox', { name: 'In stock' }));
+    expect(popularScrollCalls()).toBe(callsBeforeFiltering);
     const input = screen.getByRole('searchbox');
     await user.type(input, 'Seller');
     await user.click(within(screen.getByRole('group', { name: 'Search by category' })).getByRole('button', { name: 'MacBook' }));
     const results = screen.getByRole('region', { name: 'Search results for “Seller”' });
     expect(within(results).getByRole('heading', { name: 'Seller MacBook' })).toBeVisible();
     expect(within(results).queryByRole('heading', { name: 'Seller Watch' })).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Clear filters' }));
-    expect(screen.getByRole('heading', { name: 'Seller Watch' })).toBeVisible();
+    expect(within(popular).getByRole('heading', { name: 'Seller Watch' })).toBeVisible();
   });
 
   it('preserves category links from the footer', async () => {
@@ -84,7 +90,7 @@ describe('live storefront integration', () => {
     const user = userEvent.setup();
     renderHome();
     await user.click(await screen.findByRole('button', { name: 'Add to cart: Seller MacBook' }));
-    expect(screen.getByTestId('route')).toHaveTextContent('/auth');
+    await waitFor(() => expect(screen.getByTestId('route')).toHaveTextContent('/auth'));
     expect(post).not.toHaveBeenCalled();
   });
 
@@ -173,6 +179,26 @@ describe('live storefront integration', () => {
     expect(screen.getByTestId('route')).toHaveTextContent('/product-details-page?productId=server-phone');
   });
 
+  it('shows only the full-details action in quick view when a product requires options', async () => {
+    signedIn();
+    const user = userEvent.setup();
+    renderHome();
+    await user.click(await screen.findByRole('button', { name: 'Seller Watch' }));
+    const dialog = screen.getByRole('dialog', { name: 'Seller Watch' });
+    expect(within(dialog).getByRole('button', { name: 'View full product details' })).toBeVisible();
+    expect(within(dialog).queryByRole('button', { name: /^Choose options ·/ })).not.toBeInTheDocument();
+  });
+
+  it('uses the same single full-details action for directly purchasable quick views', async () => {
+    signedIn();
+    const user = userEvent.setup();
+    renderHome();
+    await user.click(await screen.findByRole('button', { name: 'Seller MacBook' }));
+    const dialog = screen.getByRole('dialog', { name: 'Seller MacBook' });
+    expect(within(dialog).getByRole('button', { name: 'View full product details' })).toBeVisible();
+    expect(within(dialog).queryByRole('button', { name: /^Add to cart ·/ })).not.toBeInTheDocument();
+  });
+
   it.each([['admin', '/admin'], ['seller', '/seller-panel'], ['buyer', '/profile']])('preserves the %s account route', async (role, path) => {
     signedIn(role);
     const user = userEvent.setup();
@@ -208,6 +234,22 @@ describe('live storefront integration', () => {
 
 
 describe('catalog sidebar filters', () => {
+  it('shows six-product catalogue pages with filters before switching to the full grid', async () => {
+    const user = userEvent.setup();
+    renderHome();
+    await screen.findByRole('button', { name: 'Seller MacBook' });
+
+    expect(screen.getByLabelText('Minimum price')).toBeVisible();
+    expect(document.querySelector('.storefront-catalog-page')).toBeInTheDocument();
+    expect(document.querySelector('.ux-demo-products-panel--catalogue')).toHaveAttribute('data-section-scroll-ignore');
+
+    await user.click(screen.getByRole('button', { name: 'Show all products' }));
+    expect(screen.getByLabelText('Minimum price')).toBeVisible();
+    expect(document.querySelector('.storefront-catalog-full-grid')).toBeInTheDocument();
+    expect(document.querySelector('.ux-demo-products-panel--catalogue')).toHaveAttribute('data-section-scroll-ignore');
+    expect(screen.getByRole('button', { name: 'Show slider' })).toBeVisible();
+  });
+
   it('applies discounted price bounds, combines stock and brand, and resets results', async () => {
     const user = userEvent.setup();
     renderHome();
@@ -221,14 +263,34 @@ describe('catalog sidebar filters', () => {
     expect(screen.getByRole('button', { name: 'Seller MacBook' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Reset filters' }));
     await user.click(screen.getByRole('checkbox', { name: 'Apple' }));
+    expect(screen.getByRole('button', { name: 'Seller Watch' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
     expect(screen.queryByRole('button', { name: 'Seller Watch' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('checkbox', { name: 'In stock' }));
+    expect(screen.getByRole('button', { name: 'Seller iPhone' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
     expect(screen.queryByRole('button', { name: 'Seller iPhone' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('checkbox', { name: 'iPhone' }));
+    expect(screen.getByRole('button', { name: 'Seller MacBook' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
     expect(screen.getByText('No matching products')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Show all products' }));
     expect(screen.getByRole('button', { name: 'Seller Watch' })).toBeInTheDocument();
   });
+
+  it('prioritizes the most recently selected filter option after Apply', async () => {
+    const user = userEvent.setup();
+    renderHome();
+    await screen.findByRole('button', { name: 'Seller MacBook' });
+    const catalogue = screen.getByRole('region', { name: 'Shop All Products' });
+
+    await user.click(screen.getByRole('checkbox', { name: 'MacBook' }));
+    await user.click(screen.getByRole('checkbox', { name: 'iPhone' }));
+    expect(catalogue.querySelectorAll('article')[0]).toHaveTextContent('Seller MacBook');
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(catalogue.querySelectorAll('article')[0]).toHaveTextContent('Seller iPhone');
+  });
+
   it('rejects inverted price bounds and keeps slider inputs synchronized', async () => {
     const user = userEvent.setup();
     renderHome();

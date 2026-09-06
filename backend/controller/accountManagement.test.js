@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createAdminSeller, deleteAdminSeller, deleteMyAccount } from './accountManagement.js';
+import { createAdminCustomer, createAdminSeller, deleteAdminSeller, deleteMyAccount } from './accountManagement.js';
 import { deleteAccount } from '../utils/deleteAccount.js';
 import { hashPassword, verifyPassword } from '../utils/password.js';
 import { authenticate } from '../middlewares/authMiddleware.js';
@@ -81,4 +81,40 @@ test('valid old JWT cannot authenticate a deleted account', async () => {
   await authenticate({ headers: { authorization: `Bearer ${signAccessToken({ id, role: 'seller' })}` } }, res, () => { continued = true; }, { user: { findUnique: async () => null } });
   assert.equal(res.statusCode, 401);
   assert.equal(continued, false);
+});
+
+const customerInput = { firstName: 'Asha', lastName: 'Rai', email: ' Asha@Example.test ', password: 'Customer!2026' };
+test('customer creation enforces admin access and rejects role or seller fields', async () => {
+  for (const role of [undefined, 'user', 'seller']) {
+    const res = response();
+    await createAdminCustomer({ user: role ? { role } : undefined, body: customerInput }, res, {});
+    assert.equal(res.statusCode, role ? 403 : 401);
+  }
+  for (const fields of [{ role: 'admin' }, { isVerified: true }, { shopName: 'Shop' }, { password: 'short' }, { email: 'invalid' }, { firstName: ' ' }]) {
+    const res = response();
+    await createAdminCustomer({ user: { role: 'admin' }, body: { ...customerInput, ...fields } }, res, {});
+    assert.equal(res.statusCode, 400);
+  }
+});
+test('customer creation hashes credentials, returns safe fields and preserves the admin session', async () => {
+  const res = response();
+  await createAdminCustomer({ user: { role: 'admin' }, body: customerInput }, res, { user: { create: async ({ data, select }) => {
+    assert.equal(data.role, 'user');
+    assert.equal(data.email, 'asha@example.test');
+    assert.equal(await verifyPassword(data.password, customerInput.password), true);
+    assert.equal(select.password, undefined);
+    assert.equal(select.refreshTokens, undefined);
+    return { id: data.id, role: data.role, email: data.email };
+  } } });
+  assert.equal(res.statusCode, 201);
+  assert.equal(res.body.customer.role, 'user');
+  assert.equal(res.body.accessToken, undefined);
+  assert.equal(res.cleared, undefined);
+});
+test('customer duplicate emails and database errors return recoverable failures', async () => {
+  for (const [code, status] of [['P2002', 409], ['unknown', 500]]) {
+    const res = response();
+    await createAdminCustomer({ user: { role: 'admin' }, body: customerInput }, res, { user: { create: async () => { throw { code }; } } });
+    assert.equal(res.statusCode, status);
+  }
 });

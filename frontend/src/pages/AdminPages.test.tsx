@@ -30,6 +30,7 @@ describe('admin home', () => {
     expect(screen.getByRole('link',{name:/Fulfil customer orders/})).toHaveAttribute('href','/admin/orders?status=active');
     expect(screen.getByRole('link',{name:/Review seller applications/})).toHaveTextContent('1');
     expect(screen.getByText(/not settled revenue/)).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Refresh' })).not.toBeInTheDocument();
   });
   it('shows unavailable metrics rather than fake zeroes on failure', async () => {
     vi.mocked(authFetch).mockResolvedValue(response({},500));
@@ -134,36 +135,60 @@ describe('admin customers', () => {
     expect(await screen.findByRole('heading',{name:'Customers'})).toBeVisible();
     expect(screen.getByText('Customer One')).toBeVisible();
     expect(screen.queryByText('Seller Two')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add seller' })).toHaveClass('admin-button');
+    expect(screen.getByRole('button', { name: 'Add customer' })).toHaveClass('admin-button');
+    expect(screen.queryByRole('button', { name: 'Refresh' })).not.toBeInTheDocument();
   });
 });
 
 describe('admin navigation', () => {
-  it('nests seller-scoped Orders and Products inside the selected Sellers section', () => {
-    const sellerId = '507f1f77bcf86cd799439011';
-    renderRoute(<Routes><Route element={<AdminLayout/>}><Route path="*" element={<p>Workspace content</p>}/></Route></Routes>,'/admin/sellers/'+sellerId);
+  it('switches sellers directly while preserving the orders view', async () => {
+    const user = userEvent.setup();
+    vi.mocked(authFetch).mockImplementation(async () => response({ items: [{ id: 'seller-two', shopName: 'Mountain Tech', firstName: 'Asha', lastName: 'Rai' }], total: 1, page: 1, pageSize: 10 }));
+    renderRoute(<Routes><Route element={<AdminLayout/>}><Route path="*" element={<p>Workspace content</p>}/></Route></Routes>, '/admin/sellers/seller-one?view=orders');
+    await user.click(screen.getByRole('button', { name: 'Switch seller' }));
+    expect(await screen.findByRole('link', { name: /Mountain Tech/ })).toHaveAttribute('href', '/admin/sellers/seller-two?view=orders');
+    await user.type(screen.getByRole('searchbox', { name: 'Find a seller' }), 'Mountain');
+    await user.click(screen.getByRole('button', { name: 'Search sellers in menu' }));
+    expect(authFetch).toHaveBeenLastCalledWith(expect.stringContaining('q=Mountain'), expect.anything());
+    await user.click(await screen.findByRole('link', { name: /Mountain Tech/ }));
+    expect(screen.getByRole('button', { name: 'Switch seller' })).toHaveAttribute('aria-expanded', 'false');
+    await user.click(screen.getByRole('button', { name: 'Switch seller' }));
+    expect(await screen.findByRole('link', { name: /Mountain Tech/ })).toHaveAttribute('aria-current', 'page');
+    await user.keyboard('{Escape}');
+    expect(screen.getByRole('button', { name: 'Switch seller' })).toHaveFocus();
+    expect(screen.queryByRole('searchbox', { name: 'Find a seller' })).not.toBeInTheDocument();
+  });
+
+  it('keeps seller navigation stable on an individual profile', () => {
+    renderRoute(<Routes><Route element={<AdminLayout/>}><Route path="*" element={<p>Workspace content</p>}/></Route></Routes>,'/admin/sellers/507f1f77bcf86cd799439011');
     const sellerSection = within(screen.getByRole('group',{name:'Sellers section'}));
     expect(sellerSection.getByRole('button',{name:'Sellers menu'})).toHaveAttribute('aria-expanded','true');
-    expect(sellerSection.getByRole('link',{name:'Seller directory'})).toHaveAttribute('href','/admin/sellers');
-    expect(sellerSection.getByRole('link',{name:'Orders'})).toHaveAttribute('href','/admin/sellers/'+sellerId+'?view=orders');
-    expect(sellerSection.getByRole('link',{name:'Products'})).toHaveAttribute('href','/admin/sellers/'+sellerId+'?view=products');
+    expect(sellerSection.getAllByRole('link')).toHaveLength(2);
+    expect(sellerSection.getByRole('link',{name:'Seller directory'})).toHaveClass('is-active');
+    expect(sellerSection.getByRole('link',{name:'Seller directory'})).not.toHaveAttribute('aria-current');
+    expect(sellerSection.getByRole('link',{name:'Seller approvals'})).toHaveAttribute('href','/admin/seller-approvals');
   });
-  it('provides seller dropdown access and a separate customer section', async () => {
+  it('supports keyboard disclosure and identifies the current destination without fetching sellers', async () => {
     const user=userEvent.setup();
-    const sellerId = '507f1f77bcf86cd799439011';
-    vi.mocked(authFetch).mockResolvedValue(response({items:[{id:sellerId,firstName:'Asha',lastName:'Rai',email:'asha@example.test',shopName:'Asha Store',isVerified:true,createdAt:'2026-08-01'}],total:1,page:1,pageSize:200}));
     renderRoute(<Routes><Route element={<AdminLayout/>}><Route path="*" element={<p>Workspace content</p>}/></Route></Routes>,'/admin');
     const sellerMenu = screen.getByRole('button',{name:'Sellers menu'});
     expect(sellerMenu).toHaveAttribute('aria-expanded','false');
-    await user.click(sellerMenu);
+    expect(screen.queryByRole('link',{name:'Seller directory'})).not.toBeInTheDocument();
+    sellerMenu.focus();
+    await user.keyboard('{Enter}');
     expect(sellerMenu).toHaveAttribute('aria-expanded','true');
-    const sellerPicker = await screen.findByRole('combobox',{name:'Open seller'});
-    expect(within(sellerPicker).getByRole('option',{name:'Asha Store'})).toHaveValue(sellerId);
-    await user.selectOptions(sellerPicker,sellerId);
-    expect(screen.getByRole('link',{name:'Products'})).toHaveAttribute('href','/admin/sellers/'+sellerId+'?view=products');
-    expect(screen.getByRole('link',{name:'Orders'})).toHaveAttribute('href','/admin/sellers/'+sellerId+'?view=orders');
-    expect(screen.getByRole('link',{name:'Seller directory'})).toHaveAttribute('href','/admin/sellers');
-    expect(screen.getByRole('link',{name:'Seller approvals'})).toHaveAttribute('href','/admin/seller-approvals');
-    expect(screen.getByText('Customers')).toBeVisible();
+    expect(document.getElementById(sellerMenu.getAttribute('aria-controls')!)).toBeVisible();
+    await user.keyboard('{Tab}{Tab}{Enter}');
+    expect(screen.getByRole('link',{name:'Seller directory'})).toHaveAttribute('aria-current','page');
+    await user.click(screen.getByRole('link',{name:'Seller approvals'}));
+    expect(screen.getByRole('link',{name:'Seller approvals'})).toHaveAttribute('aria-current','page');
+    expect(screen.getByRole('link',{name:'Seller directory'})).not.toHaveAttribute('aria-current');
+    sellerMenu.focus();
+    await user.keyboard(' ');
+    expect(sellerMenu).toHaveAttribute('aria-expanded','false');
+    expect(screen.queryByRole('link',{name:'Seller approvals'})).not.toBeInTheDocument();
+    expect(authFetch).not.toHaveBeenCalled();
     expect(screen.getByRole('link',{name:'Customer accounts'})).toHaveAttribute('href','/admin/users?role=user');
   });
   it.each(['/admin','/admin-orders','/admin/orders/one'])('does not offer unscoped seller links at %s', path => {
@@ -187,3 +212,4 @@ describe('admin navigation', () => {
     expect(screen.getByText('Workspace content')).toBeVisible();
   });
 });
+

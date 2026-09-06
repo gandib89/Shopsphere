@@ -58,7 +58,7 @@ export default function SellerLayout() {
 
   return (
     <AdminContext.Provider value={true}>
-      <div className={`admin-app${collapsed ? ' is-collapsed' : ''}${mobileOpen ? ' menu-open' : ''}`}>
+      <div className={`admin-app seller-app${collapsed ? ' is-collapsed' : ''}${mobileOpen ? ' menu-open' : ''}`}>
         <a className="admin-skip" href="#seller-content" onClick={event => { event.preventDefault(); document.getElementById('seller-content')?.focus(); }}>Skip to shop content</a>
         <header className="admin-topbar">
           <Link to="/seller-panel" className="admin-brand"><OrbitMark size={24} /><strong>ShopSphere</strong><span>Seller</span></Link>

@@ -4,6 +4,8 @@ import { Edit2, Trash2, Mail, Users, X, Search } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
 import NavBar from '../components/NavBar';
+import CreateCustomer from '../components/account/CreateCustomer';
+import CreateSeller from '../components/account/CreateSeller';
 
 interface User {
   _id: string;
@@ -35,6 +37,7 @@ function AdminUserManagement() {
   const [users, setUsers] = useState<User[]>([]);
   const [stats, setStats] = useState<Statistics | null>(null);
   const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState<'customer' | 'seller' | null>(null);
   const requestedRole = searchParams.get('role');
   const filter: 'all' | 'user' | 'seller' | 'admin' = requestedRole === 'user' || requestedRole === 'seller' || requestedRole === 'admin' ? requestedRole : 'all';
   const [searchTerm, setSearchTerm] = useState('');
@@ -213,15 +216,20 @@ function AdminUserManagement() {
                 <h1 className="font-display text-2xl sm:text-4xl font-bold mb-1">{filter === 'user' ? 'Customers' : 'User Management'}</h1>
                 <p className="text-paper/60 text-sm">{filter === 'user' ? 'Manage customer accounts' : 'Manage users, sellers, and admins'}</p>
               </div>
-              <button
-                onClick={fetchUsers}
-                className="border border-brass text-brass hover:bg-brass hover:text-white active:scale-[0.97] transition px-3 sm:px-6 py-2.5 sm:py-3 font-semibold text-sm shrink-0"
-              >
-                Refresh
-              </button>
+              <div className="flex flex-wrap justify-end gap-2">
+              <button className="admin-button" onClick={() => setCreating('seller')}>Add seller</button>
+              <button className="admin-button" onClick={() => setCreating('customer')}>Add customer</button>
+              </div>
             </div>
           </div>
         </div>
+
+        {creating && <div className="container mx-auto px-4 sm:px-6 pt-6">
+          {creating === 'seller' ? <CreateSeller onCancel={() => setCreating(null)} /> : <CreateCustomer onCancel={() => setCreating(null)} onCreated={() => {
+            setCreating(null); setSearchTerm(''); setSearchParams({ role: 'user' });
+            toast.success('Customer created.'); void fetchUsers(); void fetchStats();
+          }} />}
+        </div>}
 
         {/* Statistics Cards */}
         {stats && (

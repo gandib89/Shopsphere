@@ -36,19 +36,21 @@ export default function SellerPanel() {
   const recent = [...(orders || [])].sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()).slice(0, 6);
   const available = !loading && orders !== null;
 
-  return <main>
-    <AdminHeading title="Shop overview" description="Track your sales, keep stock ready, and take care of your customers.">
-      <button className="admin-button" onClick={() => void load()} disabled={loading}><RefreshCw size={14} aria-hidden="true" />{loading ? 'Refreshing…' : 'Refresh'}</button>
-      <Link className="admin-button admin-button--primary" to="/add-product"><Plus size={14} aria-hidden="true" />Add product</Link>
-    </AdminHeading>
-    {error && <p className="admin-notice" role="alert">{error}</p>}
-    <section className="admin-panel" aria-labelledby="seller-performance-title">
-      <div className="admin-panel-head"><div><h2 id="seller-performance-title">Shop performance</h2><p>Order activity for your selected period</p></div><label className="admin-filters">Date range <select aria-label="Performance date range" value={period} onChange={event => setPeriod(event.target.value)}><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="all">All time</option></select></label></div>
-      <div className="admin-stats" aria-busy={loading}>
-        <div className="admin-stat"><span>Orders received</span><strong>{available ? inPeriod.length : '—'}</strong><small>Based on the order creation date</small></div>
-        <div className="admin-stat"><span>Order value</span><strong>{available ? adminMoney(value) : '—'}</strong><small>Excludes cancelled and refunded orders; before the 5% commission</small></div>
-        <div className="admin-stat"><span>Products listed</span><strong>{!loading && products !== null ? products.length : '—'}</strong><small><Link className="admin-text-link" to="/seller-products">Manage your products →</Link></small></div>
-      </div>
+  return <main className="seller-overview">
+    <section className="seller-overview-feature" aria-label="Shop overview summary">
+      <AdminHeading eyebrow="Seller workspace" title="Shop overview" description="Track your sales, keep stock ready, and take care of your customers.">
+        <button className="admin-button" onClick={() => void load()} disabled={loading}><RefreshCw size={14} aria-hidden="true" />{loading ? 'Refreshing…' : 'Refresh'}</button>
+        <Link className="admin-button admin-button--primary" to="/add-product"><Plus size={14} aria-hidden="true" />Add product</Link>
+      </AdminHeading>
+      {error && <p className="admin-notice" role="alert">{error}</p>}
+      <section className="admin-panel seller-overview-performance" aria-labelledby="seller-performance-title">
+        <div className="admin-panel-head"><div><h2 id="seller-performance-title">Shop performance</h2><p>Order activity for your selected period</p></div><label className="admin-filters">Date range <select aria-label="Performance date range" value={period} onChange={event => setPeriod(event.target.value)}><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="all">All time</option></select></label></div>
+        <div className="admin-stats" aria-busy={loading}>
+          <div className="admin-stat"><span>Orders received</span><strong>{available ? inPeriod.length : '—'}</strong><small>Based on the order creation date</small></div>
+          <div className="admin-stat"><span>Order value</span><strong>{available ? adminMoney(value) : '—'}</strong><small>Excludes cancelled and refunded orders; before the 5% commission</small></div>
+          <div className="admin-stat"><span>Products listed</span><strong>{!loading && products !== null ? products.length : '—'}</strong><small><Link className="admin-text-link" to="/seller-products">Manage your products →</Link></small></div>
+        </div>
+      </section>
     </section>
     <div className="admin-home-columns">
       <section className="admin-panel" aria-labelledby="seller-tasks-title">

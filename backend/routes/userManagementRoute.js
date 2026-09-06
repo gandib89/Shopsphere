@@ -1,4 +1,4 @@
-import { createAdminSeller, deleteAdminSeller } from '../controller/accountManagement.js';
+import { createAdminCustomer, createAdminSeller, deleteAdminSeller } from '../controller/accountManagement.js';
 import express from "express";
 import {
   getAllUsersAndSellers,
@@ -18,6 +18,7 @@ const userManagementRouter = express.Router();
 userManagementRouter.use(verifyToken, authorizeAdmin);
 
 userManagementRouter.post('/sellers', (req, res) => createAdminSeller(req, res));
+userManagementRouter.post('/customers', (req, res) => createAdminCustomer(req, res));
 userManagementRouter.delete('/sellers/:sellerId', (req, res) => deleteAdminSeller(req, res));
 
 // Seller directory and profiles, behind the same admin authorization.

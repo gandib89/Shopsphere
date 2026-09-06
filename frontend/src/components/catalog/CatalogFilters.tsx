@@ -1,9 +1,10 @@
-import { useState, type CSSProperties } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import type { StorefrontProduct } from '../StorefrontView';
 import './catalog-filters.css';
 
-export type CatalogFilterValue = { price: [number, number] | null; inStock: boolean; brands: string[]; types: string[] };
-export const emptyFilters: CatalogFilterValue = { price: null, inStock: false, brands: [], types: [] };
+type FilterChoice = { field: 'brands' | 'types'; value: string };
+export type CatalogFilterValue = { price: [number, number] | null; inStock: boolean; brands: string[]; types: string[]; priority: FilterChoice[] };
+export const emptyFilters: CatalogFilterValue = { price: null, inStock: false, brands: [], types: [], priority: [] };
 export function productBrand(product: StorefrontProduct): string {
   if (product.brand?.trim()) return product.brand.trim();
   if (/\b(Apple|iPhone|iPad|MacBook|iMac|AirPods|Mac mini|Mac Studio|Mac Pro|Magic Keyboard|Magic Mouse|Magic Trackpad|AirTag)\b/i.test(product.name)) return 'Apple';
@@ -16,6 +17,13 @@ export function matchesCatalogFilters(product: StorefrontProduct, filters: Catal
     && (!filters.brands.length || filters.brands.includes(productBrand(product)))
     && (!filters.types.length || filters.types.includes(product.category));
 }
+export function catalogFilterRank(product: StorefrontProduct, filters: CatalogFilterValue) {
+  for (let index = filters.priority.length - 1; index >= 0; index -= 1) {
+    const choice = filters.priority[index];
+    if (choice.field === 'brands' ? productBrand(product) === choice.value : product.category === choice.value) return index;
+  }
+  return -1;
+}
 
 export default function CatalogFilters({ products, value, onChange }: {
   products: StorefrontProduct[]; value: CatalogFilterValue; onChange: (value: CatalogFilterValue) => void;
@@ -25,17 +33,31 @@ export default function CatalogFilters({ products, value, onChange }: {
   const upper = prices.length ? Math.ceil(Math.max(...prices)) : 0;
   const brands = [...new Set(products.map(productBrand).filter(Boolean))].sort();
   const types = [...new Set(products.map(product => product.category))].sort();
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
   const active = Boolean(value.price || value.inStock || value.brands.length || value.types.length);
-  const toggle = (field: 'brands' | 'types', item: string) => onChange({ ...value, [field]: value[field].includes(item) ? value[field].filter(entry => entry !== item) : [...value[field], item] });
+  const toggle = (field: 'brands' | 'types', item: string) => setDraft(current => {
+    const selected = current[field].includes(item);
+    const priority = current.priority.filter(choice => choice.field !== field || choice.value !== item);
+    return {
+      ...current,
+      [field]: selected ? current[field].filter(entry => entry !== item) : [...current[field], item],
+      priority: selected ? priority : [...priority, { field, value: item }],
+    };
+  });
+  const reset = () => {
+    setDraft(emptyFilters);
+    onChange(emptyFilters);
+  };
   return <aside className="catalog-filters" aria-label="Product filters" data-section-scroll-ignore>
     <details open>
       <summary>Filters <span className="catalog-filter-chevron" aria-hidden="true">⌄</span></summary>
       <div className="catalog-filter-body">
-        <PriceFilter key={[lower, upper, value.price?.join('-')].join(':')} lower={lower} upper={upper} applied={value.price} onApply={price => onChange({ ...value, price })} />
-        <fieldset><legend>Status</legend><label className="catalog-check"><input type="checkbox" checked={value.inStock} onChange={event => onChange({ ...value, inStock: event.target.checked })} />In stock</label></fieldset>
-        {brands.length > 0 && <fieldset><legend>Brand</legend>{brands.map(brand => <label className="catalog-check" key={brand}><input type="checkbox" checked={value.brands.includes(brand)} onChange={() => toggle('brands', brand)} />{brand}</label>)}</fieldset>}
-        {types.length > 0 && <fieldset><legend>Type</legend>{types.map(type => <label className="catalog-check" key={type}><input type="checkbox" checked={value.types.includes(type)} onChange={() => toggle('types', type)} />{type}</label>)}</fieldset>}
-        {active && <button type="button" className="catalog-reset" onClick={() => onChange(emptyFilters)}>Reset filters</button>}
+        <PriceFilter key={[lower, upper, value.price?.join('-')].join(':')} lower={lower} upper={upper} applied={value.price} onApply={price => onChange({ ...draft, price })} />
+        <fieldset><legend>Status</legend><label className="catalog-check"><input type="checkbox" checked={draft.inStock} onChange={event => setDraft(current => ({ ...current, inStock: event.target.checked }))} />In stock</label></fieldset>
+        {brands.length > 0 && <fieldset><legend>Brand</legend>{brands.map(brand => <label className="catalog-check" key={brand}><input type="checkbox" checked={draft.brands.includes(brand)} onChange={() => toggle('brands', brand)} />{brand}</label>)}</fieldset>}
+        {types.length > 0 && <fieldset><legend>Type</legend>{types.map(type => <label className="catalog-check" key={type}><input type="checkbox" checked={draft.types.includes(type)} onChange={() => toggle('types', type)} />{type}</label>)}</fieldset>}
+        {active && <button type="button" className="catalog-reset" onClick={reset}>Reset filters</button>}
       </div>
     </details>
   </aside>;

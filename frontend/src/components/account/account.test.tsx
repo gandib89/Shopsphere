@@ -6,6 +6,7 @@ import { renderRoute } from '../../test/render';
 import { authFetch, clearSession } from '../../lib/session';
 import AccountDeletion from './AccountDeletion';
 import CreateSeller from './CreateSeller';
+import CreateCustomer from './CreateCustomer';
 
 vi.mock('../../lib/session', () => ({ authFetch: vi.fn(), clearSession: vi.fn() }));
 vi.mock('@react-oauth/google', () => ({ GoogleLogin: ({ onSuccess }: { onSuccess: (value: { credential: string }) => void }) => <button type="button" onClick={() => onSuccess({ credential: 'google-proof' })}>Verify Google account</button> }));
@@ -66,6 +67,30 @@ it('seller creation preserves entered details when the email is already taken', 
   expect(screen.getByLabelText('Shop name')).toHaveValue('Asha Shop');
   const body = JSON.parse(vi.mocked(authFetch).mock.calls[0][1]!.body as string);
   expect(body.isVerified).toBe(false);
+  expect(body.role).toBeUndefined();
+  expect(clearSession).not.toHaveBeenCalled();
+});
+
+it('creates a customer without changing the admin session and recovers from a duplicate email', async () => {
+  const user = userEvent.setup(); const onCreated = vi.fn();
+  vi.mocked(authFetch).mockResolvedValueOnce(response({ message: 'An account already uses this email.' }, 409)).mockResolvedValueOnce(response({ customer: { id: 'new-customer' } }, 201));
+  renderRoute(<CreateCustomer onCancel={vi.fn()} onCreated={onCreated} />);
+  await user.type(screen.getByLabelText('First name'), 'Asha');
+  await user.type(screen.getByLabelText('Last name'), 'Rai');
+  await user.type(screen.getByLabelText('Email'), 'asha@example.test');
+  await user.type(screen.getByLabelText(/Initial password/), 'Password!2026');
+  expect(screen.queryByLabelText('Shop name')).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Create customer' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('already uses this email');
+  expect(onCreated).not.toHaveBeenCalled();
+  expect(screen.getByLabelText('First name')).toHaveValue('Asha');
+  await user.clear(screen.getByLabelText('Email'));
+  await user.type(screen.getByLabelText('Email'), 'new@example.test');
+  await user.click(screen.getByRole('button', { name: 'Create customer' }));
+  expect(onCreated).toHaveBeenCalledOnce();
+  expect(authFetch).toHaveBeenLastCalledWith(expect.stringContaining('/users/customers'), expect.objectContaining({ method: 'POST' }));
+  const body = JSON.parse(vi.mocked(authFetch).mock.lastCall![1]!.body as string);
+  expect(body.email).toBe('new@example.test');
   expect(body.role).toBeUndefined();
   expect(clearSession).not.toHaveBeenCalled();
 });

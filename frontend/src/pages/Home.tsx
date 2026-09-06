@@ -27,7 +27,6 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [retry, setRetry] = useState(0);
-  const [sortOrder, setSortOrder] = useState('top-rated');
   const [bagCount, setBagCount] = useState<number | null>(buyer ? null : 0);
   const [pendingProduct, setPendingProduct] = useState<string | null>(null);
   const pending = useRef(false);
@@ -63,11 +62,7 @@ export default function Home() {
     return () => controller.abort();
   }, [buyer]);
 
-  const data = useMemo(() => products.map(toStorefrontProduct).sort((a, b) => {
-    if (sortOrder === 'low-to-high') return a.price - b.price;
-    if (sortOrder === 'high-to-low') return b.price - a.price;
-    return b.rating - a.rating;
-  }), [products, sortOrder]);
+  const data = useMemo(() => products.map(toStorefrontProduct), [products]);
 
   const openDetails = (item: StorefrontProduct) => navigate(`/product-details-page?productId=${encodeURIComponent(item.id)}`);
   const addToCart = async (item: StorefrontProduct): Promise<boolean> => {
@@ -118,17 +113,6 @@ export default function Home() {
         <ErrorState title="We couldn’t load the catalogue" description="Check your connection and try again."
           action={<Button onClick={() => setRetry(value => value + 1)}>Try again</Button>} />
       ) : undefined,
-      catalogControls: (
-        <label className="flex items-center gap-2 text-sm text-ink-muted">
-          Sort
-          <select aria-label="Sort products" value={sortOrder} onChange={event => setSortOrder(event.target.value)}
-            className="min-h-10 rounded-[var(--radius-control)] border border-hairline bg-paper-raised px-3 text-ink">
-            <option value="top-rated">Top rated</option>
-            <option value="low-to-high">Price: low to high</option>
-            <option value="high-to-low">Price: high to low</option>
-          </select>
-        </label>
-      ),
     }} />
   );
 }

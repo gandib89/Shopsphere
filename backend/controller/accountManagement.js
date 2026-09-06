@@ -13,6 +13,7 @@ const sellerSchema = z.object({
   shopName: z.string().trim().min(1).max(150), shopDescription: z.string().trim().max(2000).optional(),
   isVerified: z.boolean().default(false),
 }).strict();
+const customerSchema = sellerSchema.pick({ firstName: true, lastName: true, email: true, password: true, phone: true });
 const adminOnly = (req, res) => {
   if (req.user?.role === 'admin') return true;
   res.status(req.user ? 403 : 401).json({ message: 'Administrator access required.' });
@@ -37,6 +38,22 @@ export async function createAdminSeller(req, res, client = prisma) {
     res.status(201).json({ seller, message: 'Seller created.' });
   } catch (error) {
     res.status(error?.code === 'P2002' ? 409 : 500).json({ message: error?.code === 'P2002' ? 'An account already uses this email.' : 'Could not create the seller. Please try again.' });
+  }
+}
+
+export async function createAdminCustomer(req, res, client = prisma) {
+  if (!adminOnly(req, res)) return;
+  const parsed = customerSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0].message });
+  try {
+    const data = parsed.data;
+    const customer = await client.user.create({
+      data: { ...data, id: generateId(), role: 'user', password: await hashPassword(data.password) },
+      select: { id: true, firstName: true, lastName: true, email: true, phone: true, role: true, createdAt: true },
+    });
+    return res.status(201).json({ customer, message: 'Customer created.' });
+  } catch (error) {
+    return res.status(error?.code === 'P2002' ? 409 : 500).json({ message: error?.code === 'P2002' ? 'An account already uses this email.' : 'Could not create the customer. Please try again.' });
   }
 }
 

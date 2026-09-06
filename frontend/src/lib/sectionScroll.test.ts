@@ -138,6 +138,12 @@ describe('UX demo wheel navigation', () => {
     expect(window.scrollTo).not.toHaveBeenCalled();
   });
 
+  it('leaves sections marked for natural scrolling outside snap control', () => {
+    section.dataset.sectionScrollIgnore = '';
+    expect(wheel().defaultPrevented).toBe(false);
+    expect(window.scrollTo).not.toHaveBeenCalled();
+  });
+
   it.each(['dialog', 'categories', 'mobile menu'])('does not snap while a %s is open', (type) => {
     const overlay = document.createElement('div');
     if (type === 'dialog') overlay.setAttribute('role', 'dialog');

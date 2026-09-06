@@ -20,7 +20,7 @@ import {
 import { Link, useNavigate } from 'react-router-dom';
 import DemoHeader from './DemoHeader';
 import Footer from './Footer';
-import CatalogFilters, { emptyFilters, matchesCatalogFilters, type CatalogFilterValue } from './catalog/CatalogFilters';
+import CatalogFilters, { catalogFilterRank, emptyFilters, matchesCatalogFilters, type CatalogFilterValue } from './catalog/CatalogFilters';
 import { Button, IconButton } from './ui/Button';
 import { installSectionScroll } from '../lib/sectionScroll';
 import '../pages/ui-redesign-demo.css';
@@ -54,13 +54,13 @@ type LiveStorefront = {
   onAccount: () => void;
   onBag: () => void;
   catalogStatus?: ReactNode;
-  catalogControls?: ReactNode;
   accountActions?: ReactNode;
   category: string;
   query?: string;
 };
 
 const formatNpr = (amount: number) => `NPR ${new Intl.NumberFormat('en-NP').format(amount)}`;
+const CATALOGUE_PAGE_SIZE = 6;
 
 export default function StorefrontView({ products, live }: { products: StorefrontProduct[]; live?: LiveStorefront }) {
   const searchCategories = ['All', ...new Set(products.map((product) => product.category))];
@@ -69,6 +69,7 @@ export default function StorefrontView({ products, live }: { products: Storefron
   const [searchTerm, setSearchTerm] = useState('');
   const [query, setQuery] = useState('');
   const [filters, setFilters] = useState<CatalogFilterValue>(emptyFilters);
+  const [showFullCatalogue, setShowFullCatalogue] = useState(false);
   const [searchCategory, setSearchCategory] = useState('All');
   const [categoryOpen, setCategoryOpen] = useState(false);
   const searchForm = useRef<HTMLFormElement>(null);
@@ -83,17 +84,22 @@ export default function StorefrontView({ products, live }: { products: Storefron
   const catalogue = useRef<HTMLElement>(null);
   const demoRoot = useRef<HTMLDivElement>(null);
   const productScroller = useRef<HTMLDivElement | null>(null);
+  const catalogueScroller = useRef<HTMLDivElement | null>(null);
   const productScrollerObserver = useRef<ResizeObserver | null>(null);
   const [cardStep, setCardStep] = useState<number | null>(null);
   const [scrollState, setScrollState] = useState({ atStart: true, atEnd: true });
+  const [catalogueScrollState, setCatalogueScrollState] = useState({ atStart: true, atEnd: true });
   const cardGap = 16;
   const targetCardWidth = 240;
 
-  // The "Popular right now" strip keeps its scroll position across re-renders since it's the
-  // same DOM node — without this, re-sorting leaves it wherever it was scrolled to, showing a
-  // different, often mid-card-cropped, product at that same pixel offset.
+  // Product-data changes replace the Popular strip, so return it to the beginning. Catalogue
+  // search and filter state must not affect this independent section.
   useEffect(() => {
     productScroller.current?.scrollTo({ left: 0 });
+  }, [products]);
+
+  useEffect(() => {
+    catalogueScroller.current?.scrollTo({ left: 0 });
   }, [products, filters, query, searchCategory]);
 
   // Size cards so an exact whole number fill the strip's width — no card is ever left
@@ -131,7 +137,7 @@ export default function StorefrontView({ products, live }: { products: Storefron
       atEnd: el.scrollLeft >= el.scrollWidth - el.clientWidth - 1,
     });
   };
-  useEffect(updateScrollEdges, [cardStep, products, filters, query, searchCategory]);
+  useEffect(updateScrollEdges, [cardStep, products]);
 
   // Advance by one complete visible group while keeping the next group aligned to a card.
   // The extra gap accounts for the gap after the final card in the current group.
@@ -139,6 +145,21 @@ export default function StorefrontView({ products, live }: { products: Storefron
     const el = productScroller.current;
     if (!el || !cardStep) return;
     el.scrollBy({ left: direction * (el.clientWidth + cardGap), behavior: 'smooth' });
+  };
+
+  const updateCatalogueScrollEdges = () => {
+    const el = catalogueScroller.current;
+    if (!el) return;
+    setCatalogueScrollState({
+      atStart: el.scrollLeft <= 1,
+      atEnd: el.scrollLeft >= el.scrollWidth - el.clientWidth - 1,
+    });
+  };
+
+  const slideCatalogueProducts = (direction: 1 | -1) => {
+    const el = catalogueScroller.current;
+    if (!el) return;
+    el.scrollBy({ left: direction * el.clientWidth, behavior: 'smooth' });
   };
 
 
@@ -154,7 +175,26 @@ export default function StorefrontView({ products, live }: { products: Storefron
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
     // cardStep is measured right after the strip mounts, so this re-runs once the node exists.
-  }, [products, cardStep, filters, query, searchCategory]);
+  }, [products, cardStep]);
+
+  useEffect(() => {
+    if (showFullCatalogue) return;
+    updateCatalogueScrollEdges();
+    const el = catalogueScroller.current;
+    if (!el) return;
+    const frame = requestAnimationFrame(updateCatalogueScrollEdges);
+    const observer = new ResizeObserver(updateCatalogueScrollEdges);
+    observer.observe(el);
+    const onWheel = (event: WheelEvent) => {
+      if (event.shiftKey || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) event.preventDefault();
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      el.removeEventListener('wheel', onWheel);
+    };
+  }, [products, cardStep, filters, query, searchCategory, showFullCatalogue]);
 
   useLayoutEffect(() => {
     const root = demoRoot.current;
@@ -209,10 +249,14 @@ export default function StorefrontView({ products, live }: { products: Storefron
 
   const visibleProducts = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
-    return products.filter((product) => {
-      const matchesQuery = !normalizedQuery || `${product.name} ${product.category}`.toLowerCase().includes(normalizedQuery);
-      return matchesQuery && (searchCategory === 'All' || product.category === searchCategory) && matchesCatalogFilters(product, filters);
-    });
+    return products
+      .map((product, sourceIndex) => ({ product, sourceIndex }))
+      .filter(({ product }) => {
+        const matchesQuery = !normalizedQuery || `${product.name} ${product.category}`.toLowerCase().includes(normalizedQuery);
+        return matchesQuery && (searchCategory === 'All' || product.category === searchCategory) && matchesCatalogFilters(product, filters);
+      })
+      .sort((a, b) => catalogFilterRank(b.product, filters) - catalogFilterRank(a.product, filters) || a.sourceIndex - b.sourceIndex)
+      .map(({ product }) => product);
   }, [products, query, searchCategory, filters]);
 
   // One tile per category the catalogue actually carries, illustrated by its first product —
@@ -232,6 +276,7 @@ export default function StorefrontView({ products, live }: { products: Storefron
     setQuery('');
     setSearchTerm('');
     setSearchCategory('All');
+    setShowFullCatalogue(false);
     setCategoryOpen(false);
     // Drop ?category= as well, or the cleared view still reloads and shares as that category.
     if (live?.category) navigate('/');
@@ -301,11 +346,11 @@ export default function StorefrontView({ products, live }: { products: Storefron
   const compareLocked = (product: StorefrontProduct) => compare.locked(toCompareItem(product));
   const toggleCompare = (product: StorefrontProduct) => compare.toggle(toCompareItem(product));
 
-  // Browsing keeps the horizontal product row; search results use a wrapping grid.
-  const browsingStrip = !query;
+  const renderProductCard = (product: StorefrontProduct, placement: 'popular' | 'catalogue') => {
+    const elementId = `${placement}-${product.id}`;
+    const popularLabel = placement === 'popular' ? 'Popular product: ' : '';
 
-
-  const productCards = visibleProducts.map((product) => (
+    return (
     <article key={product.id} className="ux-demo-product-card">
       <div className={`ux-demo-product-media ux-demo-product-image${product.imageFit === 'cover' ? ' ux-demo-product-image-cover' : ''}`} data-background={product.imageBackground}>
         <img src={product.image} alt="" loading="lazy" onError={(event) => {
@@ -313,16 +358,17 @@ export default function StorefrontView({ products, live }: { products: Storefron
         }} />
       </div>
       <div className="ux-demo-product-copy">
-        <h3 id={`${product.id}-name`}>{product.name}</h3>
-        <p id={`${product.id}-note`}>{product.note}</p>
+        <h3 id={`${elementId}-name`}>{product.name}</h3>
+        <p id={`${elementId}-note`}>{product.note}</p>
         {live && <p className="storefront-price">{product.priceFrom ? `From ${formatNpr(product.price)}` : formatNpr(product.price)} {product.previousPrice && <del>{formatNpr(product.previousPrice)}</del>}</p>}
         <ChevronRight aria-hidden="true" />
       </div>
       <button
         type="button"
         className="ux-demo-product-open"
-        aria-labelledby={`${product.id}-name`}
-        aria-describedby={`${product.id}-note`}
+        aria-label={placement === 'popular' ? `${popularLabel}${product.name}` : undefined}
+        aria-labelledby={placement === 'catalogue' ? `${elementId}-name` : undefined}
+        aria-describedby={`${elementId}-note`}
         aria-haspopup="dialog"
         onClick={(event) => { quickViewTrigger.current = event.currentTarget; setQuickView(product); }}
       />
@@ -330,7 +376,7 @@ export default function StorefrontView({ products, live }: { products: Storefron
         <button
           type="button"
           className="ux-demo-product-add"
-          aria-label={`${live ? actionLabel(product) : 'Add to cart'}: ${product.name}`}
+          aria-label={`${popularLabel}${live ? actionLabel(product) : 'Add to cart'}: ${product.name}`}
           disabled={disablePurchase(product)}
           aria-busy={live?.pendingProduct === product.id}
           onClick={() => addToCart(product)}
@@ -342,7 +388,7 @@ export default function StorefrontView({ products, live }: { products: Storefron
           type="button"
           className="ux-demo-product-compare"
           aria-pressed={comparing(product)}
-          aria-label={`Compare ${product.name}`}
+          aria-label={`${popularLabel}Compare ${product.name}`}
           disabled={compareLocked(product)}
           title={compareLocked(product)
             ? compareFull
@@ -356,7 +402,21 @@ export default function StorefrontView({ products, live }: { products: Storefron
         </button>
       </div>
     </article>
-  ));
+    );
+  };
+
+  const popularProductCards = [...products]
+    .sort((a, b) => b.rating - a.rating)
+    .slice(0, 8)
+    .map((product) => renderProductCard(product, 'popular'));
+  const catalogueProductCards = visibleProducts.map((product) => renderProductCard(product, 'catalogue'));
+  const cataloguePages = Array.from(
+    { length: Math.ceil(visibleProducts.length / CATALOGUE_PAGE_SIZE) },
+    (_, pageIndex) => catalogueProductCards.slice(
+      pageIndex * CATALOGUE_PAGE_SIZE,
+      (pageIndex + 1) * CATALOGUE_PAGE_SIZE,
+    ),
+  );
 
   return (
     <div ref={demoRoot} className={`ux-demo min-h-screen bg-paper text-ink ${live ? 'storefront-live' : 'pt-2.5 sm:pt-0'}`} data-theme="light">
@@ -491,7 +551,7 @@ export default function StorefrontView({ products, live }: { products: Storefron
                   A better way to buy Apple
                 </p>
                 <h1 className="mt-5 max-w-[12ch] text-[clamp(3rem,6vw,5.5rem)] font-semibold leading-[0.95] tracking-[-0.055em] text-[#edf2f1]">
-                  Choose better technology.
+                  Choose Better Technology.
                 </h1>
                 <p className="mt-6 max-w-lg text-base leading-relaxed text-[#bec8c7] sm:text-lg">
                   Verified Apple products, local support, and clear delivery for every purchase in Nepal.
@@ -522,8 +582,7 @@ export default function StorefrontView({ products, live }: { products: Storefron
         {live && categoryTiles.length > 1 && (
           <section data-scroll-section aria-labelledby="categories-title" className="ux-demo-categories container-store scroll-mt-28">
             <p className="text-sm font-semibold text-brass">Browse the catalogue</p>
-            <h2 id="categories-title" className="mt-1 text-2xl font-semibold tracking-[-0.03em] sm:text-3xl">Shop by category</h2>
-            <p className="mt-1 text-sm text-ink-muted">Jump straight to the range you came for.</p>
+            <h2 id="categories-title" className="mt-1 text-2xl font-semibold tracking-[-0.03em] sm:text-3xl">Shop By Category</h2>
             <ul className="ux-demo-category-grid">
               {categoryTiles.map((tile) => (
                 <li key={tile.category}>
@@ -540,47 +599,93 @@ export default function StorefrontView({ products, live }: { products: Storefron
           </section>
         )}
 
-        <section ref={catalogue} data-scroll-section aria-labelledby="products-title" className="ux-demo-products-panel container-store scroll-mt-28">
+        {products.length > 0 && (
+        <section data-scroll-section aria-labelledby="popular-products-title" className="ux-demo-products-panel ux-demo-products-panel--popular container-store scroll-mt-28">
           <div className="flex flex-col gap-5 border-b border-hairline pb-6 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="text-sm font-semibold text-brass">Selected by ShopSphere</p>
-              <h2 id="products-title" aria-live="polite" className="mt-1 text-2xl font-semibold tracking-[-0.03em] sm:text-3xl">{query ? `Search results for “${query}”` : searchCategory !== 'All' ? searchCategory : 'Popular Right Now'}</h2>
-              <p className="mt-1 text-sm text-ink-muted">{searchCategory !== 'All' ? `Searching in ${searchCategory}` : 'Fresh picks from approved sellers'}</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              {live?.catalogControls}
-              {(query || searchCategory !== 'All') && <Button variant="quiet" onClick={browseProducts}>Clear filters</Button>}
+              <h2 id="popular-products-title" className="mt-1 text-2xl font-semibold tracking-[-0.03em] sm:text-3xl">Popular Right Now</h2>
             </div>
           </div>
 
-          <div className={live ? 'storefront-catalog-layout' : undefined}>
-          {live && !live.catalogStatus && <CatalogFilters products={products.filter(product => searchCategory === 'All' || product.category === searchCategory)} value={filters} onChange={setFilters} />}
-          <div className="storefront-catalog-results">
-          {live && !live.catalogStatus && <p className="storefront-result-count" role="status">{visibleProducts.length} {visibleProducts.length === 1 ? 'product' : 'products'}</p>}
-          {live?.catalogStatus ?? (visibleProducts.length ? (
-            browsingStrip ? (
-            <div className="ux-demo-product-slider">
-              <div
-                ref={setProductScroller}
-                onScroll={updateScrollEdges}
-                style={cardStep ? { '--ux-demo-card-w': `${cardStep - cardGap}px` } as CSSProperties : undefined}
-                className="ux-demo-product-grid ux-demo-product-grid--scroll"
-              >
-                {productCards}
-              </div>
-              {!scrollState.atStart && (
-                <button type="button" className="ux-demo-product-slider-nav ux-demo-product-slider-prev" aria-label="Show previous products" onClick={() => slideProducts(-1)}>
-                  <ChevronLeft aria-hidden="true" />
-                </button>
-              )}
-              {!scrollState.atEnd && (
-                <button type="button" className="ux-demo-product-slider-nav ux-demo-product-slider-next" aria-label="Show more products" onClick={() => slideProducts(1)}>
-                  <ChevronRight aria-hidden="true" />
-                </button>
+          <div className="ux-demo-product-slider">
+            <div
+              ref={setProductScroller}
+              onScroll={updateScrollEdges}
+              style={cardStep ? { '--ux-demo-card-w': `${cardStep - cardGap}px` } as CSSProperties : undefined}
+              className="ux-demo-product-grid ux-demo-product-grid--scroll"
+            >
+              {popularProductCards}
+            </div>
+            {!scrollState.atStart && (
+              <button type="button" className="ux-demo-product-slider-nav ux-demo-product-slider-prev" aria-label="Show previous products" onClick={() => slideProducts(-1)}>
+                <ChevronLeft aria-hidden="true" />
+              </button>
+            )}
+            {!scrollState.atEnd && (
+              <button type="button" className="ux-demo-product-slider-nav ux-demo-product-slider-next" aria-label="Show more products" onClick={() => slideProducts(1)}>
+                <ChevronRight aria-hidden="true" />
+              </button>
+            )}
+          </div>
+        </section>
+        )}
+
+        <section ref={catalogue} data-scroll-section data-section-scroll-ignore aria-labelledby="products-title" className="ux-demo-products-panel ux-demo-products-panel--catalogue container-store scroll-mt-28">
+          <div className="storefront-catalog-heading">
+            <div>
+              <p className="text-sm font-semibold text-brass">Browse the catalogue</p>
+              <h2 id="products-title" aria-live="polite" className="mt-1 text-2xl font-semibold tracking-[-0.03em] sm:text-3xl">{query ? `Search results for “${query}”` : searchCategory !== 'All' ? searchCategory : 'Shop All Products'}</h2>
+              {searchCategory !== 'All' && <p className="mt-1 text-sm text-ink-muted">Searching in {searchCategory}</p>}
+            </div>
+            <div className="storefront-catalog-heading-actions">
+              {live && !live.catalogStatus && <p className="storefront-result-count" role="status">{visibleProducts.length} {visibleProducts.length === 1 ? 'product' : 'products'}</p>}
+              {(query || searchCategory !== 'All') && <Button variant="quiet" onClick={browseProducts}>Clear filters</Button>}
+              {live && !live.catalogStatus && visibleProducts.length > 0 && (
+                <Button variant="secondary" onClick={() => setShowFullCatalogue((current) => !current)}>
+                  {showFullCatalogue ? 'Show slider' : 'Show all products'}
+                </Button>
               )}
             </div>
+          </div>
+
+          {live?.catalogStatus ?? (visibleProducts.length ? (
+            showFullCatalogue ? (
+              <div className="storefront-catalog-layout">
+                {live && <CatalogFilters products={products.filter(product => searchCategory === 'All' || product.category === searchCategory)} value={filters} onChange={setFilters} />}
+                <div className="storefront-catalog-results">
+                  <div className="ux-demo-product-grid storefront-catalog-full-grid">{catalogueProductCards}</div>
+                </div>
+              </div>
             ) : (
-              <div className="ux-demo-product-grid">{productCards}</div>
+              <div className={live ? 'storefront-catalog-layout storefront-catalog-layout--paged' : 'storefront-catalog-results storefront-catalog-results--standalone'}>
+                {live && <CatalogFilters products={products.filter(product => searchCategory === 'All' || product.category === searchCategory)} value={filters} onChange={setFilters} />}
+                <div className="storefront-catalog-results">
+                  <div className="ux-demo-product-slider storefront-catalog-page-slider-shell">
+                    <div ref={catalogueScroller} onScroll={updateCatalogueScrollEdges} className="storefront-catalog-page-slider">
+                      {cataloguePages.map((page, pageIndex) => (
+                        <div
+                          key={pageIndex}
+                          className="storefront-catalog-page"
+                          aria-label={`Product group ${pageIndex + 1} of ${cataloguePages.length}`}
+                        >
+                          {page}
+                        </div>
+                      ))}
+                    </div>
+                    {!catalogueScrollState.atStart && (
+                      <button type="button" className="ux-demo-product-slider-nav ux-demo-product-slider-prev" aria-label="Show previous catalogue products" onClick={() => slideCatalogueProducts(-1)}>
+                        <ChevronLeft aria-hidden="true" />
+                      </button>
+                    )}
+                    {!catalogueScrollState.atEnd && (
+                      <button type="button" className="ux-demo-product-slider-nav ux-demo-product-slider-next" aria-label="Show more catalogue products" onClick={() => slideCatalogueProducts(1)}>
+                        <ChevronRight aria-hidden="true" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
             )
           ) : (
             <div className="my-12 rounded-[var(--radius-surface)] border border-hairline bg-paper-raised px-6 py-12 text-center">
@@ -590,8 +695,6 @@ export default function StorefrontView({ products, live }: { products: Storefron
               <Button className="mt-5" variant="secondary" onClick={browseProducts}>Show all products</Button>
             </div>
           ))}
-          </div>
-          </div>
         </section>
 
         <section id="why-shopsphere" data-scroll-section aria-labelledby="why-title" className="scroll-mt-28 border-y border-hairline">
@@ -712,8 +815,13 @@ export default function StorefrontView({ products, live }: { products: Storefron
               <ul className="mt-6 space-y-3 text-sm">
                 {['Verified seller listing', 'Delivery estimate shown at checkout', 'Secure eSewa payment'].map((item) => <li key={item} className="flex items-center gap-2"><Check className="h-4 w-4 text-brass" aria-hidden="true" />{item}</li>)}
               </ul>
-              {live && <Button variant="secondary" className="my-5 w-full" onClick={() => live.onDetails(quickView)}>View full product details</Button>}
-              {(!live || live.canPurchase) && <Button size="lg" className="mt-auto w-full" disabled={disablePurchase(quickView)} onClick={() => addToCart(quickView)}>{actionLabel(quickView)} · {formatNpr(quickView.price)}</Button>}
+              {live ? (
+                <div className="mt-auto pt-5">
+                  <Button variant="secondary" className="w-full" onClick={() => live.onDetails(quickView)}>View full product details</Button>
+                </div>
+              ) : (
+                <Button size="lg" className="mt-auto w-full" disabled={disablePurchase(quickView)} onClick={() => addToCart(quickView)}>{actionLabel(quickView)} · {formatNpr(quickView.price)}</Button>
+              )}
             </div>
           </aside>
         </div>
