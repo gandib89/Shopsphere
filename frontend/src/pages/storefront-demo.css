@@ -233,8 +233,7 @@
   gap: 1rem;
   margin-top: 0;
   padding-bottom: 0.75rem;
-  /* The thumb supports deliberate click-and-drag navigation without assigning the wheel to
-     the product row. */
+  /* Keep a draggable thumb alongside native horizontal trackpad navigation. */
   scrollbar-width: thin;
   scrollbar-color: rgb(var(--color-line)) transparent;
 }

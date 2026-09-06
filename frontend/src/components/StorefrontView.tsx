@@ -22,7 +22,6 @@ import DemoHeader from './DemoHeader';
 import Footer from './Footer';
 import CatalogFilters, { catalogFilterRank, emptyFilters, matchesCatalogFilters, type CatalogFilterValue } from './catalog/CatalogFilters';
 import { Button, IconButton } from './ui/Button';
-import { installSectionScroll } from '../lib/sectionScroll';
 import '../pages/ui-redesign-demo.css';
 import '../pages/storefront-demo.css';
 
@@ -163,20 +162,6 @@ export default function StorefrontView({ products, live }: { products: Storefron
   };
 
 
-  // Wheel and trackpad gestures belong to page navigation here. Block horizontal gestures
-  // while letting vertical ones bubble to the page-level section scroller; the visible
-  // scrollbar remains available for deliberate click-and-drag navigation.
-  useEffect(() => {
-    const el = productScroller.current;
-    if (!el) return;
-    const onWheel = (event: WheelEvent) => {
-      if (event.shiftKey || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) event.preventDefault();
-    };
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
-    // cardStep is measured right after the strip mounts, so this re-runs once the node exists.
-  }, [products, cardStep]);
-
   useEffect(() => {
     if (showFullCatalogue) return;
     updateCatalogueScrollEdges();
@@ -185,14 +170,9 @@ export default function StorefrontView({ products, live }: { products: Storefron
     const frame = requestAnimationFrame(updateCatalogueScrollEdges);
     const observer = new ResizeObserver(updateCatalogueScrollEdges);
     observer.observe(el);
-    const onWheel = (event: WheelEvent) => {
-      if (event.shiftKey || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) event.preventDefault();
-    };
-    el.addEventListener('wheel', onWheel, { passive: false });
     return () => {
       cancelAnimationFrame(frame);
       observer.disconnect();
-      el.removeEventListener('wheel', onWheel);
     };
   }, [products, cardStep, filters, query, searchCategory, showFullCatalogue]);
 
@@ -214,10 +194,6 @@ export default function StorefrontView({ products, live }: { products: Storefron
       observer?.disconnect();
       window.removeEventListener('resize', sizeHero);
     };
-  }, []);
-
-  useEffect(() => {
-    if (demoRoot.current) return installSectionScroll(demoRoot.current);
   }, []);
 
   const routeCategory = live?.category;

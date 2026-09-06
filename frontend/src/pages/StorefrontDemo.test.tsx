@@ -214,7 +214,7 @@ describe('UX demo redesign header', () => {
     expect(card).toHaveFocus();
   });
 
-  it('keeps wheel gestures off the product strip and advances one visible group per button click', async () => {
+  it('leaves wheel gestures native and advances one visible group per button click', async () => {
     const user = userEvent.setup();
     const clientWidth = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function (this: HTMLElement) {
       return this.classList.contains('ux-demo-product-grid--scroll') ? 768 : 0;

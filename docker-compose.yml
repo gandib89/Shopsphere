@@ -40,8 +40,6 @@ services:
     build:
       context: ./frontend
       args:
-        # Empty means same-origin /api through nginx, which is the safest container default.
-        VITE_BACKEND_URL: ${VITE_BACKEND_URL:-}
         VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
         VITE_DEMO_MODE: ${VITE_DEMO_MODE:-true}
     restart: unless-stopped

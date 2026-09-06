@@ -1,7 +1,7 @@
 import axios from "axios";
 
-const API_BASE = import.meta.env.VITE_BACKEND_URL;
-const AUTH_PATHS = ["/api/v1/auth/login", "/api/v1/auth/register", "/api/v1/auth/refresh"];
+const API_BASE = import.meta.env.VITE_BACKEND_URL || '';
+const AUTH_PATHS = ["/api/v1/auth/login", "/api/v1/auth/register", "/api/v1/auth/google-signin", "/api/v1/auth/refresh", "/api/v1/auth/logout"];
 
 // The real bearer access token lives ONLY here (module memory) — never localStorage,
 // per the backend's token model. It's attached to every axios request by the
@@ -99,14 +99,19 @@ export const logout = async () => {
 export const refreshSession = () => {
   if (!refreshPromise) {
     refreshPromise = axios
-      .post(`${API_BASE}/api/v1/auth/refresh`)
+      .post(`${API_BASE}/api/v1/auth/refresh`, undefined, { timeout: 15000 })
       .then(({ data }) => {
         setSession(data.accessToken, data.user);
         return data.accessToken as string;
       })
-      .catch(() => {
-        clearSession();
-        return null;
+      .catch((error) => {
+        if (error.response?.status === 401) {
+          clearSession();
+          return null;
+        }
+        // An outage is not an expired session. Propagate it so callers don't turn a
+        // failed refresh into an unauthenticated request or an expired-session redirect.
+        throw error;
       })
       .finally(() => {
         refreshPromise = null;

@@ -40,6 +40,31 @@ beforeEach(() => {
 afterEach(() => localStorage.clear());
 
 describe('live storefront integration', () => {
+  it('preserves native wheel input across the storefront, including small deltas and momentum', async () => {
+    const { container } = renderHome();
+    await screen.findByRole('button', { name: 'Seller MacBook' });
+    const targets = [
+      container.querySelector('.ux-demo-hero-stage')!,
+      screen.getByRole('region', { name: 'Shop By Category' }),
+      container.querySelector('.ux-demo-product-grid--scroll')!,
+      container.querySelector('.storefront-catalog-page-slider')!,
+      container.querySelector('#why-shopsphere')!,
+    ];
+    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+    try {
+      for (const target of targets) {
+        for (const init of [{ deltaY: 5 }, { deltaY: 120 }, { deltaY: 30 }, { deltaY: -120 }, { deltaX: 120 }, { deltaY: 120, shiftKey: true }]) {
+          const event = new WheelEvent('wheel', { bubbles: true, cancelable: true, ...init });
+          fireEvent(target, event);
+          expect(event.defaultPrevented, `Wheel input at ${target.className}: ${JSON.stringify(init)}`).toBe(false);
+        }
+      }
+      expect(scrollTo).not.toHaveBeenCalled();
+    } finally {
+      scrollTo.mockRestore();
+    }
+  });
+
   it('shows real listings to guests with the approved hero and no demo products', async () => {
     const { container } = renderHome();
     expect(screen.getByRole('heading', { name: 'Choose Better Technology.' })).toBeVisible();

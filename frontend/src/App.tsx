@@ -2,7 +2,7 @@ import { useEffect, Suspense, lazy } from 'react';
 import { HashRouter as Router, Routes, Route } from 'react-router-dom';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { LoadingState } from './components/ui/AsyncState';
-import { refreshSession } from './lib/session';
+import { SessionRecovery } from './components/auth/SessionRecovery';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 
 // Lazy-load every page so only the current route's JS is downloaded on first load
@@ -53,12 +53,6 @@ function App() {
   const isDemo = import.meta.env.VITE_DEMO_MODE !== 'false';
 
   useEffect(() => {
-    // Access tokens live in memory only, so a hard reload starts with none —
-    // this trades the refresh cookie for a fresh one if the session is still valid.
-    if (localStorage.getItem('token')) refreshSession();
-  }, []);
-
-  useEffect(() => {
     // visualViewport.height shrinks to the area ABOVE the keyboard.
     // We compare the bottom of the focused element against that height
     // and scroll the page by exactly the overlap so the input is visible.
@@ -101,6 +95,7 @@ function App() {
 
   return (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+      <SessionRecovery>
       <Router>
         {isDemo && (
           <div className="fixed inset-x-0 top-0 z-[100] bg-brass px-3 py-1.5 text-center text-xs font-semibold text-white shadow-sm">
@@ -172,6 +167,7 @@ function App() {
         </Suspense>
         </div>
       </Router>
+      </SessionRecovery>
     </GoogleOAuthProvider>
   );
 }
