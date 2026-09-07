@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { productPath } from '../lib/routes';
 import { Button, IconButton } from './ui/Button';
 import { useCompare, type CompareItem } from '../lib/compareStore';
 import { specFields, specValue } from '../lib/productSpecs';
@@ -44,7 +45,7 @@ export default function CompareBar({ onBuy, buyLabel, buyDisabled }: CompareBarP
     })),
   ];
 
-  const buy = onBuy ?? (item => navigate(`/product-details-page?productId=${encodeURIComponent(item.id)}`));
+  const buy = onBuy ?? (item => navigate(productPath(item.id)));
   const label = buyLabel ?? (() => 'View product');
 
   return (

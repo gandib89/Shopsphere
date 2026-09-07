@@ -6,6 +6,7 @@ import NotificationBell from '../NotificationBell';
 import OrbitMark from '../OrbitMark';
 import { AdminContext } from '../admin/AdminContext';
 import type { SellerProfile } from '../../lib/sellerData';
+import { SellerApprovalContext } from './SellerApprovalContext';
 // Both roles share the same workspace design system.
 import '../admin/admin.css';
 
@@ -58,6 +59,7 @@ export default function SellerLayout() {
 
   return (
     <AdminContext.Provider value={true}>
+      <SellerApprovalContext.Provider value={{ loaded: profile !== null, pending: pendingApproval }}>
       <div className={`admin-app seller-app${collapsed ? ' is-collapsed' : ''}${mobileOpen ? ' menu-open' : ''}`}>
         <a className="admin-skip" href="#seller-content" onClick={event => { event.preventDefault(); document.getElementById('seller-content')?.focus(); }}>Skip to shop content</a>
         <header className="admin-topbar">
@@ -70,7 +72,7 @@ export default function SellerLayout() {
           <nav aria-label="Seller navigation">
             {sections.map(({ label, to, icon: Icon, group, children }) => <div key={to} className={group ? 'admin-nav-section-start' : undefined}>
               {group && <p className="admin-nav-group">{group}</p>}
-              <Link to={to} className={`admin-nav-link${path === to ? ' is-active' : ''}`} aria-current={path === to ? 'page' : undefined} title={collapsed ? label : undefined}><Icon size={18} aria-hidden="true" /><span>{label}</span></Link>
+              {pendingApproval && to === '/add-product' ? <span className="admin-nav-link is-disabled" aria-disabled="true" title="Available after admin approval"><Icon size={18} aria-hidden="true" /><span>{label}</span></span> : <Link to={to} className={`admin-nav-link${path === to ? ' is-active' : ''}`} aria-current={path === to ? 'page' : undefined} title={collapsed ? label : undefined}><Icon size={18} aria-hidden="true" /><span>{label}</span></Link>}
               {children && <div className="admin-nav-children">{children.map(child => {
                 const ChildIcon = child.icon;
                 const active = path === child.to;
@@ -88,12 +90,13 @@ export default function SellerLayout() {
             <span className="admin-workspace-label">Seller workspace</span>
           </div>
           <div id="seller-content" className="admin-content" tabIndex={-1}>
-            {pendingApproval && <p className="admin-notice admin-notice--pending" role="status">Your shop is waiting for admin approval. You can prepare listings now, but they stay hidden from the storefront until your account is approved.</p>}
+            {pendingApproval && <p className="admin-notice admin-notice--pending" role="status">Your shop is waiting for admin approval. Product creation is available after approval; you can review orders, account details, and analytics now.</p>}
             <Outlet />
           </div>
           <footer className="admin-footer">ShopSphere seller centre<span>Run your shop with clarity.</span></footer>
         </div>
       </div>
+      </SellerApprovalContext.Provider>
     </AdminContext.Provider>
   );
 }

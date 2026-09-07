@@ -187,7 +187,7 @@ describe('live storefront integration', () => {
     renderHome();
     expect(await screen.findByRole('button', { name: 'Sold out: Seller iPhone' })).toBeDisabled();
     await user.click(screen.getByRole('button', { name: 'Choose options: Seller Watch' }));
-    expect(screen.getByTestId('route')).toHaveTextContent('/product-details-page?productId=server-watch');
+    expect(screen.getByTestId('route')).toHaveTextContent('/products/server-watch');
     expect(post).not.toHaveBeenCalled();
   });
 
@@ -201,7 +201,7 @@ describe('live storefront integration', () => {
     expect(within(dialog).getByText('Sold-out device')).toBeVisible();
     expect(within(dialog).queryByRole('button', { name: /^View details ·/ })).not.toBeInTheDocument();
     await user.click(within(dialog).getByRole('button', { name: 'View full product details' }));
-    expect(screen.getByTestId('route')).toHaveTextContent('/product-details-page?productId=server-phone');
+    expect(screen.getByTestId('route')).toHaveTextContent('/products/server-phone');
   });
 
   it('shows only the full-details action in quick view when a product requires options', async () => {

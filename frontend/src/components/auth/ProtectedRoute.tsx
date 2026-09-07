@@ -1,5 +1,5 @@
 import { ReactNode } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
 
 // Route-level guard: redirects before the page renders (no flash-of-content), instead of the
 // per-page useEffect+navigate pattern used elsewhere in this app. Still reads the same
@@ -7,14 +7,23 @@ import { Navigate } from "react-router-dom";
 // non-functional sentinels, not credentials, so this component is UX polish (skip the flash,
 // centralize the redirect), not the real security boundary. The backend now enforces
 // authorization on every route this guards; this only makes the client experience match that.
-type Props = { role: "admin" | "seller"; children: ReactNode };
+type Props = { role: "admin" | "seller" | "customer"; children?: ReactNode };
 
 export function ProtectedRoute({ role, children }: Props) {
+  const location = useLocation();
   const hasSession = localStorage.getItem("token") === "session";
-  if (!hasSession) return <Navigate to="/auth" replace />;
+  if (!hasSession) return <Navigate to="/auth" replace state={{ from: location.pathname + location.search }} />;
+
+  const isAdmin = localStorage.getItem("isAdmin") === "true";
+  const isSeller = localStorage.getItem("isSeller") === "true";
+  if (role === "customer") {
+    if (isAdmin) return <Navigate to="/admin" replace />;
+    if (isSeller) return <Navigate to="/seller-panel" replace />;
+    return children ? <>{children}</> : <Outlet />;
+  }
 
   const flag = role === "admin" ? "isAdmin" : "isSeller";
   if (localStorage.getItem(flag) !== "true") return <Navigate to="/" replace />;
 
-  return <>{children}</>;
+  return children ? <>{children}</> : <Outlet />;
 }

@@ -115,6 +115,18 @@ export default function NavBar() {
 
   return (
     <>
+    <a
+      href="#customer-content"
+      className="fixed left-3 top-3 z-[110] -translate-y-24 rounded-[var(--radius-control)] bg-ink px-4 py-2 text-sm font-semibold text-white transition-transform focus:translate-y-0"
+      onClick={event => {
+        const target = document.getElementById("customer-content");
+        if (!target) return;
+        event.preventDefault();
+        target.focus();
+      }}
+    >
+      Skip to content
+    </a>
     <nav
       aria-label="Main navigation"
       style={{ paddingTop: 'env(safe-area-inset-top)' }}
@@ -287,6 +299,8 @@ export default function NavBar() {
         )}
       </div>
     </nav>
+
+      <span id="customer-content" tabIndex={-1} className="sr-only" />
 
       {/* Sign Out Confirmation Modal */}
       {showSignOutModal && (

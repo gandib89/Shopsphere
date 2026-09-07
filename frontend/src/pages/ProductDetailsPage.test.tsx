@@ -2,6 +2,7 @@ import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import axios from 'axios';
+import { Route, Routes } from 'react-router-dom';
 import { renderRoute } from '../test/render';
 import ProductDetailsPage from './ProductDetailsPage';
 import { compareStore } from '../lib/compareStore';
@@ -11,6 +12,10 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('../components/NavBar', () => ({ default: () => <nav aria-label="Store navigation" /> }));
 
 const get = vi.mocked(axios.get);
+const renderProduct = () => renderRoute(
+  <Routes><Route path="/products/:productId" element={<ProductDetailsPage />} /></Routes>,
+  '/products/product-1',
+);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -41,20 +46,20 @@ describe('product details page', () => {
   it('opens at the top when navigating from a scrolled catalogue', async () => {
     const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
 
-    renderRoute(<ProductDetailsPage />, '/product-details-page?productId=product-1');
+    renderProduct();
 
     expect(await screen.findByRole('heading', { name: 'Test product' })).toBeVisible();
     expect(scrollTo).toHaveBeenCalledWith({ top: 0, left: 0, behavior: 'instant' });
   });
 
-  it('keeps in-stock cart and checkout actions available to an authenticated admin', async () => {
+  it('sends both customer purchase actions through the cart checkout', async () => {
     const user = userEvent.setup();
     localStorage.setItem('token', 'session');
-    localStorage.setItem('isAdmin', 'true');
+    localStorage.setItem('isAdmin', 'false');
     localStorage.setItem('isSeller', 'false');
     vi.mocked(axios.post).mockResolvedValue({ status: 201, data: { success: true } });
 
-    renderRoute(<ProductDetailsPage />, '/product-details-page?productId=product-1');
+    renderProduct();
 
     const addToCart = await screen.findByRole('button', { name: 'Add to Cart' });
     const buyNow = screen.getByRole('button', { name: 'Buy Now' });
@@ -69,7 +74,12 @@ describe('product details page', () => {
     );
 
     await user.click(buyNow);
-    expect(screen.getByRole('heading', { name: 'Checkout' })).toBeVisible();
+    expect(axios.post).toHaveBeenLastCalledWith(
+      expect.stringContaining('/api/v1/cart/add'),
+      { productId: 'product-1', quantity: 1, variants: {} },
+      expect.any(Object),
+    );
+    expect(screen.queryByRole('heading', { name: 'Checkout' })).not.toBeInTheDocument();
   });
 
   it('slides the gallery to the chosen colour and shows a placeholder for an unphotographed one', async () => {
@@ -95,7 +105,7 @@ describe('product details page', () => {
       };
     });
 
-    renderRoute(<ProductDetailsPage />, '/product-details-page?productId=product-1');
+    renderProduct();
 
     expect(await screen.findByRole('heading', { name: 'Two-tone laptop' })).toBeVisible();
     const track = screen.getByAltText('Two-tone laptop in Midnight').closest('div')!.parentElement!;
@@ -131,7 +141,7 @@ describe('product details page', () => {
       };
     });
 
-    renderRoute(<ProductDetailsPage />, '/product-details-page?productId=product-1');
+    renderProduct();
 
     const tray = await screen.findByRole('region', { name: 'Compare products' });
     expect(within(tray).getByText('iPhone 16 Pro')).toBeVisible();
@@ -170,7 +180,7 @@ describe('product details page', () => {
       };
     });
 
-    renderRoute(<ProductDetailsPage />, '/product-details-page?productId=product-1');
+    renderProduct();
 
     expect(await screen.findByRole('heading', { name: 'Configurable MacBook' })).toBeVisible();
     expect(screen.getAllByRole('button', { name: 'Sky Blue' })).toHaveLength(1);

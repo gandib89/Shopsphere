@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { RefreshCw, Search } from 'lucide-react';
+import { Package, RefreshCw, Search } from 'lucide-react';
 import { getImageUrl } from '../lib/utils';
 import { adminMoney, getAdminCollection } from '../lib/adminData';
-import { AdminHeading, AdminPagination } from '../components/admin/AdminUi';
+import { AdminEmptyState, AdminHeading, AdminPagination } from '../components/admin/AdminUi';
 
 interface Product {
   _id: string; name: string; category: string; price: number; quantity: number; images: string[]; createdAt?: string;
@@ -42,10 +42,10 @@ export default function AllProducts() {
           <label>Stock<select aria-label="Filter product stock" value={stock} onChange={event=>setStock(event.target.value)}><option value="all">All stock</option><option value="in">In stock</option><option value="out">Out of stock</option></select></label>
           <label>Sort<select aria-label="Sort products" value={sort} onChange={event=>setSort(event.target.value)}><option value="name">Name</option><option value="date">Date added</option><option value="price">Price</option><option value="stock">Stock</option></select></label>
           <label>Order<select aria-label="Sort order" value={direction} onChange={event=>setDirection(event.target.value)}><option value="asc">Ascending</option><option value="desc">Descending</option></select></label>
-          {(search||category!=='all'||stock!=='all'||sort!=='name'||direction!=='asc')&&<button className="admin-button" onClick={()=>{setSearch('');setCategory('all');setStock('all');setSort('name');setDirection('asc');}}>Clear filters</button>}
+          {filtered.length > 0 && (search||category!=='all'||stock!=='all'||sort!=='name'||direction!=='asc')&&<button className="admin-button" onClick={()=>{setSearch('');setCategory('all');setStock('all');setSort('name');setDirection('asc');}}>Clear filters</button>}
         </div>
       </div>
-      {loading?<p className="admin-empty" role="status">Loading products…</p>:error?<p className="admin-empty">Refresh to load the catalogue.</p>:!filtered.length?<p className="admin-empty">{products.length?'No products match these filters.':'Seller products will appear here.'}</p>:
+      {loading?<p className="admin-empty" role="status">Loading products…</p>:error?<p className="admin-empty">Refresh to load the catalogue.</p>:!filtered.length?<AdminEmptyState icon={<Package />} title={products.length?'No matching products':'No seller products yet'} description={products.length?'Try another search, category, or stock filter.':'Seller products will appear here.'} action={products.length?<button className="admin-button" onClick={()=>{setSearch('');setCategory('all');setStock('all');setSort('name');setDirection('asc');}}>Clear filters</button>:<Link className="admin-button admin-button--primary" to="/admin/sellers">Open seller directory</Link>} />:
         <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th scope="col">Product</th><th scope="col">Category</th><th scope="col">Stock</th><th scope="col">Price</th><th scope="col">Seller</th><th scope="col">Actions</th></tr></thead><tbody>{filtered.slice((current-1)*20,current*20).map(product=><tr key={product._id}><td><div className="admin-product-cell"><img src={product.images?.[0]?getImageUrl(product.images[0]):'/images/product-placeholder.svg'} alt="" onError={event=>{event.currentTarget.onerror=null;event.currentTarget.src='/images/product-placeholder.svg';}} /><Link className="admin-text-link" to={'/product-details-admin/'+product._id}>{product.name}</Link></div></td><td>{product.category}</td><td><span className={'admin-status admin-status--'+(product.quantity>0?'success':'attention')}>{product.quantity>0?'In stock':'Out of stock'}</span><small>{product.quantity>0?product.quantity+' units available':''}</small></td><td className="admin-numeric">{adminMoney(product.price)}</td><td>{product.seller?.shopName||'—'}</td><td><Link className="admin-button" to={'/product-details-admin/'+product._id}>View / edit</Link></td></tr>)}</tbody></table></div>}
       {!loading&&!error&&filtered.length>0&&<AdminPagination page={current} pages={pages} onPage={setPage}/>}
     </section>

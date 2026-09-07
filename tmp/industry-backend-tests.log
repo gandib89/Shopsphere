@@ -1,0 +1,136 @@
+
+> backend@1.0.0 test
+> node --test
+
+✔ seller creation rejects non-admins and privilege injection (6.4567ms)
+✔ seller creation normalizes email, hashes password, and never creates an admin session (76.8334ms)
+✔ duplicate seller email is a recoverable conflict (39.8299ms)
+✔ deletion requires confirmation and rejects deleting a different role (2.4251ms)
+✔ open orders prevent any deletion or archival writes (0.8833ms)
+✔ self deletion rejects incorrect password before cleanup (92.7691ms)
+✔ Google deletion rejects a different Google identity (5.8731ms)
+✔ valid old JWT cannot authenticate a deleted account (12.5244ms)
+✔ customer creation enforces admin access and rejects role or seller fields (1.8818ms)
+✔ customer creation hashes credentials, returns safe fields and preserves the admin session (51.7878ms)
+✔ customer duplicate emails and database errors return recoverable failures (48.9242ms)
+✔ seller endpoints reject anonymous, customer, and seller access before querying (2.5104ms)
+✔ directory scopes search to sellers, filters verification, and paginates (0.9782ms)
+✔ profile rejects invalid IDs and non-seller accounts (1.8042ms)
+✔ profile exposes only approved seller fields and scopes products by sellerId (0.9576ms)
+✔ orders belong to the seller products, not the seller customer account (0.7563ms)
+✔ server errors do not leak database details (0.4646ms)
+✔ register rejects a duplicate email without hitting the DB twice (4.6761ms)
+✔ register requires a shop name for sellers (1.0035ms)
+✔ register never allows a public caller to create an admin (1.4123ms)
+✔ register creates an unverified seller and issues a session (52.7937ms)
+✔ login rejects an unknown email with the same generic message as a wrong password (no enumeration) (1.145ms)
+✔ login rejects a wrong password without issuing a session (84.0953ms)
+✔ login opportunistically upgrades a legacy bcrypt hash to argon2 (688.2545ms)
+✔ refresh rejects when no cookie is present (1.0183ms)
+✔ refresh rotates a valid token and clears the cookie on reuse of an already-used one (2.4268ms)
+✔ logout revokes the refresh token family and clears the cookie even with no token (0.6853ms)
+✔ forgotPassword gives the same generic response for a known and an unknown email (no enumeration) (1.9067ms)
+✔ forgotPassword sets a reset token only for the known user, not a Google-only account (0.6246ms)
+✔ resetPassword rejects an unknown or already-consumed token (0.4256ms)
+✔ resetPassword rejects an expired token (0.68ms)
+✔ resetPassword sets the new password, clears the token, and revokes every existing session (50.8931ms)
+✔ order status transitions only move forward through fulfilment (5.0856ms)
+✔ checkout uses the product discount shown in the cart (2.9015ms)
+✔ adjustStock deducts base quantity plus the selected color/storage variant (1.4222ms)
+✔ adjustStock with sign=1 restores stock (cancel/return path) (0.4473ms)
+✔ adjustStock refuses to deduct past zero (oversell guard) (0.7108ms)
+✔ adjustStock returns null when the product no longer exists (4.1882ms)
+✔ updateFirstRevenueByOrder updates only the first matching row (0.9147ms)
+✔ updateFirstRevenueByOrder returns null when no revenue row exists for the order (0.2895ms)
+✔ resolveServerPromoDiscount ignores an unknown code instead of trusting the caller (1.7142ms)
+✔ resolveServerPromoDiscount recomputes a percentage discount from the stored promo, not the caller (7.2137ms)
+✔ resolveServerPromoDiscount caps a percentage discount at maxDiscount (0.4448ms)
+✔ resolveServerPromoDiscount rejects an expired promo (0.3308ms)
+✔ resolveServerPromoDiscount rejects a promo that already hit its usage limit (0.2605ms)
+✔ resolveServerPromoDiscount ignores a client-forged discountAmount by recomputing a fixed discount too (0.2577ms)
+✔ promo redemption is recorded server-side and cannot be reused by the same user (1.0702ms)
+✔ computeCheckoutAmount sums plain order totals for a single (non-grouped) order (2.2177ms)
+✔ computeCheckoutAmount ignores promoDiscountAmount for a single order (already baked into totalPrice) (0.4472ms)
+✔ computeCheckoutAmount sums across a group and subtracts the discount once (0.3041ms)
+✔ computeCheckoutAmount never goes negative even if a discount exceeds the total (0.253ms)
+✔ processEsewaEvent reports unknown_transaction for a transaction with no Payment row (2.6125ms)
+✔ processEsewaEvent is a no-op (idempotent) once a payment is no longer Initiated (0.4882ms)
+✔ processEsewaEvent marks Succeeded and confirms the order when eSewa's own status check says COMPLETE (1.3916ms)
+✔ processEsewaEvent marks Failed and does NOT confirm the order when eSewa says anything but COMPLETE (0.7432ms)
+✔ processEsewaEvent treats a redelivered/duplicate gateway callback as already-processed (7.3969ms)
+✔ processEsewaEvent leaves payment retryable when order confirmation fails (2.0497ms)
+Product saved: {
+  id: 'ce139f5cf5cdebb7d23c9f2b',
+  name: 'Admin-listed MacBook',
+  price: 120000,
+  description: undefined,
+  quantity: 3,
+  images: [ '/uploads/macbook.jpg' ],
+  category: 'MacBook',
+  variantStorage: [],
+  variantColor: [],
+  variantRam: [],
+  variantScreenSize: [],
+  variantProcessor: [],
+  sellerId: '66a100000000000000000001',
+  colorVariants: [],
+  storageVariants: [],
+  options: [],
+  reviews: []
+}
+Saved color variants: []
+✔ formats Prisma product IDs for legacy storefront navigation (3.5895ms)
+✔ formats recommendation arrays for product-card actions (0.5381ms)
+✔ seller product read is scoped to the signed-in seller (0.7873ms)
+✔ admin product creation assigns the selected seller (5.2052ms)
+✔ admin product creation rejects a non-seller target (0.6492ms)
+Connected to database successfully!
+Connected to database successfully!
+✅ Demo data ensured: 4 users and 12 products created; 0 users and 0 products already existed
+✔ waits for connection and default admin but skips demo data unless enabled (3.1264ms)
+✔ waits for demo data when explicitly enabled (0.8403ms)
+✔ the shipped model reproduces the store's real attach behaviour (1.9715ms)
+✔ every store category is a key, so unseen seller products still get rules (0.4927ms)
+✔ metrics are ordered strongest-first (0.6358ms)
+﹣ account deletion preserves counterparties and cleans every foreign key atomically (1.3593ms) # SKIP
+✔ verifyCallbackSignature accepts a payload signed with the same secret (4.3211ms)
+✔ verifyCallbackSignature rejects a tampered field (0.6854ms)
+✔ verifyCallbackSignature rejects a missing signature or field list (0.2947ms)
+✔ no page/limit in query stays unpaginated with a hard cap (3.8897ms)
+✔ page/limit in query switches to a paginated skip/take (0.4865ms)
+✔ limit is clamped to the max page size (0.3197ms)
+✔ invalid page/limit values fall back to sane defaults (0.2695ms)
+✔ argon2id hash round-trips and rejects the wrong password (157.9597ms)
+✔ legacy bcrypt hashes still verify (pre-migration users) (1040.3254ms)
+✔ adds the delta of every chosen option (1.7981ms)
+✔ unknown or missing selections never change the price (0.4182ms)
+✔ discount applies to the configured price, not the base price (0.3396ms)
+✔ rotating a valid token marks it used and issues a new one in the same family (3.641ms)
+✔ reusing an already-rotated token revokes the entire family (2.0278ms)
+✔ rotating an unknown token is rejected (0.4197ms)
+✔ rotating an expired token is rejected (0.6102ms)
+✔ logout revokes the family without needing rotation (0.7302ms)
+✔ repairs the exact legacy seller without changing ownership, role, or approval (178.0126ms)
+✔ is idempotent and preserves a working password (104.381ms)
+✔ rejects a non-demo identity and conflicting destination email (109.2251ms)
+✔ rejects production, remote databases, and absent demo passwords before database access (7.2191ms)
+✔ skips admin bootstrap when explicit credentials are missing (3.0357ms)
+✔ preserves an existing configured admin and its password (6.1177ms)
+✔ creates a configured admin with a hashed password (707.9437ms)
+✔ rejects a configured admin email already used by another role (1.2896ms)
+✔ accepts a concurrently created configured admin after a unique conflict (314.2207ms)
+✔ creates usable demo accounts and pictured products only once (2156.0311ms)
+✔ keeps every configuration sandbox-priced and every phone color pictured (6.6221ms)
+✔ seeds only verified Apple product names (0.256ms)
+✔ preserves an existing seller and assigns products to that seller's actual id (276.3268ms)
+✔ rejects a conflicting account role without modifying it (277.301ms)
+✔ performs existence reads through the transaction client (275.2911ms)
+✔ retries a serializable transaction conflict (266.0816ms)
+ℹ tests 101
+ℹ suites 0
+ℹ pass 100
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 3988.9023

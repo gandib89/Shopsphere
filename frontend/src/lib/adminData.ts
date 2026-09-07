@@ -5,6 +5,8 @@ export type AdminOrder = {
   quantity: number; totalPrice: number; status: string; createdAt?: string; deliveryDate?: string;
   product?: { name: string }; color?: string; variants?: { color?: string; storage?: string };
   returnReason?: string; returnImage?: string; refundReleasedAt?: string;
+  payments?: { id: string; status: string }[];
+  refunds?: { id: string; status: string; mode: string }[];
 };
 
 // Follow the API's pagination so filters and dashboard totals aren't silently capped.

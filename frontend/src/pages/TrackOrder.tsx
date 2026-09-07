@@ -285,7 +285,7 @@ export default function TrackOrder() {
                 {order.status === "Return Requested" && "Your return request is under review."}
                 {order.status === "Return Approved" && "Return approved. Awaiting refund release."}
                 {order.status === "Return Rejected" && "Your return request was rejected."}
-                {order.status === "Refund Released" && <>Refund of Rs.<span className="font-mono tabular-nums">{order.totalPrice}</span> has been released.</>}
+                {order.status === "Refund Released" && <>{import.meta.env.VITE_DEMO_MODE !== 'false' ? <>A sandbox refund of Rs.<span className="font-mono tabular-nums">{order.totalPrice}</span> was recorded. No real money moved.</> : <>Refund of Rs.<span className="font-mono tabular-nums">{order.totalPrice}</span> has been released.</>}</>}
               </p>
             </div>
           )}

@@ -1,16 +1,16 @@
-import React, { useEffect, useLayoutEffect, useMemo, useState, useRef } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import React, { useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
-import { getBackendOrigin, getImageUrl } from "../lib/utils";
+import { getImageUrl } from "../lib/utils";
 import { toast } from "sonner";
-import { v4 as uuidv4 } from "uuid";
-import { ShoppingCart, Star, ArrowLeft, Plus, Minus, Truck, Shield, Store, Tag, X, Loader, Scale,
+import { ShoppingCart, Star, ArrowLeft, Plus, Minus, Truck, Shield, Store, Loader, Scale,
   Camera, Cpu, BatteryFull, Monitor, MemoryStick, HardDrive, Usb, Watch, Droplets, Bluetooth, Zap, Smartphone } from "lucide-react";
 import NavBar from "../components/NavBar";
 import CompareBar from "../components/CompareBar";
 import { useCompare, MAX_COMPARE, type CompareItem } from "../lib/compareStore";
 import { storefrontCategory } from "../lib/storefrontCatalog";
 import { productSpecs, productHighlights, isDemoSpec, WARRANTY } from "../lib/productSpecs";
+import { productPath } from "../lib/routes";
 
 interface Product {
   _id: string;
@@ -74,18 +74,6 @@ type GalleryFrame = { src: string; color: string | null; placeholder: boolean };
 
 const PLACEHOLDER_IMAGE = "/images/product-placeholder.svg";
 
-interface UserDetails {
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone: string;
-  street: string;
-  city: string;
-  state: string;
-  zipCode: string;
-  country: string;
-}
-
 // Marketing colour names ("Sky Blue", "Midnight") are not CSS colours, so the swatch rendered
 // blank. Map the ones we ship, fall back to the CSS colour when the name happens to be one.
 const SWATCH_COLORS: Record<string, string> = {
@@ -122,9 +110,7 @@ const HIGHLIGHT_ICONS: Record<string, typeof Cpu> = {
 };
 
 function ProductDetailsPage() {
-  const location = useLocation();
-  const searchParams = new URLSearchParams(location.search);
-  const productId = searchParams.get("productId") || "";
+  const { productId = "" } = useParams();
   const navigate = useNavigate();
 
   const [product, setProduct] = useState<Product | null>(null);
@@ -137,19 +123,6 @@ function ProductDetailsPage() {
   const [selectedVariants, setSelectedVariants] = useState<{
     [key: string]: string;
   }>({});
-  const [showCheckout, setShowCheckout] = useState(false);
-  const [deliveryDate, setDeliveryDate] = useState("");
-  const [userDetails, setUserDetails] = useState<UserDetails>({
-    firstName: "",
-    lastName: "",
-    email: "",
-    phone: "",
-    street: "",
-    city: "",
-    state: "",
-    zipCode: "",
-    country: "",
-  });
   const [reviews, setReviews] = useState<any[]>([]);
   const [loadingReviews, setLoadingReviews] = useState(false);
   const [averageRating, setAverageRating] = useState(0);
@@ -157,17 +130,7 @@ function ProductDetailsPage() {
   const [loadingRecommendations, setLoadingRecommendations] = useState(false);
   const [recommendationStrategy, setRecommendationStrategy] = useState<string>("");
 
-  // Promo code state
-  const [promoCode, setPromoCode] = useState("");
-  const [appliedPromo, setAppliedPromo] = useState<{
-    code: string;
-    discountAmount: number;
-    discountPercent: number;
-  } | null>(null);
-  const [validatingPromo, setValidatingPromo] = useState(false);
-
   const compare = useCompare();
-  const checkoutFormRef = useRef<HTMLDivElement>(null);
   const token = localStorage.getItem("token");
   const isSeller = localStorage.getItem("isSeller") === "true";
   const isAdmin = localStorage.getItem("isAdmin") === "true";
@@ -236,10 +199,6 @@ function ProductDetailsPage() {
 
   const configuredPrice = (product?.price || 0) + optionPriceDelta;
 
-  const subtotal = quantity * configuredPrice;
-  const discount = appliedPromo?.discountAmount || 0;
-  const totalPrice = subtotal - discount;
-
   const selectVariant = (key: string, value: string) => {
     setSelectedVariants(current => ({ ...current, [key]: value }));
     if (key === 'color') setSelectedColor(value);
@@ -291,12 +250,6 @@ function ProductDetailsPage() {
       window.removeEventListener("focus", refreshReviewsOnFocus);
     };
   }, [productId]);
-
-  useEffect(() => {
-    if (token) {
-      fetchUserDetails();
-    }
-  }, [token]);
 
   // Update images when product loads or color changes
   useEffect(() => {
@@ -362,33 +315,6 @@ function ProductDetailsPage() {
       setRecommendationStrategy("");
     } finally {
       setLoadingRecommendations(false);
-    }
-  };
-
-  const fetchUserDetails = async () => {
-    try {
-      const response = await axios.get(
-        `${import.meta.env.VITE_BACKEND_URL}/api/v1/user/details`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-      const user = response.data.user;
-      setUserDetails({
-        firstName: user.firstName || "",
-        lastName: user.lastName || "",
-        email: user.email || "",
-        phone: user.phone || "",
-        street: user.street || "",
-        city: user.city || "",
-        state: user.state || "",
-        zipCode: user.zipCode || "",
-        country: user.country || "",
-      });
-    } catch (error) {
-      console.error("Error fetching user details:", error);
     }
   };
 
@@ -486,211 +412,6 @@ function ProductDetailsPage() {
   };
 
   // Promo code validation functions
-  const validatePromoCode = async () => {
-    if (!promoCode.trim()) {
-      toast.error("Please enter a promo code");
-      return;
-    }
-
-    if (isSeller || isAdmin) {
-      toast.error(isSeller ? "Sellers cannot use promo codes" : "Admins cannot use promo codes");
-      return;
-    }
-
-
-    try {
-      setValidatingPromo(true);
-      const response = await axios.post(
-        `${import.meta.env.VITE_BACKEND_URL}/api/v1/promo/validate`,
-        {
-          code: promoCode,
-          purchaseAmount: subtotal
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      const { success, discountAmount, promoCode: promoDetails } = response.data;
-      if (success) {
-        setAppliedPromo({
-          code: promoCode,
-          discountAmount: discountAmount,
-          discountPercent: promoDetails.discountValue,
-        });
-        toast.success(`Promo code applied! रु ${discountAmount} off`, {
-          duration: 3000,
-        });
-      }
-    } catch (error: any) {
-      console.error("Error validating promo code:", error);
-      console.error("Error response:", error.response?.data);
-      const errorMessage = error.response?.data?.message || "Invalid promo code";
-      toast.error(errorMessage);
-    } finally {
-      setValidatingPromo(false);
-    }
-  };
-
-  const removePromoCode = () => {
-    setAppliedPromo(null);
-    setPromoCode("");
-    setValidatingPromo(false); // Reset validation state
-    toast.info("Promo code removed");
-  };
-
-  const handleCheckout = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!token) {
-      toast.error("Please login to proceed with checkout");
-      navigate("/auth");
-      return;
-    }
-
-    if (!userDetails.firstName || !userDetails.lastName || !userDetails.email) {
-      toast.error("Please fill in all required fields");
-      return;
-    }
-
-    if (!userDetails.street || !userDetails.city || !userDetails.state || !userDetails.zipCode || !userDetails.country) {
-      toast.error("Please fill in complete delivery address");
-      return;
-    }
-
-    if (!deliveryDate) {
-      toast.error("Please select a preferred delivery date");
-      return;
-    }
-
-    // Validate that required variants are selected
-    const missingForOrder = missingOptions();
-    if (missingForOrder.length > 0) {
-      toast.error(`Please select: ${missingForOrder.join(", ")}`);
-      return;
-    }
-
-    // Validate quantity doesn't exceed available stock for selected options
-    const available = getAvailableStock();
-    if (quantity > available) {
-      toast.error(`Only ${available} items available for selected options`);
-      return;
-    }
-
-    const formattedData = {
-      firstName: userDetails.firstName,
-      lastName: userDetails.lastName,
-      email: userDetails.email,
-      phone: userDetails.phone,
-      product: product?._id,
-      quantity,
-      deliveryDate: new Date(deliveryDate).toISOString(),
-      // Send variants and also color top-level for compatibility
-      variants: selectedVariants,
-      color: selectedVariants.color,
-      deliveryAddress: {
-        street: userDetails.street,
-        city: userDetails.city,
-        state: userDetails.state,
-        zipCode: userDetails.zipCode,
-        country: userDetails.country,
-      },
-      // Include promo code if applied
-      ...(appliedPromo && { promoCode: { code: appliedPromo.code, discountAmount: appliedPromo.discountAmount } }),
-    };
-
-    try {
-      setSubmitting(true);
-
-      const response = await axios.post(
-        `${import.meta.env.VITE_BACKEND_URL}/api/v1/order/createOrder`,
-        formattedData,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (response.status === 201) {
-        const newOrderId = response.data.order._id;
-
-        toast.success("Order created! Redirecting to payment...");
-
-        // Warning for localhost usage
-        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-          console.warn("⚠️ WARNING: Using localhost for ESewa payment. ESewa may not be able to redirect back properly. Consider using ngrok or a public URL for testing.");
-        }
-
-        setTimeout(async () => {
-          try {
-            // Ask the backend to sign the eSewa checkout fields — it recomputes the amount
-            // from the order in the DB and signs with a secret that never reaches the browser
-            // (never compute this signature client-side — see CartCheckout.tsx for the same pattern).
-            const backendBase = getBackendOrigin();
-            const checkoutRes = await axios.post(
-              `${import.meta.env.VITE_BACKEND_URL}/api/v1/payment/checkout`,
-              { orderId: newOrderId },
-              {
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                  "Idempotency-Key": uuidv4(),
-                },
-              }
-            );
-            const {
-              transactionUuid, signature, signedFieldNames, productCode,
-              amount, taxAmount, totalAmount, formActionUrl,
-            } = checkoutRes.data;
-
-            const form = document.createElement("form");
-            form.action = formActionUrl;
-            form.method = "POST";
-
-            const inputs = {
-              amount: amount.toString(),
-              tax_amount: taxAmount.toString(),
-              product_service_charge: "0",
-              product_delivery_charge: "0",
-              total_amount: totalAmount.toString(),
-              transaction_uuid: transactionUuid,
-              product_code: productCode,
-              success_url: `${backendBase}/api/v1/payment/esewa/success/${newOrderId}`,
-              failure_url: `${backendBase}/api/v1/payment/esewa/failure/${newOrderId}`,
-              signed_field_names: signedFieldNames,
-              signature,
-            };
-
-            Object.entries(inputs).forEach(([key, value]) => {
-              const input = document.createElement("input");
-              input.type = "hidden";
-              input.name = key;
-              input.value = value;
-              form.appendChild(input);
-            });
-
-            document.body.appendChild(form);
-            form.submit();
-            document.body.removeChild(form);
-          } catch (checkoutError: any) {
-            console.error("Checkout error:", checkoutError);
-            toast.error(checkoutError.response?.data?.message || "Failed to start payment");
-            setSubmitting(false);
-          }
-        }, 500);
-      }
-    } catch (error: any) {
-      console.error("Error creating order:", error);
-      const errorMessage =
-        error.response?.data?.message || error.message || "Failed to create order";
-      toast.error(errorMessage);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   const handleColorSelect = (color: string) => {
     setSelectedColor(color);
     setSelectedVariants({
@@ -717,16 +438,39 @@ function ProductDetailsPage() {
     setQuantity(1);
   };
 
-  const handleBuyNowClick = () => {
-    setShowCheckout(true);
-    setTimeout(() => {
-      if (checkoutFormRef.current) {
-        const rect = checkoutFormRef.current.getBoundingClientRect();
-        const offset = 120; // account for nav/header height
-        const targetY = window.pageYOffset + rect.top - offset;
-        window.scrollTo({ top: targetY, behavior: 'smooth' });
-      }
-    }, 100);
+  const handleBuyNowClick = async () => {
+    if (!token) {
+      toast.error("Please login to continue to checkout");
+      navigate("/auth");
+      return;
+    }
+    if (isSeller || isAdmin) {
+      toast.error("Customer checkout is only available from a customer account");
+      return;
+    }
+    const missing = missingOptions();
+    if (missing.length > 0) {
+      toast.error(`Please select: ${missing.join(", ")}`);
+      return;
+    }
+    if (quantity > getAvailableStock()) {
+      toast.error(`Only ${getAvailableStock()} items are available for this configuration`);
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      await axios.post(
+        `${import.meta.env.VITE_BACKEND_URL}/api/v1/cart/add`,
+        { productId: product?._id, quantity, variants: selectedVariants },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      navigate("/cart-checkout");
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || "Could not prepare checkout");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (loading) {
@@ -1226,7 +970,7 @@ function ProductDetailsPage() {
                               Top Pick
                             </div>
                           )}
-                          <button onClick={() => navigate(`/product-details-page?productId=${item._id}`)} className="text-left flex-1">
+                          <button onClick={() => navigate(productPath(item._id))} className="text-left flex-1">
                             <div className="h-36 overflow-hidden bg-paper">
                               <img
                                 src={getImageUrl(item.images?.[0])}
@@ -1285,161 +1029,6 @@ function ProductDetailsPage() {
                   <p className="text-sm text-center py-8 text-ink-muted">No recommendations available yet.</p>
                 )}
               </div>
-
-              {/* ── Checkout Form ────────────────────── */}
-              {showCheckout && (
-                <div ref={checkoutFormRef} className="scroll-mt-6 rounded-[var(--radius-surface)] border border-hairline bg-paper-raised p-4 shadow-sm sm:p-7">
-                  <h2 className="text-xl font-bold mb-6 text-ink">Checkout</h2>
-                  <form onSubmit={handleCheckout} className="space-y-5">
-
-                    {/* Personal Info */}
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-widest mb-3 text-ink-muted">Personal Information</p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {[
-                          { label: 'First Name *', field: 'firstName', type: 'text', required: true },
-                          { label: 'Last Name *', field: 'lastName', type: 'text', required: true },
-                          { label: 'Email *', field: 'email', type: 'email', required: true },
-                          { label: 'Phone', field: 'phone', type: 'tel', required: false },
-                        ].map(({ label, field, type, required }) => (
-                          <div key={field}>
-                            <label className="block text-xs font-semibold mb-1.5 text-ink">{label}</label>
-                            <input
-                              type={type}
-                              value={(userDetails as any)[field]}
-                              onChange={(e) => setUserDetails({ ...userDetails, [field]: e.target.value })}
-                              required={required}
-                              className="w-full px-4 py-2.5 text-sm border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition"
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Delivery Address */}
-                    <div className="border-t border-hairline pt-5">
-                      <p className="text-xs font-semibold uppercase tracking-widest mb-3 text-ink-muted">Delivery Address</p>
-                      <div className="space-y-3">
-                        <div>
-                          <label className="block text-xs font-semibold mb-1.5 text-ink">Street Address *</label>
-                          <input type="text" placeholder="123 Main St" value={userDetails.street} onChange={e => setUserDetails({ ...userDetails, street: e.target.value })} required className="w-full px-4 py-2.5 text-sm border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition" />
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-xs font-semibold mb-1.5 text-ink">City *</label>
-                            <input type="text" placeholder="Pokhara" value={userDetails.city} onChange={e => setUserDetails({ ...userDetails, city: e.target.value })} required className="w-full px-4 py-2.5 text-sm border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition" />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold mb-1.5 text-ink">State *</label>
-                            <input type="text" placeholder="Gandaki" value={userDetails.state} onChange={e => setUserDetails({ ...userDetails, state: e.target.value })} required className="w-full px-4 py-2.5 text-sm border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition" />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold mb-1.5 text-ink">ZIP Code *</label>
-                            <input type="text" placeholder="33700" value={userDetails.zipCode} onChange={e => setUserDetails({ ...userDetails, zipCode: e.target.value })} required className="w-full px-4 py-2.5 text-sm border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition" />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold mb-1.5 text-ink">Country *</label>
-                            <input type="text" placeholder="Nepal" value={userDetails.country} onChange={e => setUserDetails({ ...userDetails, country: e.target.value })} required className="w-full px-4 py-2.5 text-sm border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition" />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Delivery Date */}
-                    <div className="border-t border-hairline pt-5">
-                      <label className="block text-xs font-semibold mb-1.5 text-ink">Preferred Delivery Date *</label>
-                      <input
-                        type="date"
-                        value={deliveryDate}
-                        onChange={e => setDeliveryDate(e.target.value)}
-                        min={new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]}
-                        required
-                        className="w-full px-4 py-2.5 text-sm border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition"
-                      />
-                      <p className="text-xs mt-1 text-ink-muted">Earliest available: 2 days from today</p>
-                    </div>
-
-                    {/* Order Summary */}
-                    <div className="p-4 bg-paper border border-hairline">
-                      <p className="text-xs font-semibold uppercase tracking-widest mb-3 text-ink-muted">Order Summary</p>
-
-                      {/* Promo Code Section - Only show for regular users */}
-                      {!isSeller && !isAdmin && (
-                        <div className="mb-4 p-3 bg-paper-raised border border-hairline">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Tag className="w-4 h-4 text-brass" />
-                            <span className="text-xs font-semibold text-ink">Promo Code</span>
-                          </div>
-                          {!appliedPromo ? (
-                            <div className="flex gap-2">
-                              <input
-                                type="text"
-                                placeholder="Enter code"
-                                value={promoCode}
-                                onChange={e => setPromoCode(e.target.value.toUpperCase())}
-                                disabled={validatingPromo}
-                                className="flex-1 text-sm px-3 py-2 border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition"
-                                onKeyPress={e => e.key === 'Enter' && !validatingPromo && validatePromoCode()}
-                              />
-                              <button
-                                type="button"
-                                onClick={validatePromoCode}
-                                disabled={validatingPromo}
-                                className="px-4 py-2 text-sm font-semibold bg-brass text-white hover:bg-brass-dark active:scale-[0.97] transition disabled:bg-hairline disabled:text-ink-muted/50 disabled:cursor-not-allowed"
-                              >
-                                {validatingPromo ? "..." : "Apply"}
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="flex items-center justify-between p-2 border border-moss bg-moss/10">
-                              <div>
-                                <p className="text-sm font-bold text-moss font-mono tabular-nums">{appliedPromo.code}</p>
-                                <p className="text-xs text-moss">{appliedPromo.discountPercent}% discount applied</p>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={removePromoCode}
-                                className="p-1.5 text-seal hover:bg-seal/10 transition"
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      <div className="space-y-2">
-                        <div className="flex justify-between text-sm text-ink">
-                          <span>Subtotal ({quantity} item{quantity > 1 ? 's' : ''})</span>
-                          <span className="font-mono tabular-nums">रु {subtotal.toLocaleString()}</span>
-                        </div>
-                        {appliedPromo && (
-                          <div className="flex justify-between text-sm text-moss">
-                            <span>Discount ({appliedPromo.discountPercent}%)</span>
-                            <span className="font-mono tabular-nums">- रु {appliedPromo.discountAmount.toLocaleString()}</span>
-                          </div>
-                        )}
-                        <div className="flex justify-between text-sm text-ink">
-                          <span>Shipping</span>
-                          <span className="text-moss font-semibold">Free</span>
-                        </div>
-                        <div className="flex justify-between font-bold text-base pt-2 border-t border-hairline text-ink">
-                          <span>Total</span>
-                          <span className="font-mono tabular-nums">रु {totalPrice.toLocaleString()}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <button
-                      type="submit"
-                      disabled={submitting}
-                      className="w-full py-4 font-bold text-base bg-brass text-white hover:bg-brass-dark active:scale-[0.98] transition disabled:bg-hairline disabled:text-ink-muted/50 disabled:cursor-not-allowed"
-                    >
-                      {submitting ? 'Processing…' : 'Proceed to Payment'}
-                    </button>
-                  </form>
-                </div>
-              )}
 
               {/* ── Reviews ──────────────────────────── */}
               <div className="rounded-[var(--radius-surface)] bg-paper-raised border border-hairline p-4 sm:p-7">

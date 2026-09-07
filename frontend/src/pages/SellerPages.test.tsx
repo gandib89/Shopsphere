@@ -88,10 +88,13 @@ describe('seller products', () => {
     vi.mocked(authFetch).mockClear().mockResolvedValue(response({}));
     await user.click(screen.getByRole('checkbox', { name: 'Select MacBook mac' }));
     await user.click(screen.getByRole('button', { name: 'Delete selected' }));
+    expect(vi.mocked(authFetch)).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: 'Delete product?' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Delete permanently' }));
     expect(vi.mocked(authFetch)).toHaveBeenCalledTimes(1);
     expect(String(vi.mocked(authFetch).mock.calls[0][0])).toContain('/product/seller/delete/mac');
     expect(screen.queryByText('MacBook mac')).not.toBeInTheDocument();
-    expect(screen.getByText('MacBook air')).toBeVisible();
+    expect(screen.getAllByText('MacBook air')[0]).toBeVisible();
   });
 });
 

@@ -12,6 +12,7 @@ import AdminPanel from './AdminPanel';
 import AdminOrders from './AdminOrders';
 import AllProducts from './AllProducts';
 import AdminUserManagement from './AdminUserManagement';
+import PromoManagement from './PromoManagement';
 
 vi.mock('../lib/session', () => ({ authFetch: vi.fn(), logout: vi.fn() }));
 vi.mock('../components/NotificationBell', () => ({ default: () => <button>Notifications</button> }));
@@ -45,14 +46,14 @@ describe('admin order management', () => {
   it('deep-links filters, searches, previews, and clears filters', async () => {
     loadOrders([order('pending'),order('delivered','Delivered')]);
     const user=userEvent.setup(); renderRoute(<AdminOrders/>,'/admin/orders?status=active');
-    expect(await screen.findByText('MacBook pending')).toBeVisible();
+    expect((await screen.findAllByText('MacBook pending'))[0]).toBeVisible();
     expect(screen.queryByText('MacBook delivered')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button',{name:'Preview order pending'}));
     expect(screen.getByRole('link',{name:'View full order'})).toHaveAttribute('href','/admin/orders/pending');
     await user.type(screen.getByRole('searchbox',{name:'Search orders'}),'missing');
-    expect(screen.getByText('No orders match these filters.')).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'No matching orders' })).toBeVisible();
     await user.click(screen.getByRole('button',{name:'Clear filters'}));
-    expect(screen.getByText('MacBook delivered')).toBeVisible();
+    expect(screen.getAllByText('MacBook delivered')[0]).toBeVisible();
   });
   it('paginates and exposes screen options', async () => {
     loadOrders(Array.from({length:21},(_,i)=>order('order'+i)));
@@ -72,13 +73,13 @@ describe('admin order management', () => {
     await user.click(screen.getByRole('button',{name:'Cancel order'}));
     expect(window.confirm).toHaveBeenCalled();
     expect(authFetch).toHaveBeenCalledTimes(1);
-    expect(screen.getByText('Pending')).toBeVisible();
+    expect(screen.getAllByText('Pending')[0]).toBeVisible();
   });
   it.each([
     ['Pending','Cancel order','/cancel/','Cancelled',undefined],
     ['Return Requested','Approve return','/admin/return/','Return Approved','approve'],
     ['Return Requested','Reject return','/admin/return/','Return Rejected','reject'],
-    ['Return Approved','Release refund · NPR 100','/admin/refund/','Refund Released',undefined],
+    ['Return Approved','Complete sandbox refund · NPR 100','/admin/refund/','Refund Released',undefined],
   ])('preserves the %s action endpoint', async (status,label,path,next,action) => {
     vi.mocked(authFetch).mockResolvedValueOnce(response([order('one',status)])).mockResolvedValueOnce(response({success:true}));
     vi.mocked(window.confirm).mockReturnValue(true);
@@ -99,7 +100,7 @@ describe('admin order management', () => {
     expect(authFetch).toHaveBeenCalledTimes(2);
     await act(async()=>finish(response({message:'Order changed; refresh first'},409)));
     expect(toast.error).toHaveBeenCalledWith('Order changed; refresh first');
-    expect(screen.getByText('Pending')).toBeVisible();
+    expect(screen.getAllByText('Pending')[0]).toBeVisible();
   });
 });
 
@@ -118,7 +119,7 @@ describe('admin catalogue', () => {
     await user.selectOptions(screen.getByLabelText('Filter product category'),'Laptops');
     expect(screen.queryByRole('link',{name:'iPhone'})).not.toBeInTheDocument();
     await user.type(screen.getByRole('searchbox',{name:'Search products'}),'missing');
-    expect(screen.getByText('No products match these filters.')).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'No matching products' })).toBeVisible();
   });
 });
 
@@ -133,11 +134,29 @@ describe('admin customers', () => {
       ] }));
     renderRoute(<AdminUserManagement/>,'/admin/users?role=user');
     expect(await screen.findByRole('heading',{name:'Customers'})).toBeVisible();
-    expect(screen.getByText('Customer One')).toBeVisible();
+    expect(screen.getAllByText('Customer One')[0]).toBeVisible();
     expect(screen.queryByText('Seller Two')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Add seller' })).toHaveClass('admin-button');
     expect(screen.getByRole('button', { name: 'Add customer' })).toHaveClass('admin-button');
     expect(screen.queryByRole('button', { name: 'Refresh' })).not.toBeInTheDocument();
+  });
+});
+
+describe('admin promotions', () => {
+  it('shows field-level feedback before creating an invalid code', async () => {
+    localStorage.setItem('token', 'test-token');
+    localStorage.setItem('isAdmin', 'true');
+    vi.mocked(axios.get).mockResolvedValue({ data: { promoCodes: [] } });
+    const user = userEvent.setup();
+    renderRoute(<PromoManagement />, '/admin/promo-codes');
+
+    await screen.findByRole('heading', { name: 'Promo Code Management' });
+    await user.click(screen.getByRole('button', { name: 'Create New Promo Code' }));
+    await user.click(screen.getByRole('button', { name: 'Create Promo Code', exact: true }));
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Review the highlighted fields');
+    expect(screen.getByLabelText('Code *')).toHaveAccessibleDescription('Use 3–20 letters, numbers, hyphens, or underscores.');
+    expect(axios.post).not.toHaveBeenCalled();
   });
 });
 

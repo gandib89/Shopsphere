@@ -515,7 +515,7 @@ const MyOrders = () => {
                       )}
                       {order.status === "Refund Released" && (
                         <div className="flex-1 px-4 py-2 text-center border border-moss text-moss font-bold flex items-center justify-center gap-2">
-                          <Banknote className="w-4 h-4" /> Refund Released – <span className="font-mono tabular-nums">Rs.{order.totalPrice}</span>
+                          <Banknote className="w-4 h-4" /> {import.meta.env.VITE_DEMO_MODE !== 'false' ? 'Sandbox refund recorded' : 'Refund released'} – <span className="font-mono tabular-nums">Rs.{order.totalPrice}</span>{import.meta.env.VITE_DEMO_MODE !== 'false' && ' · no real money moved'}
                         </div>
                       )}
                     </div>

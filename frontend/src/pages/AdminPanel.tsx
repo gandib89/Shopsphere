@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, ClipboardList, RotateCcw, Store, Tag, Users, Package } from 'lucide-react';
-import { AdminHeading, OrderStatus } from '../components/admin/AdminUi';
+import { AdminEmptyState, AdminHeading, OrderStatus } from '../components/admin/AdminUi';
 import { activeOrder, adminDate, adminMoney, getAdminCollection, type AdminOrder } from '../lib/adminData';
 
 type Seller = { _id: string; shopName?: string };
@@ -61,7 +61,7 @@ export default function AdminPanel() {
       </section>
     </div>
     <section className="admin-panel" aria-labelledby="recent-title"><div className="admin-panel-head"><h2 id="recent-title">Recent orders</h2><Link className="admin-text-link" to="/admin/orders">View all orders →</Link></div>
-      {loading ? <p className="admin-empty" role="status">Loading orders…</p> : orders === null ? <p className="admin-empty">Orders are unavailable. Reload the page to try again.</p> : recent.length === 0 ? <p className="admin-empty">New customer orders will appear here.</p> :
+      {loading ? <p className="admin-empty" role="status">Loading orders…</p> : orders === null ? <p className="admin-empty">Orders are unavailable. Reload the page to try again.</p> : recent.length === 0 ? <AdminEmptyState icon={<ClipboardList />} title="No customer orders yet" description="Orders will appear here when customers complete checkout." action={<Link className="admin-button admin-button--primary" to="/all-products">Review catalogue</Link>} /> :
         <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th scope="col">Order / customer</th><th scope="col">Date</th><th scope="col">Status</th><th scope="col">Total</th></tr></thead><tbody>{recent.map(order => <tr key={order._id}><td><Link className="admin-text-link" to={'/admin/orders/' + order._id}>#{order._id.slice(-8)} · {order.firstName} {order.lastName}</Link><small>{order.product?.name || 'Product'}</small></td><td>{adminDate(order.createdAt)}</td><td><OrderStatus status={order.status} /></td><td className="admin-numeric">{adminMoney(order.totalPrice)}</td></tr>)}</tbody></table></div>}
     </section>
   </main>;

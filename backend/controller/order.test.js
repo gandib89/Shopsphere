@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { adjustStock, updateFirstRevenueByOrder, resolveServerPromoDiscount, redeemServerPromoDiscount, canTransitionOrderStatus, effectiveProductPrice } from "./order.js";
+import { adjustStock, cancelOrderCore, updateFirstRevenueByOrder, resolveServerPromoDiscount, redeemServerPromoDiscount, canTransitionOrderStatus, effectiveProductPrice } from "./order.js";
 
 test("order status transitions only move forward through fulfilment", () => {
   assert.equal(canTransitionOrderStatus("Confirmed", "Processing"), true);
@@ -99,6 +99,78 @@ test("adjustStock returns null when the product no longer exists", async () => {
   const client = { product: { findUnique: async () => null } };
   const result = await adjustStock("missing", 1, null, null, -1, client);
   assert.equal(result, null);
+});
+
+const createCancellationClient = (initialStatus) => {
+  const state = {
+    order: {
+      id: "o1", userId: "u1", productId: "p1", quantity: 2,
+      status: initialStatus, variantColor: null, variantStorage: null,
+      product: { id: "p1", quantity: initialStatus === "Confirmed" ? 8 : 10, colorVariants: [], storageVariants: [] },
+    },
+  };
+  const client = {
+    state,
+    order: {
+      findUnique: async () => ({ ...state.order, product: { ...state.order.product } }),
+      updateMany: async ({ where, data }) => {
+        if (state.order.status !== where.status || (where.userId && state.order.userId !== where.userId)) return { count: 0 };
+        Object.assign(state.order, data);
+        return { count: 1 };
+      },
+      update: async ({ data }) => {
+        Object.assign(state.order, data);
+        return { ...state.order, product: { ...state.order.product } };
+      },
+    },
+    product: {
+      findUnique: async () => ({ ...state.order.product, colorVariants: [], storageVariants: [] }),
+      update: async ({ data }) => {
+        state.order.product.quantity += data.quantity.increment;
+        return { ...state.order.product };
+      },
+    },
+    productColorVariant: { updateMany: async () => ({ count: 0 }) },
+    productStorageVariant: { updateMany: async () => ({ count: 0 }) },
+  };
+  client.$transaction = async (fn) => fn(client);
+  return client;
+};
+
+test("cancelling an unpaid Pending order does not restore stock", async () => {
+  const client = createCancellationClient("Pending");
+  const result = await cancelOrderCore("o1", "u1", client);
+  assert.equal(result.order.status, "Cancelled");
+  assert.equal(result.stockRestored, false);
+  assert.equal(client.state.order.product.quantity, 10);
+});
+
+test("cancelling a Confirmed order restores stock exactly once", async () => {
+  const client = createCancellationClient("Confirmed");
+  const first = await cancelOrderCore("o1", "u1", client);
+  assert.equal(first.stockRestored, true);
+  assert.equal(first.refundRequired, true);
+  assert.equal(client.state.order.product.quantity, 10);
+  await assert.rejects(cancelOrderCore("o1", "u1", client), (error) => error.statusCode === 409);
+  assert.equal(client.state.order.product.quantity, 10);
+});
+
+test("concurrent cancellations can claim and restore a Confirmed order only once", async () => {
+  const client = createCancellationClient("Confirmed");
+  const results = await Promise.allSettled([
+    cancelOrderCore("o1", "u1", client),
+    cancelOrderCore("o1", "u1", client),
+  ]);
+  assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
+  assert.equal(results.filter((result) => result.status === "rejected" && result.reason.statusCode === 409).length, 1);
+  assert.equal(client.state.order.product.quantity, 10);
+});
+
+test("an admin can cancel a customer's order through the shared cancellation workflow", async () => {
+  const client = createCancellationClient("Pending");
+  const result = await cancelOrderCore("o1", { id: "admin1", role: "admin" }, client);
+  assert.equal(result.order.status, "Cancelled");
+  assert.equal(result.stockRestored, false);
 });
 
 const createFakeRevenuePrisma = (rows) => ({

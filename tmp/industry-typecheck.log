@@ -1,0 +1,6 @@
+src/pages/ProductDetailsPage.tsx(226,50): error TS2322: Type '{ src: string; color: string; placeholder: false; }[] | { src: string; color: string; placeholder: true; }[]' is not assignable to type '{ src: string; color: string; placeholder: false; } | readonly { src: string; color: string; placeholder: false; }[]'.
+  Type '{ src: string; color: string; placeholder: true; }[]' is not assignable to type '{ src: string; color: string; placeholder: false; } | readonly { src: string; color: string; placeholder: false; }[]'.
+    Type '{ src: string; color: string; placeholder: true; }[]' is not assignable to type 'readonly { src: string; color: string; placeholder: false; }[]'.
+      Type '{ src: string; color: string; placeholder: true; }' is not assignable to type '{ src: string; color: string; placeholder: false; }'.
+        Types of property 'placeholder' are incompatible.
+          Type 'true' is not assignable to type 'false'.

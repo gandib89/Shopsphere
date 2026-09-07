@@ -5,6 +5,8 @@ import { generateId } from "../utils/generateId.js";
 import { sendEmail } from "../utils/emailService.js";
 import { parsePagination } from "../utils/pagination.js";
 import crypto from "crypto";
+import { getRefundProvider } from "../services/refundProvider.js";
+import { processRefundCore } from "../services/refundService.js";
 
 const ORDER_STATUS_TRANSITIONS = Object.freeze({
   Pending: ["Cancelled"],
@@ -175,6 +177,38 @@ export const adjustStock = async (productId, quantity, selectedColor, selectedSt
   return client.product.findUnique({ where: { id: productId } });
 };
 
+// Atomically claims the current cancellable state before restoring inventory. Pending orders
+// have not deducted stock yet; only Confirmed orders need a compensating increment.
+export const cancelOrderCore = async (orderId, actor, client = prisma) => client.$transaction(async (tx) => {
+  const actorId = typeof actor === "string" ? actor : actor.id;
+  const isAdmin = typeof actor === "object" && actor.role === "admin";
+  const order = await tx.order.findUnique({ where: { id: orderId }, include: { product: true } });
+  if (!order) throw Object.assign(new Error("Order not found"), { statusCode: 404 });
+  if (!isAdmin && order.userId !== actorId) throw Object.assign(new Error("Not authorized to cancel this order"), { statusCode: 403 });
+  if (!["Pending", "Confirmed"].includes(order.status)) {
+    throw Object.assign(new Error(`Order cannot be cancelled. Current status: ${order.status}`), { statusCode: 409 });
+  }
+
+  const claim = await tx.order.updateMany({
+    where: { id: orderId, ...(isAdmin ? {} : { userId: actorId }), status: order.status },
+    data: { status: "Cancelled", cancelledAt: new Date() },
+  });
+  if (claim.count === 0) {
+    throw Object.assign(new Error("Order state changed; refresh and try again"), { statusCode: 409 });
+  }
+
+  const stockRestored = order.status === "Confirmed";
+  if (stockRestored) {
+    await adjustStock(order.productId, order.quantity, order.variantColor, order.variantStorage, 1, tx);
+  }
+
+  return {
+    order: await tx.order.findUnique({ where: { id: orderId }, include: { product: true } }),
+    stockRestored,
+    refundRequired: stockRestored,
+  };
+});
+
 // Mirrors Mongoose's Revenue.findOneAndUpdate({ orderId }, data) — updates only the first
 // matching revenue row (there's no unique constraint on orderId in the new schema either).
 export const updateFirstRevenueByOrder = async (orderId, data, client = prisma) => {
@@ -265,6 +299,8 @@ export const getAllOrder = async (req, res) => {
               seller: { select: { firstName: true, lastName: true, shopName: true, email: true } },
             },
           },
+          payments: { select: { id: true, status: true }, orderBy: { createdAt: "desc" } },
+          refunds: { select: { id: true, status: true, mode: true }, orderBy: { createdAt: "desc" } },
         },
         orderBy: { createdAt: "desc" },
         ...prismaArgs,
@@ -332,6 +368,11 @@ export const getOrderDetails = async (req, res) => {
               select: { firstName: true, lastName: true, email: true, shopName: true, shopDescription: true, phone: true },
             },
           },
+        },
+        payments: {
+          select: { id: true, status: true },
+          orderBy: { createdAt: "desc" },
+          take: 1,
         },
       },
     });
@@ -484,8 +525,8 @@ export const createOrder = async (req, res) => {
     // Stock will be deducted AFTER payment confirmation, not immediately
     // This prevents stock reduction if payment is cancelled
 
-    // Email will be sent after payment success from the Success page
-    // This ensures email is sent only after payment confirmation
+    // The verified eSewa callback confirms the order and sends the email.
+    // Browser result pages only read the persisted payment and order state.
 
     // Create revenue record automatically
     try {
@@ -1607,35 +1648,7 @@ export const confirmOrderAndDeductStock = async (req, res) => {
 export const cancelOrder = async (req, res) => {
   try {
     const { orderId } = req.params;
-    const userId = req.user.id;
-
-    let order = await prisma.order.findUnique({ where: { id: orderId }, include: { product: true } });
-    if (!order) return res.status(404).json({ message: "Order not found" });
-
-    // Only the order owner can cancel
-    if (order.userId !== userId) {
-      return res.status(403).json({ message: "Not authorized to cancel this order" });
-    }
-
-    const cancellableStatuses = ["Pending", "Confirmed"];
-    if (!cancellableStatuses.includes(order.status)) {
-      return res.status(400).json({
-        message: `Order cannot be cancelled. Current status: ${order.status}. Only Pending or Confirmed orders can be cancelled.`,
-      });
-    }
-
-    // Restore stock and flip status atomically — a failure partway through must not
-    // leave stock restored but the order still showing as Confirmed/Pending, or vice versa.
-    const { quantity } = order;
-    order = await prisma.$transaction(async (tx) => {
-      await adjustStock(order.product.id, quantity, order.variantColor, order.variantStorage, 1, tx);
-      return tx.order.update({
-        where: { id: orderId },
-        data: { status: "Cancelled", cancelledAt: new Date() },
-        include: { product: true },
-      });
-    });
-    console.log(`✅ Stock restored: ${quantity} units for order ${orderId}`);
+    const { order, stockRestored, refundRequired } = await cancelOrderCore(orderId, req.user);
 
     // Notify customer
     const cancelHtml = shopSphereEmail('Order Cancelled', `
@@ -1645,14 +1658,19 @@ export const cancelOrder = async (req, res) => {
         emailRow('Order ID', order.id.slice(-8).toUpperCase()) +
         emailRow('Product', order.product?.name || 'Product')
       )}
-      <p style="margin-top:16px;">If you paid online, a refund will be processed within <strong>5–7 business days</strong>.</p>
+      <p style="margin-top:16px;">${refundRequired
+        ? 'This paid sandbox order is now awaiting an admin-recorded sandbox refund. No real money moves in demo mode.'
+        : 'This order was cancelled before payment, so no refund is required.'}</p>
     `, { accentColor: '#ef4444', icon: '❌' });
     sendEmail(order.email, "Order Cancelled – ShopSphere", "Your order has been cancelled.", cancelHtml);
 
-    res.status(200).json({ message: "Order cancelled successfully", order: withNestedOrderShape(order) });
+    res.status(200).json({
+      message: refundRequired ? "Order cancelled; sandbox refund is pending" : "Unpaid order cancelled",
+      order: withNestedOrderShape(order), stockRestored, refundRequired,
+    });
   } catch (error) {
     console.error("Error cancelling order:", error);
-    res.status(500).json({ message: "Server error while cancelling order" });
+    res.status(error.statusCode || 500).json({ message: error.message || "Server error while cancelling order" });
   }
 };
 
@@ -1862,45 +1880,41 @@ export const processReturn = async (req, res) => {
 export const releaseRefund = async (req, res) => {
   try {
     const { orderId } = req.params;
+    const mode = process.env.PAYMENT_MODE || (process.env.NODE_ENV === "production" ? "unconfigured" : "sandbox");
+    const provider = getRefundProvider(mode);
+    const result = await processRefundCore(
+      { orderId, idempotencyKey: req.headers["idempotency-key"] || `full-refund:${orderId}` },
+      { provider, mode },
+    );
+    const updatedOrder = result.order;
 
-    const order = await prisma.order.findUnique({ where: { id: orderId }, include: { product: true } });
-    if (!order) return res.status(404).json({ message: "Order not found" });
-
-    if (order.status !== "Return Approved") {
-      return res.status(400).json({
-        message: `Refund can only be released for Return Approved orders. Current status: ${order.status}`,
+    if (result.refund.status !== "Succeeded") {
+      return res.status(502).json({
+        message: result.refund.failureReason || "Sandbox refund failed and can be retried",
+        refund: result.refund,
+        order: withNestedOrderShape(updatedOrder),
       });
     }
 
-    const updatedOrder = await prisma.order.update({
-      where: { id: orderId },
-      data: { status: "Refund Released", refundReleasedAt: new Date() },
-      include: { product: true },
-    });
-
-    // Mark revenue record as Refunded so it's excluded from all revenue totals
-    try {
-      await updateFirstRevenueByOrder(order.id, { status: "Refunded", totalSalePrice: 0, adminCommission: 0, sellerRevenue: 0 });
-      console.log(`✅ Revenue record marked as Refunded for order ${order.id}`);
-    } catch (revErr) {
-      console.error("Revenue update error (non-fatal):", revErr);
+    if (result.replayed) {
+      return res.status(200).json({ message: "Sandbox refund was already completed", refund: result.refund, order: withNestedOrderShape(updatedOrder) });
     }
 
     // Notify customer
-    const customerHtml = shopSphereEmail('Refund Released!', `
+    const customerHtml = shopSphereEmail('Sandbox Refund Completed', `
       <p>Hi <strong>${updatedOrder.firstName}</strong>,</p>
-      <p>Great news! Your refund for <strong>${updatedOrder.product?.name}</strong> has been released.</p>
+      <p>The simulated refund for <strong>${updatedOrder.product?.name}</strong> completed successfully.</p>
       ${emailTable(
         emailRow('Order ID', updatedOrder.id.slice(-8).toUpperCase()) +
         emailRow('Product', updatedOrder.product?.name) +
         emailRow('Refund Amount', 'Rs. ' + updatedOrder.totalPrice, true)
       )}
       <div style="background:#ecfdf5;border-left:4px solid #10b981;padding:16px 20px;border-radius:0 8px 8px 0;margin:16px 0;">
-        <p style="margin:0;color:#065f46;">The refund of <strong>Rs. ${updatedOrder.totalPrice}</strong> will be credited to your original payment method within <strong>5–7 business days</strong>.</p>
+        <p style="margin:0;color:#065f46;">Demo mode only: this records and tests the refund workflow. No real money was transferred.</p>
       </div>
       <p>If you have any questions, please contact our support team.</p>
     `, { accentColor: '#10b981', icon: '💰' });
-    sendEmail(updatedOrder.email, "Refund Released – ShopSphere", `Your refund of Rs. ${updatedOrder.totalPrice} has been released.`, customerHtml);
+    sendEmail(updatedOrder.email, "Sandbox Refund Completed – ShopSphere", `A sandbox refund of Rs. ${updatedOrder.totalPrice} was recorded. No real money moved.`, customerHtml);
 
     // Notify seller
     try {
@@ -1908,22 +1922,22 @@ export const releaseRefund = async (req, res) => {
         ? await prisma.user.findUnique({ where: { id: updatedOrder.product.sellerId } })
         : null;
       if (seller?.email) {
-        const sellerHtml = shopSphereEmail('Refund Released', `
-          <p>The refund for order <strong>${updatedOrder.id.slice(-8).toUpperCase()}</strong> (<strong>${updatedOrder.product?.name}</strong>) has been released to the customer.</p>
+        const sellerHtml = shopSphereEmail('Sandbox Refund Completed', `
+          <p>A simulated refund for order <strong>${updatedOrder.id.slice(-8).toUpperCase()}</strong> (<strong>${updatedOrder.product?.name}</strong>) has been recorded.</p>
           ${emailTable(
             emailRow('Order ID', updatedOrder.id.slice(-8).toUpperCase()) +
             emailRow('Product', updatedOrder.product?.name) +
             emailRow('Refund Amount', 'Rs. ' + updatedOrder.totalPrice, true)
           )}
         `, { accentColor: '#10b981', icon: '💰' });
-        sendEmail(seller.email, `Refund Released: ${updatedOrder.product?.name} – ShopSphere`, "A refund was released for your product.", sellerHtml);
+        sendEmail(seller.email, `Sandbox Refund: ${updatedOrder.product?.name} – ShopSphere`, "A sandbox refund was recorded for your product.", sellerHtml);
       }
     } catch (_) { /* non-fatal */ }
 
-    res.status(200).json({ message: "Refund released successfully", order: withNestedOrderShape(updatedOrder) });
+    res.status(200).json({ message: "Sandbox refund completed; no real money moved", refund: result.refund, order: withNestedOrderShape(updatedOrder) });
   } catch (error) {
     console.error("Error releasing refund:", error);
-    res.status(500).json({ message: "Server error while releasing refund" });
+    res.status(error.statusCode || 500).json({ message: error.message || "Server error while processing refund" });
   }
 };
 

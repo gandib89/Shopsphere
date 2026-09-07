@@ -68,7 +68,7 @@ describe('seller profiles', () => {
     vi.mocked(authFetch).mockImplementation(path => String(path).includes('view=orders')
       ? new Promise(resolve => { finish = resolve; })
       : Promise.resolve(response(detail)));
-    const user=userEvent.setup();showProfile();await screen.findByText('This seller has not listed any products.');
+    const user=userEvent.setup();showProfile();await screen.findByRole('heading', { name: 'No products from this seller yet' });
     await user.click(screen.getByRole('button',{name:'Orders'}));
     // A pending response is aborted when navigating away; it must not restore a profile.
     await user.click(screen.getByRole('link',{name:'All sellers'}));

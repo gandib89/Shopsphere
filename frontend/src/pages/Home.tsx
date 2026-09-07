@@ -9,6 +9,7 @@ import { ErrorState, LoadingState } from '../components/ui/AsyncState';
 import type { CatalogProduct } from '../components/catalog/ProductCard';
 import { clearSession } from '../lib/session';
 import { storefrontCategory, toStorefrontProduct, type LiveProduct } from '../lib/storefrontCatalog';
+import { productPath } from '../lib/routes';
 
 export type product = CatalogProduct;
 const API = `${import.meta.env.VITE_BACKEND_URL || ''}/api/v1`;
@@ -64,7 +65,7 @@ export default function Home() {
 
   const data = useMemo(() => products.map(toStorefrontProduct), [products]);
 
-  const openDetails = (item: StorefrontProduct) => navigate(`/product-details-page?productId=${encodeURIComponent(item.id)}`);
+  const openDetails = (item: StorefrontProduct) => navigate(productPath(item.id));
   const addToCart = async (item: StorefrontProduct): Promise<boolean> => {
     if (!signedIn) { navigate('/auth'); return false; }
     if (!buyer || !item.inStock || pending.current) return false;

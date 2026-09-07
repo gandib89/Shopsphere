@@ -1,396 +1,125 @@
-import { useEffect, useState, useRef } from "react";
-import { Link, useParams } from "react-router-dom";
-import { Download, CheckCircle2 } from "lucide-react";
-import { toast } from "sonner";
-import axios from "axios";
-import jsPDF from "jspdf";
-import NavBar from "../components/NavBar";
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import { AlertTriangle, CheckCircle2, Download, RefreshCw, XCircle } from 'lucide-react';
+import jsPDF from 'jspdf';
+import { toast } from 'sonner';
+import NavBar from '../components/NavBar';
+import { Button } from '../components/ui/Button';
+import { ErrorState, LoadingState } from '../components/ui/AsyncState';
+import { authFetch } from '../lib/session';
 
+interface PaymentRecord { id: string; status: 'Initiated' | 'Succeeded' | 'Failed' }
 interface OrderDetails {
   _id: string;
-  product: {
-    _id: string;
-    name: string;
-    price: number;
-    sellerId: {
-      firstName: string;
-      lastName: string;
-      email: string;
-      phone: string;
-      shopName: string;
-      shopDescription: string;
-    };
-  };
+  status: string;
   firstName: string;
   lastName: string;
   email: string;
   totalPrice: number;
   quantity: number;
-  deliveryAddress: {
-    street: string;
-    city: string;
-    state: string;
-    zipCode: string;
-    country: string;
-  };
   deliveryDate: string;
+  product: { _id: string; name: string; price: number };
+  variants?: { storage?: string; color?: string; ram?: string };
   color?: string;
-  variants?: {
-    storage?: string;
-    color?: string;
-    ram?: string;
+  payments?: PaymentRecord[];
+}
+
+type ResultFrameProps = {
+  icon: ReactNode;
+  title: string;
+  description: string;
+  children?: ReactNode;
+};
+
+const ResultFrame = ({ icon, title, description, children }: ResultFrameProps) => (
+  <main className="flex min-h-[calc(100dvh-5rem)] items-center justify-center bg-paper px-4 py-12">
+    <section className="w-full max-w-xl border border-hairline bg-paper-raised px-5 py-9 text-center sm:px-10" aria-labelledby="payment-result-title">
+      <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full border border-current" aria-hidden="true">{icon}</div>
+      <h1 id="payment-result-title" className="text-3xl font-bold text-ink sm:text-4xl">{title}</h1>
+      <p className="mx-auto mt-3 max-w-md leading-relaxed text-ink-muted">{description}</p>
+      {children && <div className="mt-7">{children}</div>}
+    </section>
+  </main>
+);
+
+export default function Success() {
+  const { orderId } = useParams();
+  const [order, setOrder] = useState<OrderDetails | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const loadOrder = useCallback(async () => {
+    if (!orderId) {
+      setError('This payment link does not contain a valid order number.');
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      const response = await authFetch(`${import.meta.env.VITE_BACKEND_URL}/api/v1/order/details/${orderId}`);
+      if (!response.ok) {
+        let message = response.status === 401 ? 'Please sign in again to verify this order.' : 'We could not verify this order.';
+        try { const body = await response.json(); message = body.message || message; } catch {}
+        throw new Error(message);
+      }
+      setOrder(await response.json());
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'We could not verify this order.');
+    } finally {
+      setLoading(false);
+    }
+  }, [orderId]);
+
+  useEffect(() => { void loadOrder(); }, [loadOrder]);
+
+  const downloadReceipt = () => {
+    if (!order) return;
+    try {
+      const document = new jsPDF();
+      document.setFontSize(22);
+      document.text('ShopSphere receipt', 20, 24);
+      document.setFontSize(11);
+      document.text(`Order: ${order._id}`, 20, 42);
+      document.text(`Customer: ${order.firstName} ${order.lastName}`, 20, 50);
+      document.text(`Product: ${order.product.name}`, 20, 58);
+      document.text(`Quantity: ${order.quantity}`, 20, 66);
+      document.text(`Total: Rs. ${Number(order.totalPrice).toLocaleString()}`, 20, 74);
+      document.text(`Status: ${order.status}`, 20, 82);
+      document.save(`ShopSphere-Receipt-${order._id.slice(-8)}.pdf`);
+      toast.success('Receipt downloaded');
+    } catch {
+      toast.error('Could not generate the receipt. Please try again.');
+    }
   };
-  createdAt: string;
-  adminCommission: number;
-}
 
-interface Order {
-  _id: string;
-  product: {
-    _id: string;
-    name: string;
-  };
-  firstName: string;
-  lastName: string;
-  email: string;
-  totalPrice: number;
-}
+  const paymentStatus = order?.payments?.[0]?.status;
+  const verified = paymentStatus === 'Succeeded' && order?.status !== 'Pending' && order?.status !== 'Cancelled';
+  const pending = paymentStatus === 'Initiated' || (paymentStatus === 'Succeeded' && order?.status === 'Pending');
 
-function Success() {
-    const param = useParams();
-    const orderId = param.orderId;
-    const token = localStorage.getItem("token");
-    const [order, setOrder] = useState<Order | null>(null);
-    const [orderDetails, setOrderDetails] = useState<OrderDetails | null>(null);
-    const updateOrderCalledRef = useRef(false);
-
-    const updateOrder = async () => {
-        // Prevent duplicate calls (handles React StrictMode and accidental double-triggers)
-        if (updateOrderCalledRef.current) {
-            return;
-        }
-        updateOrderCalledRef.current = true;
-
-        try {
-            // Step 1: Confirm order and deduct stock after successful payment
-            // This endpoint also sends the confirmation email automatically
-            try {
-                await axios.put(
-                    `${import.meta.env.VITE_BACKEND_URL}/api/v1/order/confirm/${orderId}`,
-                    {},
-                    {
-                        headers: {
-                            Authorization: `Bearer ${token}`,
-                        },
-                    }
-                );
-                toast.success("Confirmation email has been sent to your email address");
-            } catch (confirmError) {
-                console.error("Failed to confirm order and deduct stock:", confirmError);
-                toast.error("Failed to confirm order and process stock");
-            }
-
-            // Step 2 & 3: Fetch basic order details and detailed order info in PARALLEL
-            // This is faster than fetching sequentially
-            const [orderRes, detailedOrderRes] = await Promise.all([
-                axios.get(
-                    `${import.meta.env.VITE_BACKEND_URL}/api/v1/order/getOrder`,
-                    {
-                        headers: {
-                            Authorization: `Bearer ${token}`,
-                        },
-                    }
-                ),
-                axios.get(
-                    `${import.meta.env.VITE_BACKEND_URL}/api/v1/order/details/${orderId}`,
-                    {
-                        headers: {
-                            Authorization: `Bearer ${token}`,
-                        },
-                    }
-                ).catch(detailError => {
-                    console.error("Error fetching order details:", detailError);
-                    return null;
-                })
-            ]);
-
-            // Find the specific order
-            const foundOrder = orderRes.data.find((o: Order) => o._id === orderId);
-            if (foundOrder) {
-                setOrder(foundOrder);
-            }
-
-            // Set detailed order info if available
-            if (detailedOrderRes?.data) {
-                setOrderDetails(detailedOrderRes.data);
-            }
-        } catch (error) {
-            console.error("Error updating order:", error);
-        }
-    };
-
-    const generatePDFReceipt = () => {
-        if (!orderDetails) {
-            toast.error("Order details not available");
-            return;
-        }
-
-        try {
-            const doc = new jsPDF();
-            const pageWidth = doc.internal.pageSize.width;
-            const pageHeight = doc.internal.pageSize.height;
-
-            // Set fonts
-            doc.setFont("helvetica", "bold");
-
-            // Header - Company/Shop Name
-            doc.setFontSize(24);
-            doc.setTextColor(15, 118, 110); // Primary teal
-            doc.text("SHOPSPHERE", pageWidth / 2, 20, { align: "center" });
-
-            doc.setFontSize(10);
-            doc.setTextColor(100, 100, 100);
-            doc.text("Your Trusted Online Marketplace", pageWidth / 2, 27, { align: "center" });
-
-            // Receipt Title
-            doc.setFontSize(18);
-            doc.setTextColor(0, 0, 0);
-            doc.text("PURCHASE RECEIPT", pageWidth / 2, 40, { align: "center" });
-
-            // Line separator
-            doc.setDrawColor(15, 118, 110);
-            doc.setLineWidth(0.5);
-            doc.line(15, 45, pageWidth - 15, 45);
-
-            // Receipt Info
-            doc.setFont("helvetica", "normal");
-            doc.setFontSize(10);
-            doc.setTextColor(50, 50, 50);
-            let yPos = 55;
-
-            doc.text(`Receipt #: ${orderDetails._id.slice(-8).toUpperCase()}`, 15, yPos);
-            doc.text(`Date: ${new Date(orderDetails.createdAt).toLocaleDateString()}`, pageWidth - 15, yPos, { align: "right" });
-
-            yPos += 10;
-
-            // Customer Information
-            doc.setFont("helvetica", "bold");
-            doc.setFontSize(12);
-            doc.text("CUSTOMER INFORMATION", 15, yPos);
-            yPos += 7;
-
-            doc.setFont("helvetica", "normal");
-            doc.setFontSize(10);
-            doc.text(`Name: ${orderDetails.firstName} ${orderDetails.lastName}`, 15, yPos);
-            yPos += 6;
-            doc.text(`Email: ${orderDetails.email}`, 15, yPos);
-            yPos += 6;
-
-            if (orderDetails.deliveryAddress) {
-                doc.text(`Address: ${orderDetails.deliveryAddress.street || ''}`, 15, yPos);
-                yPos += 6;
-                doc.text(`         ${orderDetails.deliveryAddress.city || ''}, ${orderDetails.deliveryAddress.state || ''} ${orderDetails.deliveryAddress.zipCode || ''}`, 15, yPos);
-                yPos += 6;
-                doc.text(`         ${orderDetails.deliveryAddress.country || 'Nepal'}`, 15, yPos);
-                yPos += 8;
-            }
-
-            // Seller/Shop Information
-            if (orderDetails.product.sellerId) {
-                doc.setFont("helvetica", "bold");
-                doc.setFontSize(12);
-                doc.text("SELLER INFORMATION", 15, yPos);
-                yPos += 7;
-
-                doc.setFont("helvetica", "normal");
-                doc.setFontSize(10);
-                const seller = orderDetails.product.sellerId;
-                doc.text(`Shop Name: ${seller.shopName || `${seller.firstName} ${seller.lastName}`}`, 15, yPos);
-                yPos += 6;
-
-                if (seller.shopDescription) {
-                    doc.text(`Description: ${seller.shopDescription.substring(0, 50)}...`, 15, yPos);
-                    yPos += 6;
-                }
-
-                doc.text(`Contact: ${seller.email}`, 15, yPos);
-                yPos += 6;
-                if (seller.phone) {
-                    doc.text(`Phone: ${seller.phone}`, 15, yPos);
-                    yPos += 8;
-                }
-            }
-
-            // Order Details Table
-            doc.setFont("helvetica", "bold");
-            doc.setFontSize(12);
-            doc.text("ORDER DETAILS", 15, yPos);
-            yPos += 7;
-
-            // Table header
-            doc.setFillColor(15, 118, 110);
-            doc.rect(15, yPos - 5, pageWidth - 30, 8, "F");
-            doc.setTextColor(255, 255, 255);
-            doc.setFont("helvetica", "bold");
-            doc.setFontSize(10);
-            doc.text("Product", 17, yPos);
-            doc.text("Qty", pageWidth - 80, yPos);
-            doc.text("Price", pageWidth - 55, yPos);
-            doc.text("Total", pageWidth - 30, yPos);
-            yPos += 8;
-
-            // Table content
-            doc.setTextColor(0, 0, 0);
-            doc.setFont("helvetica", "normal");
-            doc.text(orderDetails.product.name, 17, yPos);
-            doc.text(orderDetails.quantity.toString(), pageWidth - 80, yPos);
-            doc.text(`Rs. ${orderDetails.product.price.toLocaleString()}`, pageWidth - 55, yPos);
-            doc.text(`Rs. ${(orderDetails.product.price * orderDetails.quantity).toLocaleString()}`, pageWidth - 30, yPos);
-            yPos += 8;
-
-            // Variants if any
-            if (orderDetails.variants) {
-                doc.setFontSize(8);
-                doc.setTextColor(100, 100, 100);
-                let variantText = "";
-                if (orderDetails.variants.color) variantText += `Color: ${orderDetails.variants.color} `;
-                if (orderDetails.variants.storage) variantText += `Storage: ${orderDetails.variants.storage} `;
-                if (orderDetails.variants.ram) variantText += `RAM: ${orderDetails.variants.ram}`;
-                if (variantText) {
-                    doc.text(variantText, 17, yPos);
-                    yPos += 5;
-                }
-            }
-
-            // Line
-            doc.setDrawColor(200, 200, 200);
-            doc.setLineWidth(0.3);
-            doc.line(15, yPos, pageWidth - 15, yPos);
-            yPos += 8;
-
-            // Totals (place label and amount on the same line without overlap)
-            doc.setFont("helvetica", "bold");
-            doc.setFontSize(12);
-            const labelText = "TOTAL PRICE:";
-            const valueText = `Rs. ${orderDetails.totalPrice.toLocaleString()}`;
-            const rightMargin = 15;
-            const spacing = 6; // space between label and amount
-
-            // Measure text widths to compute safe positions
-            const valueWidth = doc.getTextWidth(valueText);
-            const labelWidth = doc.getTextWidth(labelText);
-            const valueX = pageWidth - rightMargin - valueWidth;
-            const labelX = valueX - spacing - labelWidth;
-
-            // Draw label in brass and amount in black
-            doc.setTextColor(15, 118, 110);
-            doc.text(labelText, labelX, yPos);
-            doc.setTextColor(0, 0, 0);
-            doc.text(valueText, valueX, yPos);
-            yPos += 10;
-
-            // Delivery Date
-            doc.setFont("helvetica", "normal");
-            doc.setFontSize(10);
-            doc.setTextColor(0, 0, 0);
-            doc.text(`Expected Delivery: ${new Date(orderDetails.deliveryDate).toLocaleDateString()}`, 15, yPos);
-
-            // Footer
-            yPos = pageHeight - 30;
-            doc.setDrawColor(15, 118, 110);
-            doc.setLineWidth(0.5);
-            doc.line(15, yPos, pageWidth - 15, yPos);
-
-            yPos += 8;
-            doc.setFont("helvetica", "italic");
-            doc.setFontSize(9);
-            doc.setTextColor(100, 100, 100);
-            doc.text("Thank you for shopping with ShopSphere!", pageWidth / 2, yPos, { align: "center" });
-            yPos += 5;
-            doc.setFontSize(8);
-            doc.text("For any queries, please contact us at support@shopsphere.com", pageWidth / 2, yPos, { align: "center" });
-
-            // Save PDF
-            doc.save(`ShopSphere-Receipt-${orderDetails._id.slice(-8)}.pdf`);
-            toast.success("Receipt downloaded successfully!");
-        } catch (error) {
-            console.error("Error generating PDF:", error);
-            toast.error("Failed to generate receipt");
-        }
-    };
-
-    useEffect(() => {
-        updateOrder();
-    }, [orderId]);
-
-  return (
-    <>
-      <NavBar />
-      <div className="flex flex-col min-h-screen">
-        {/* Main Content */}
-        <main className="flex-grow flex items-center justify-center relative py-12 bg-paper overflow-hidden">
-
-          {/* Subtle legacy background blobs, kept faint so the flat instrument
-              look still reads through */}
-          <div className="absolute inset-0 overflow-hidden pointer-events-none">
-            <div className="absolute top-20 left-10 w-72 h-72 bg-moss/10 rounded-full blur-xl animate-blob"></div>
-            <div className="absolute top-40 right-10 w-72 h-72 bg-brass/10 rounded-full blur-xl animate-blob animation-delay-2000"></div>
-            <div className="absolute bottom-20 left-1/3 w-72 h-72 bg-moss/10 rounded-full blur-xl animate-blob animation-delay-4000"></div>
+  return <>
+    <NavBar />
+    {loading ? <main className="min-h-[calc(100dvh-5rem)] bg-paper"><LoadingState description="Verifying payment with ShopSphere…" /></main>
+      : error ? <main className="min-h-[calc(100dvh-5rem)] bg-paper"><ErrorState title="We could not verify this payment" description={error} action={<Button onClick={() => void loadOrder()}><RefreshCw className="h-4 w-4" aria-hidden="true" />Try again</Button>} /></main>
+      : verified && order ? <ResultFrame icon={<CheckCircle2 className="h-9 w-9 text-moss" />} title="Order Successful!" description="eSewa verified your payment and your order is confirmed.">
+          <dl className="grid gap-3 border border-hairline bg-paper p-5 text-left text-sm sm:grid-cols-2">
+            <div><dt className="text-ink-muted">Order</dt><dd className="mt-1 font-mono font-semibold text-ink">#{order._id.slice(-8)}</dd></div>
+            <div><dt className="text-ink-muted">Total paid</dt><dd className="mt-1 font-semibold text-ink">Rs. {Number(order.totalPrice).toLocaleString()}</dd></div>
+            <div className="sm:col-span-2"><dt className="text-ink-muted">Product</dt><dd className="mt-1 font-semibold text-ink">{order.product.name} × {order.quantity}</dd></div>
+          </dl>
+          <div className="mt-5 flex flex-col justify-center gap-3 sm:flex-row">
+            <Button onClick={downloadReceipt}><Download className="h-4 w-4" aria-hidden="true" />Download receipt</Button>
+            <Link className="inline-flex min-h-11 items-center justify-center rounded-[var(--radius-control)] border border-ink px-4 text-sm font-semibold text-ink hover:bg-ink hover:text-white" to={`/order/${order._id}`}>View order</Link>
           </div>
-
-          <div className="relative z-10 w-full max-w-2xl px-4">
-            {/* Success Message */}
-            <div className="text-center px-8 py-10 bg-paper-raised border border-hairline mb-6">
-              {/* Success Icon */}
-              <div className="mx-auto w-20 h-20 rounded-full border-2 border-moss flex items-center justify-center mb-6">
-                <CheckCircle2 className="w-11 h-11 text-moss" strokeWidth={2} />
-              </div>
-              <h1 className="text-4xl font-bold mb-4 text-moss">
-                Order Successful!
-              </h1>
-              <p className="text-ink-muted text-lg mb-6">
-                Your order was successfully confirmed. Thank you for shopping with us!
-              </p>
-              {order && (
-                <div className="bg-paper p-6 border border-hairline mb-6 text-ink text-left">
-                  <p className="mb-2"><span className="font-semibold">Order ID:</span> <span className="font-mono tabular-nums">{orderId}</span></p>
-                  <p className="mb-2"><span className="font-semibold">Product:</span> {order.product.name}</p>
-                  {orderDetails && orderDetails.color && (
-                    <p className="mb-2"><span className="font-semibold">Color:</span> {orderDetails.color || orderDetails.variants?.color}</p>
-                  )}
-                  {orderDetails && orderDetails.variants?.storage && (
-                    <p className="mb-2"><span className="font-semibold">Storage:</span> {orderDetails.variants.storage}</p>
-                  )}
-                  <p className="mb-4"><span className="font-semibold">Total Amount:</span> <span className="font-mono tabular-nums">Rs. {order.totalPrice.toLocaleString()}</span></p>
-
-                  {/* Download Receipt Button */}
-                  {orderDetails && (
-                    <button
-                      onClick={generatePDFReceipt}
-                      className="w-full bg-brass text-white hover:bg-brass-dark active:scale-[0.97] transition font-semibold px-6 py-3 flex items-center justify-center gap-2"
-                    >
-                      <Download className="w-5 h-5" />
-                      Download Receipt (PDF)
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Back to Home Button */}
-            <div className="text-center mt-6">
-              <Link to="/">
-                <button className="border border-ink text-ink hover:bg-ink hover:text-paper active:scale-[0.98] transition font-semibold px-8 py-3">
-                  Back to Home
-                </button>
-              </Link>
-            </div>
+        </ResultFrame>
+      : pending ? <ResultFrame icon={<AlertTriangle className="h-9 w-9 text-brass" />} title="Payment verification is pending" description="eSewa has not confirmed this payment yet. Your order has not been marked as paid.">
+          <div className="flex flex-col justify-center gap-3 sm:flex-row">
+            <Button onClick={() => void loadOrder()}><RefreshCw className="h-4 w-4" aria-hidden="true" />Check again</Button>
+            <Link className="inline-flex min-h-11 items-center justify-center rounded-[var(--radius-control)] border border-ink px-4 text-sm font-semibold text-ink hover:bg-ink hover:text-white" to={`/failure/${orderId}`}>Payment options</Link>
           </div>
-        </main>
-      </div>
-    </>
-  );
+        </ResultFrame>
+      : <ResultFrame icon={<XCircle className="h-9 w-9 text-seal" />} title="Payment was not verified" description="ShopSphere did not receive a verified eSewa payment for this order.">
+          <Link className="inline-flex min-h-11 items-center justify-center rounded-[var(--radius-control)] border border-brass bg-brass px-4 text-sm font-semibold text-white hover:bg-brass-dark" to={`/failure/${orderId}`}>Review payment options</Link>
+        </ResultFrame>}
+  </>;
 }
-
-
-export default Success;

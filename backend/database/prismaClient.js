@@ -36,6 +36,7 @@ export const prisma = basePrisma.$extends({
       promoDiscountAmount: decimalField("promoDiscountAmount"),
     },
     payment: { amount: decimalField("amount") },
+    refund: { amount: decimalField("amount") },
     cart: { totalPrice: decimalField("totalPrice") },
     cartItem: { price: decimalField("price") },
     revenue: {

@@ -443,7 +443,7 @@ const OrderDetails = () => {
                       { label: "Delivered", date: order.deliveredAt, color: "bg-moss" },
                       { label: "Cancelled", date: order.cancelledAt, color: "bg-seal" },
                       { label: "Return Requested", date: order.returnRequestedAt, color: "bg-brass" },
-                      { label: "Refund Released", date: order.refundReleasedAt, color: "bg-moss" },
+                      { label: import.meta.env.VITE_DEMO_MODE !== 'false' ? "Sandbox refund recorded" : "Refund Released", date: order.refundReleasedAt, color: "bg-moss" },
                     ]
                       .filter((e) => e.date)
                       .map((e, i) => (

@@ -1,9 +1,9 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { RefreshCw, Search } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { Package, RefreshCw, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { authFetch } from '../lib/session';
-import { AdminHeading, AdminPagination, OrderStatus } from '../components/admin/AdminUi';
+import { AdminEmptyState, AdminHeading, AdminPagination, OrderStatus } from '../components/admin/AdminUi';
 import { adminDate, adminMoney } from '../lib/adminData';
 import { deliveryProgress, deliverySteps, formatAddress, getSellerCollection, matchesOrderFilter, nextDeliveryStage, orderFilters, type SellerOrder } from '../lib/sellerData';
 
@@ -78,12 +78,12 @@ export default function SellerOrders() {
         <label className="admin-search"><Search size={15} aria-hidden="true" /><input type="search" aria-label="Search orders" placeholder="Search order, customer, product…" value={search} onChange={event => query('q', event.target.value)} /></label>
         <div className="admin-filters">
           <label>Sort by<select aria-label="Sort orders" value={sort} onChange={event => setSort(event.target.value)}><option value="newest">Date (newest first)</option><option value="delivery">Delivery date (soonest first)</option><option value="name">Customer name</option><option value="total">Highest total</option></select></label>
-          {(search || status !== 'all') && <button className="admin-button" onClick={() => setParams({})}>Clear filters</button>}
+          {rows.length > 0 && (search || status !== 'all') && <button className="admin-button" onClick={() => setParams({})}>Clear filters</button>}
         </div>
       </div>
       {loading ? <p className="admin-empty" role="status">Loading orders…</p>
         : error ? <p className="admin-empty">Refresh to load your order list.</p>
-        : !rows.length ? <p className="admin-empty">{orders.length ? 'No orders match these filters.' : 'Once customers buy your products, their orders will appear here.'}</p>
+: !rows.length ? <AdminEmptyState icon={<Package />} title={orders.length ? 'No matching orders' : 'No customer orders yet'} description={orders.length ? 'Try another search or status filter.' : 'Once customers buy your products, their orders will appear here.'} action={orders.length ? <button className="admin-button" onClick={() => setParams({})}>Clear filters</button> : <Link className="admin-button admin-button--primary" to="/seller-products">Review catalogue</Link>} />
         : <div className="admin-table-wrap"><table className="admin-table">
           <thead><tr>
             <th scope="col">Order / customer</th>

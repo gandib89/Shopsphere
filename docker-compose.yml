@@ -31,6 +31,8 @@ services:
       DATABASE_URL: postgresql://shopsphere:shopsphere@postgres:5432/shopsphere?schema=public
       PORT: 4000
       NODE_ENV: production
+      PAYMENT_MODE: ${PAYMENT_MODE:-sandbox}
+      SANDBOX_REFUND_OUTCOME: ${SANDBOX_REFUND_OUTCOME:-success}
     expose:
       - "4000"
     volumes:

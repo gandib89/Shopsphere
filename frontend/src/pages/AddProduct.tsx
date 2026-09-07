@@ -1,10 +1,11 @@
 import axios from "axios";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Link, useNavigate } from "react-router-dom";
 import { X, Upload, Image as ImageIcon, ArrowLeft, Plus, Check, AlertTriangle } from "lucide-react";
 import NavBar from "../components/NavBar";
 import { AdminHeading } from "../components/admin/AdminUi";
+import { useSellerApproval } from "../components/seller/SellerApprovalContext";
 
 interface ColorVariant {
   color: string;
@@ -17,6 +18,17 @@ interface StorageVariant {
   stock: number;
 }
 
+const colorValues: Record<string, string> = {
+  black: '#111827', white: '#F8FAFC', blue: '#2563EB', red: '#DC2626', green: '#16A34A', gold: '#C6A15B', silver: '#C7CBD1', purple: '#7C3AED', pink: '#EC4899', gray: '#6B7280', grey: '#6B7280', yellow: '#EAB308', 'rose gold': '#B76E79', 'space gray': '#6E7175', 'space grey': '#6E7175',
+};
+const colorValue = (name: string) => colorValues[name.trim().toLowerCase()] || '#CBD5E1';
+
+function FilePreview({ file, alt }: { file: File; alt: string }) {
+  const [url, setUrl] = useState('');
+  useEffect(() => { const next = URL.createObjectURL(file); setUrl(next); return () => URL.revokeObjectURL(next); }, [file]);
+  return url ? <img src={url} alt={alt} className="h-20 w-20 rounded-[var(--radius-control)] border border-hairline object-cover" /> : null;
+}
+
 type AddProductProps = {
   sellerId?: string;
   sellerName?: string;
@@ -24,7 +36,11 @@ type AddProductProps = {
 
 function AddProduct({ sellerId, sellerName }: AddProductProps) {
   const navigate = useNavigate();
+  const { loaded: approvalLoaded, pending: pendingApproval } = useSellerApproval();
   const [saving, setSaving] = useState(false);
+  const [step, setStep] = useState(1);
+  const [formError, setFormError] = useState("");
+  const [saveProgress, setSaveProgress] = useState("");
   const [formData, setFormData] = useState({
     name: "",
     category: "",
@@ -102,9 +118,15 @@ function AddProduct({ sellerId, sellerName }: AddProductProps) {
     e.preventDefault();
     if (saving) return;
 
-    // Validate general image
+    if (!formData.name.trim() || !formData.category || Number(formData.price) <= 0 || !formData.description.trim() || Number(formData.quantity) <= 0) {
+      setFormError("Complete the required product details and enter a price and stock above zero.");
+      setStep(1);
+      window.setTimeout(() => document.querySelector<HTMLElement>(".admin-product-form input:invalid, .admin-product-form select:invalid, .admin-product-form textarea:invalid")?.focus(), 0);
+      return;
+    }
     if (!generalImage) {
-      toast.error("Please upload a general product image");
+      setFormError("Add a main product image before reviewing the listing.");
+      setStep(2);
       return;
     }
 
@@ -119,7 +141,8 @@ function AddProduct({ sellerId, sellerName }: AddProductProps) {
       // Validate color stock matches total quantity
       const totalColorStock = colorVariants.reduce((sum, cv) => sum + cv.stock, 0);
       if (totalColorStock !== parseInt(formData.quantity)) {
-        toast.error(`Total color stock (${totalColorStock}) must equal total quantity (${formData.quantity})`);
+        setFormError(`Colour stock totals ${totalColorStock}, but total quantity is ${formData.quantity}. Make these values match.`);
+        setStep(2);
         return;
       }
     }
@@ -128,12 +151,15 @@ function AddProduct({ sellerId, sellerName }: AddProductProps) {
     if (storageVariants.length > 0) {
       const totalStorageStock = storageVariants.reduce((sum, sv) => sum + sv.stock, 0);
       if (totalStorageStock !== parseInt(formData.quantity)) {
-        toast.error(`Total storage stock (${totalStorageStock}) must equal total quantity (${formData.quantity})`);
+        setFormError(`Storage stock totals ${totalStorageStock}, but total quantity is ${formData.quantity}. Make these values match.`);
+        setStep(2);
         return;
       }
     }
 
+    setFormError("");
     setSaving(true);
+    setSaveProgress("Uploading main image…");
     try {
       // Upload general image first
       const formDataForGeneralImage = new FormData();
@@ -153,7 +179,8 @@ function AddProduct({ sellerId, sellerName }: AddProductProps) {
 
       // Upload color-specific images
       const uploadedColorVariants: Array<{ color: string; images: string[]; stock: number }> = [];
-      for (const colorVariant of colorVariants) {
+      for (const [colorIndex, colorVariant] of colorVariants.entries()) {
+        setSaveProgress(`Uploading ${colorVariant.color} images (${colorIndex + 1}/${colorVariants.length})…`);
         // No files chosen: store the colour with no images so the storefront falls back to the
         // placeholder, rather than posting an empty upload.
         if (colorVariant.images.length === 0) {
@@ -194,6 +221,7 @@ function AddProduct({ sellerId, sellerName }: AddProductProps) {
       };
 
 
+      setSaveProgress("Creating listing…");
       const response = await axios.post(
         `${import.meta.env.VITE_BACKEND_URL}${createPath}`,
         productData,
@@ -233,6 +261,7 @@ function AddProduct({ sellerId, sellerName }: AddProductProps) {
       toast.error(`Could not add ${isAdminProduct ? "this seller's" : "your"} product. Your details are still here; please try again.`);
     } finally {
       setSaving(false);
+      setSaveProgress("");
     }
   };
 
@@ -240,18 +269,14 @@ function AddProduct({ sellerId, sellerName }: AddProductProps) {
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    setFormError("");
   };
 
   const handleSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    setFormError("");
   };
 
   const handleGeneralImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -406,7 +431,10 @@ function AddProduct({ sellerId, sellerName }: AddProductProps) {
         </div>
         <div className="container mx-auto px-4 sm:px-6 max-w-3xl py-6 sm:py-10">
 
-          <form onSubmit={handleSubmit} className="admin-product-form space-y-6" aria-busy={saving}>
+          {!isAdminProduct && approvalLoaded && pendingApproval ? <section className="admin-panel p-6" role="status"><h2 className="text-xl font-semibold text-ink">Product creation unlocks after approval</h2><p className="mt-2 text-sm text-ink-muted">An administrator must approve your seller account before you can create listings.</p><Link className="admin-button mt-5" to="/seller/account">Review account details</Link></section> : <form onSubmit={handleSubmit} noValidate className="admin-product-form space-y-6" aria-busy={saving}>
+            <ol className="grid grid-cols-3 overflow-hidden rounded-[var(--radius-control)] border border-hairline bg-paper-raised text-center text-xs font-semibold sm:text-sm" aria-label="Product creation progress">{['Details', 'Inventory & images', 'Review'].map((label, index) => <li key={label} className={`px-2 py-3 ${index < 2 ? 'border-r border-hairline' : ''} ${step === index + 1 ? 'bg-brass/10 text-brass' : 'text-ink-muted'}`} aria-current={step === index + 1 ? 'step' : undefined}>{index + 1}. {label}</li>)}</ol>
+            {formError && <p className="admin-notice" role="alert">{formError}</p>}
+            <div className={step === 1 ? 'space-y-6' : 'hidden'}>
             {/* Basic Info */}
             <div className="bg-paper-raised border border-hairline p-6">
               <h2 className="font-display text-xl font-bold text-ink mb-4">Basic Information</h2>
@@ -491,6 +519,8 @@ function AddProduct({ sellerId, sellerName }: AddProductProps) {
                 />
               </div>
             </div>
+            </div>
+            <div className={step === 2 ? 'space-y-6' : 'hidden'}>
 
             {/* General Image */}
             <div className="bg-paper-raised border border-hairline p-6">
@@ -507,11 +537,7 @@ function AddProduct({ sellerId, sellerName }: AddProductProps) {
                   className="hidden"
                 />
               </label>
-              {generalImage && (
-                <p className="text-sm text-moss font-semibold mt-3 flex items-center gap-1.5">
-                  <Check className="w-4 h-4" /> {generalImage.name}
-                </p>
-              )}
+              {generalImage && <div className="mt-3 flex items-center gap-3"><FilePreview file={generalImage} alt="Selected main product preview" /><div><p className="text-sm font-semibold text-moss">{generalImage.name}</p><p className="mt-1 text-xs text-ink-muted">Square or 4:3 images work best. Maximum 5 MB.</p></div></div>}
             </div>
 
             {/* Variants */}
@@ -619,11 +645,11 @@ function AddProduct({ sellerId, sellerName }: AddProductProps) {
                     <div key={cv.color} className="p-5">
                       <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-3">
-                          <span className="w-6 h-6 border border-hairline shrink-0" style={{ backgroundColor: cv.color.toLowerCase() }} />
+                          <span className="w-6 h-6 border border-hairline shrink-0" style={{ backgroundColor: colorValue(cv.color) }} />
                           <span className="font-bold text-ink text-base capitalize">{cv.color}</span>
                           <span className="text-xs px-2 py-0.5 border border-hairline text-ink-muted font-mono tabular-nums">{index + 1}/{colorVariants.length}</span>
                         </div>
-                        <button type="button" onClick={() => removeColorVariant(cv.color)} className="p-1.5 border border-seal text-seal hover:bg-seal/5 active:scale-[0.98] transition">
+                        <button type="button" aria-label={`Remove ${cv.color} variant`} onClick={() => removeColorVariant(cv.color)} className="p-1.5 border border-seal text-seal hover:bg-seal/5 active:scale-[0.98] transition">
                           <X className="w-4 h-4" />
                         </button>
                       </div>
@@ -638,7 +664,7 @@ function AddProduct({ sellerId, sellerName }: AddProductProps) {
                             <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleColorImageChange(cv.color, e.target.files)} />
                           </label>
                           {cv.images.length > 0
-                            ? <p className="text-xs text-moss font-semibold mt-1.5 flex items-center gap-1"><Check className="w-3 h-3" /> {cv.images.length} image(s) selected</p>
+                            ? <div className="mt-2"><div className="flex flex-wrap gap-2">{cv.images.map((file, imageIndex) => <FilePreview key={`${file.name}-${imageIndex}`} file={file} alt={`${cv.color} preview ${imageIndex + 1}`} />)}</div><p className="mt-1.5 flex items-center gap-1 text-xs font-semibold text-moss"><Check className="w-3 h-3" />{cv.images.length} of 3 images selected</p></div>
                             : <p className="text-xs text-ink-muted mt-1.5 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Optional - a placeholder shows until you add one</p>}
                         </div>
                         <div>
@@ -675,7 +701,7 @@ function AddProduct({ sellerId, sellerName }: AddProductProps) {
                     <div key={sv.storage} className="p-4">
                       <div className="flex items-center justify-between mb-3">
                         <span className="font-bold text-ink">{sv.storage}</span>
-                        <button type="button" onClick={() => removeStorageVariant(sv.storage)} className="p-1.5 border border-seal text-seal hover:bg-seal/5 active:scale-[0.98] transition">
+                        <button type="button" aria-label={`Remove ${sv.storage} variant`} onClick={() => removeStorageVariant(sv.storage)} className="p-1.5 border border-seal text-seal hover:bg-seal/5 active:scale-[0.98] transition">
                           <X className="w-4 h-4" />
                         </button>
                       </div>
@@ -698,15 +724,14 @@ function AddProduct({ sellerId, sellerName }: AddProductProps) {
               </div>
             )}
 
-            {/* Submit */}
-            <button
-              type="submit"
-              disabled={saving}
-              className="admin-button admin-button--primary admin-product-submit"
-            >
-              <Plus className="w-5 h-5" aria-hidden="true" /> {saving ? "Uploading and saving…" : "Add product"}
-            </button>
-          </form>
+            </div>
+            {step === 3 && <section className="rounded-[var(--radius-surface)] border border-hairline bg-paper-raised p-6"><h2 className="text-xl font-semibold text-ink">Review listing</h2><dl className="mt-5 grid gap-4 sm:grid-cols-2"><div><dt className="text-xs text-ink-muted">Product</dt><dd className="font-semibold text-ink">{formData.name || 'Not entered'}</dd></div><div><dt className="text-xs text-ink-muted">Price</dt><dd className="font-mono font-semibold text-ink">Rs. {(Number(formData.price) || 0).toLocaleString()}</dd></div><div><dt className="text-xs text-ink-muted">Stock</dt><dd className="font-semibold text-ink">{formData.quantity || 0}</dd></div><div><dt className="text-xs text-ink-muted">Main image</dt><dd className="font-semibold text-ink">{generalImage?.name || 'Missing'}</dd></div></dl></section>}
+            <div className="sticky bottom-3 z-10 flex gap-3 rounded-[var(--radius-surface)] border border-hairline bg-paper-raised p-3 shadow-float">
+              {step > 1 && <button type="button" className="admin-button" disabled={saving} onClick={() => { setFormError(''); setStep(value => value - 1); }}>Back</button>}
+              {step < 3 ? <button type="button" className="admin-button admin-button--primary ml-auto" onClick={() => { if (step === 1 && (!formData.name.trim() || !formData.category || Number(formData.price) <= 0 || !formData.description.trim() || Number(formData.quantity) <= 0)) { setFormError('Complete all required product details before continuing.'); return; } if (step === 2 && !generalImage) { setFormError('Add a main product image before continuing.'); return; } setFormError(''); setStep(value => value + 1); }}>Save and continue</button> : <button type="submit" disabled={saving} className="admin-button admin-button--primary ml-auto"><Plus className="w-5 h-5" aria-hidden="true" />{saving ? saveProgress || 'Saving listing…' : 'Add product'}</button>}
+            </div>
+          </form>}
+
         </div>
       </div>
     </>

@@ -1,9 +1,9 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { RefreshCw, Search } from 'lucide-react';
+import { RefreshCw, Search, ShoppingBag } from 'lucide-react';
 import { toast } from 'sonner';
 import { authFetch } from '../lib/session';
-import { AdminHeading, AdminPagination, OrderStatus } from '../components/admin/AdminUi';
+import { AdminEmptyState, AdminHeading, AdminPagination, OrderStatus } from '../components/admin/AdminUi';
 import { adminDate, adminMoney, getAdminCollection, type AdminOrder } from '../lib/adminData';
 
 const filters = [
@@ -60,19 +60,20 @@ export default function AdminOrders() {
   };
   const action = async (order: AdminOrder, kind: 'cancel'|'approve'|'reject'|'refund') => {
     if(pending.current) return;
-    const allowed = kind === 'cancel' ? ['Pending','Confirmed'].includes(order.status) : kind === 'refund' ? order.status === 'Return Approved' : order.status === 'Return Requested';
+    const paidCancellation = order.status === 'Cancelled' && order.payments?.some(payment => payment.status === 'Succeeded');
+    const allowed = kind === 'cancel' ? ['Pending','Confirmed'].includes(order.status) : kind === 'refund' ? order.status === 'Return Approved' || !!paidCancellation : order.status === 'Return Requested';
     if(!allowed) return;
-    const prompt = kind === 'refund' ? 'Release the refund for this order? The customer will be notified by email.' : kind === 'cancel' ? 'Cancel this order and restore its stock?' : (kind === 'approve' ? 'Approve' : 'Reject') + ' this return request?';
+    const prompt = kind === 'refund' ? 'Complete a simulated sandbox refund? This records the workflow but does not move real money.' : kind === 'cancel' ? 'Cancel this order? Stock is restored only if payment already deducted it.' : (kind === 'approve' ? 'Approve' : 'Reject') + ' this return request?';
     if(!window.confirm(prompt)) return;
     pending.current = true; setBusy(order._id);
     const path = kind === 'cancel' ? '/cancel/' : kind === 'refund' ? '/admin/refund/' : '/admin/return/';
     try {
-      const res = await authFetch(import.meta.env.VITE_BACKEND_URL+'/api/v1/order'+path+order._id,{method:'PUT',headers:{'Content-Type':'application/json'},...(kind === 'approve' || kind === 'reject' ? {body:JSON.stringify({action:kind})} : {})});
+      const res = await authFetch(import.meta.env.VITE_BACKEND_URL+'/api/v1/order'+path+order._id,{method:'PUT',headers:{'Content-Type':'application/json',...(kind === 'refund' ? {'Idempotency-Key':'full-refund:'+order._id} : {})},...(kind === 'approve' || kind === 'reject' ? {body:JSON.stringify({action:kind})} : {})});
       const data = await res.json();
       if(!res.ok) throw new Error(data.message || 'The order could not be updated.');
-      const next = kind === 'cancel' ? 'Cancelled' : kind === 'refund' ? 'Refund Released' : kind === 'approve' ? 'Return Approved' : 'Return Rejected';
+      const next = data.order?.status || (kind === 'cancel' ? 'Cancelled' : kind === 'refund' ? 'Refund Released' : kind === 'approve' ? 'Return Approved' : 'Return Rejected');
       setOrders(previous => previous.map(item => item._id === order._id ? {...item,status:next} : item));
-      toast.success(kind === 'cancel' ? 'Order cancelled and stock restored' : next);
+      toast.success(kind === 'cancel' ? data.message : kind === 'refund' ? 'Sandbox refund completed · no real money moved' : next);
     } catch(err) {toast.error(err instanceof Error ? err.message : 'Could not update order.');}
     finally {pending.current=false;setBusy(null);}
   };
@@ -83,9 +84,9 @@ export default function AdminOrders() {
     <div className="admin-tabs" aria-label="Order status filters">{filters.map(filter=><button key={filter.key} aria-pressed={status===filter.key} onClick={()=>query('status',filter.key)}>{filter.label}<span>({loading || error ? '—' : orders.filter(order=>matchStatus(order,filter.key)).length})</span></button>)}</div>
     {error && <p className="admin-notice" role="alert">{error}</p>}
     <section className="admin-panel" aria-label="Orders list">
-      <div className="admin-toolbar"><label className="admin-search"><Search size={15} aria-hidden="true" /><input type="search" aria-label="Search orders" placeholder="Search order, customer, email…" value={search} onChange={event=>query('q',event.target.value)} /></label><div className="admin-filters"><label>Sort by<select aria-label="Sort orders" value={sort} onChange={event=>setSort(event.target.value)}><option value="newest">Date (newest first)</option><option value="name">Customer name</option><option value="product">Product name</option><option value="delivery">Delivery date</option><option value="total">Highest total</option></select></label>{(search || status!=='all') && <button className="admin-button" onClick={()=>setParams({})}>Clear filters</button>}</div></div>
-      {loading ? <p className="admin-empty" role="status">Loading orders…</p> : error ? <p className="admin-empty">Refresh to load the order list.</p> : !rows.length ? <p className="admin-empty">{orders.length ? 'No orders match these filters.' : 'Customer orders will appear here when they are placed.'}</p> :
-        <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th scope="col">Order / customer</th>{showDate && <th scope="col">Date</th>}<th scope="col">Status</th><th scope="col">Total</th><th scope="col">Actions</th></tr></thead><tbody>{rows.map(order=><Fragment key={order._id}>
+      <div className="admin-toolbar"><label className="admin-search"><Search size={15} aria-hidden="true" /><input type="search" aria-label="Search orders" placeholder="Search order, customer, email…" value={search} onChange={event=>query('q',event.target.value)} /></label><div className="admin-filters"><label>Sort by<select aria-label="Sort orders" value={sort} onChange={event=>setSort(event.target.value)}><option value="newest">Date (newest first)</option><option value="name">Customer name</option><option value="product">Product name</option><option value="delivery">Delivery date</option><option value="total">Highest total</option></select></label>{rows.length > 0 && (search || status!=='all') && <button className="admin-button" onClick={()=>setParams({})}>Clear filters</button>}</div></div>
+      {loading ? <p className="admin-empty" role="status">Loading orders…</p> : error ? <p className="admin-empty">Refresh to load the order list.</p> : !rows.length ? <AdminEmptyState icon={<ShoppingBag />} title={orders.length ? 'No matching orders' : 'No customer orders yet'} description={orders.length ? 'Try another search or status filter.' : 'Customer orders will appear here when they are placed.'} action={orders.length ? <button className="admin-button" onClick={() => setParams({})}>Clear filters</button> : <Link className="admin-button admin-button--primary" to="/all-products">Review catalogue</Link>} /> :
+        <><div className="admin-table-wrap admin-desktop-table"><table className="admin-table"><thead><tr><th scope="col">Order / customer</th>{showDate && <th scope="col">Date</th>}<th scope="col">Status</th><th scope="col">Total</th><th scope="col">Actions</th></tr></thead><tbody>{rows.map(order=><Fragment key={order._id}>
           <tr><td><Link className="admin-text-link" to={'/admin/orders/'+order._id}>#{order._id.slice(-8)} · {order.firstName} {order.lastName}</Link>{showEmail && <small>{order.email}</small>}<small>{order.product?.name || 'Product'}</small></td>{showDate && <td className="admin-numeric">{adminDate(order.createdAt)}</td>}<td><OrderStatus status={order.status} /></td><td className="admin-numeric">{adminMoney(order.totalPrice)}</td><td><button className="admin-button" aria-label={'Preview order '+order._id.slice(-8)} aria-expanded={expanded===order._id} aria-controls={'preview-'+order._id} onClick={()=>setExpanded(expanded===order._id?null:order._id)}>{expanded===order._id ? 'Close' : 'Preview'}</button></td></tr>
           {expanded===order._id && <tr id={'preview-'+order._id}><td colSpan={showDate ? 5 : 4}><div className="admin-order-preview"><h3>{order.product?.name || 'Order details'}</h3><dl><div><dt>Customer</dt><dd>{order.firstName} {order.lastName}<br />{order.email}</dd></div><div><dt>Expected delivery</dt><dd>{adminDate(order.deliveryDate)}</dd></div><div><dt>Quantity / configuration</dt><dd>{order.quantity} · {order.color || order.variants?.color || 'Standard'} {order.variants?.storage || ''}</dd></div></dl>
             {order.returnReason && <p>Return reason: {order.returnReason}</p>}
@@ -95,11 +96,16 @@ export default function AdminOrders() {
               {(deliveryStages.includes(order.status) || order.status==='Pending') && <label>Delivery status <select aria-label="Set delivery status" disabled={!!busy} value={deliveryStages.includes(order.status) ? order.status : ''} onChange={event=>void setDeliveryStatus(order,event.target.value)}>{order.status==='Pending' && <option value="" disabled>Pending (unpaid)</option>}{deliveryStages.map(stage=><option key={stage} value={stage}>{stage}</option>)}</select></label>}
               {['Pending','Confirmed'].includes(order.status) && <button className="admin-button admin-button--danger" disabled={!!busy} onClick={()=>void action(order,'cancel')}>Cancel order</button>}
               {order.status==='Return Requested' && <><button className="admin-button" disabled={!!busy} onClick={()=>void action(order,'approve')}>Approve return</button><button className="admin-button admin-button--danger" disabled={!!busy} onClick={()=>void action(order,'reject')}>Reject return</button></>}
-              {order.status==='Return Approved' && <button className="admin-button" disabled={!!busy} onClick={()=>void action(order,'refund')}>Release refund · {adminMoney(order.totalPrice)}</button>}
+              {(order.status==='Return Approved' || (order.status==='Cancelled' && order.payments?.some(payment=>payment.status==='Succeeded'))) && <button className="admin-button" disabled={!!busy} onClick={()=>void action(order,'refund')}>Complete sandbox refund · {adminMoney(order.totalPrice)}</button>}
               {busy===order._id && <span role="status">Updating order…</span>}
             </div>
           </div></td></tr>}
-        </Fragment>)}</tbody></table></div>}
+        </Fragment>)}</tbody></table></div>
+        <div className="admin-mobile-cards">{rows.map(order => <article className="admin-mobile-card" key={order._id}>
+          <div><Link className="admin-text-link" to={'/admin/orders/'+order._id}>Order #{order._id.slice(-8)}</Link><p className="text-sm text-ink">{order.firstName} {order.lastName}</p><p className="text-xs text-ink-muted">{order.product?.name || 'Product'}</p></div>
+          <dl><div><dt>Status</dt><dd><OrderStatus status={order.status} /></dd></div><div><dt>Total</dt><dd className="admin-numeric">{adminMoney(order.totalPrice)}</dd></div>{showDate && <div><dt>Placed</dt><dd>{adminDate(order.createdAt)}</dd></div>}</dl>
+          <div className="admin-mobile-card-actions"><Link className="admin-button admin-button--primary" to={'/admin/orders/'+order._id}>View order</Link></div>
+        </article>)}</div></>}
       {!loading && !error && rows.length>0 && <AdminPagination page={currentPage} pages={pages} onPage={setPage} />}
     </section>
   </main>;

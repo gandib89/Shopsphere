@@ -1,243 +1,40 @@
-import { useEffect, useState } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { RefreshCw } from 'lucide-react';
-import axios from 'axios';
-import { toast } from 'sonner';
-import NavBar from '../components/NavBar';
+import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { Line, LineChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { BarChart3, RefreshCw } from 'lucide-react';
+import { AdminEmptyState, AdminHeading } from '../components/admin/AdminUi';
+import { ErrorState, LoadingState } from '../components/ui/AsyncState';
+import { Button } from '../components/ui/Button';
+import { authFetch } from '../lib/session';
 
-interface MonthData {
-  month: string;
-  totalSalePrice: number;
-  adminCommission: number;
-  orderCount: number;
-}
+interface MonthData { month: string; totalSalePrice: number; adminCommission: number; orderCount: number }
+interface RevenueSummary { totals: { totalSalePrice: number; totalAdminCommission: number; totalSellerRevenue: number; totalOrders: number }; monthlyBreakdown: Record<string, Omit<MonthData, 'month'>> }
 
-interface RevenueSummary {
-  totals: {
-    totalSalePrice: number;
-    totalAdminCommission: number;
-    totalSellerRevenue: number;
-    totalOrders: number;
-  };
-  monthlyBreakdown: { [key: string]: MonthData };
-}
-
-const AdminRevenueDashboard = () => {
-  const token = localStorage.getItem('token');
+export default function AdminRevenueDashboard() {
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [revenue, setRevenue] = useState<RevenueSummary | null>(null);
-  const [monthlyData, setMonthlyData] = useState<MonthData[]>([]);
 
-  useEffect(() => {
-    if (!token || localStorage.getItem('isAdmin') !== 'true') {
-      window.location.hash = '/auth';
-      return;
-    }
-    fetchRevenueData();
-  }, [token]);
-
-  const fetchRevenueData = async () => {
+  const load = useCallback(async () => {
+    setLoading(true); setError('');
     try {
-      setLoading(true);
+      const response = await authFetch(`${import.meta.env.VITE_BACKEND_URL}/api/v1/revenue/admin/total`);
+      if (!response.ok) { let message = 'Could not load revenue data.'; try { const body = await response.json(); message = body.message || message; } catch {} throw new Error(message); }
+      setRevenue(await response.json());
+    } catch (reason) { setRevenue(null); setError(reason instanceof Error ? reason.message : 'Could not load revenue data.'); }
+    finally { setLoading(false); }
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+  const months: MonthData[] = Object.entries(revenue?.monthlyBreakdown || {}).map(([month, values]) => ({ month, ...values }));
 
-      // Fetch total revenue
-      const totalResponse = await axios.get(
-        `${import.meta.env.VITE_BACKEND_URL}/api/v1/revenue/admin/total`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      setRevenue(totalResponse.data);
-
-      // Convert monthly breakdown to array
-      const monthlyArray = Object.entries(
-        totalResponse.data.monthlyBreakdown || {}
-      ).map(([key, data]: any) => ({
-        month: key,
-        ...data,
-      }));
-
-      setMonthlyData(monthlyArray);
-    } catch (error: any) {
-      console.error('Error fetching revenue data:', error);
-      toast.error(error.response?.data?.message || 'Failed to load revenue data');
-      setRevenue({
-        totals: {
-          totalSalePrice: 0,
-          totalAdminCommission: 0,
-          totalSellerRevenue: 0,
-          totalOrders: 0,
-        },
-        monthlyBreakdown: {},
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <>
-      <NavBar />
-      <div className="min-h-screen bg-paper">
-        {/* Header */}
-        <div className="bg-ink text-paper py-6 sm:py-8 border-b border-brass/40">
-          <div className="container mx-auto px-4 sm:px-6">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <h1 className="text-2xl sm:text-4xl font-bold mb-2">Admin Revenue Dashboard</h1>
-                <p className="text-paper/60">Monitor platform revenue and commissions</p>
-              </div>
-              <button
-                onClick={fetchRevenueData}
-                disabled={loading}
-                className="inline-flex items-center gap-2 bg-brass text-white hover:bg-brass-dark disabled:opacity-50 active:scale-[0.97] transition px-4 sm:px-6 py-3 font-semibold shrink-0"
-              >
-                <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
-                Refresh
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Main Content */}
-        <div className="container mx-auto px-4 sm:px-6 py-6 sm:py-10">
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="text-center">
-                <RefreshCw className="w-8 h-8 animate-spin text-brass mx-auto mb-4" />
-                <p className="text-ink-muted">Loading revenue data...</p>
-              </div>
-            </div>
-          ) : (
-            <>
-              {/* Charts */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-                {/* Monthly Sales Trend */}
-                <div className="bg-paper-raised border border-hairline p-6">
-                  <h2 className="text-xl font-bold text-ink mb-6">Monthly Sales Trend</h2>
-                  {monthlyData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={300}>
-                      <LineChart data={monthlyData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
-                        <XAxis dataKey="month" stroke="#64748B" tick={{ fill: '#64748B', fontSize: 12 }} />
-                        <YAxis stroke="#64748B" tick={{ fill: '#64748B', fontSize: 12 }} />
-                        <Tooltip
-                          contentStyle={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 0 }}
-                          labelStyle={{ color: '#111827', fontWeight: 600 }}
-                          formatter={(value: any) => value ? `रु ${value.toLocaleString()}` : ''}
-                        />
-                        <Legend wrapperStyle={{ color: '#64748B', fontSize: 13 }} />
-                        <Line
-                          type="monotone"
-                          dataKey="totalSalePrice"
-                          stroke="#0F766E"
-                          name="Total Sales"
-                          strokeWidth={2}
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="adminCommission"
-                          stroke="#16A34A"
-                          name="Admin Commission"
-                          strokeWidth={2}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="h-80 flex items-center justify-center text-ink-muted">
-                      No data available
-                    </div>
-                  )}
-                </div>
-
-                {/* Commission Summary */}
-                <div className="bg-paper-raised border border-hairline p-6">
-                  <h2 className="text-xl font-bold text-ink mb-6">Commission Summary (5%)</h2>
-                  {revenue ? (
-                    <div>
-                      <div className="border border-hairline divide-y divide-hairline">
-                        <div className="flex justify-between items-center px-4 py-4">
-                          <span className="text-ink-muted font-medium text-sm">Total Platform Sales</span>
-                          <span className="text-lg font-bold text-ink font-mono tabular-nums">
-                            रु {revenue.totals.totalSalePrice.toLocaleString()}
-                          </span>
-                        </div>
-                        <div className="flex justify-between items-center px-4 py-4">
-                          <span className="text-ink-muted font-medium text-sm">Your Commission (5%)</span>
-                          <span className="text-lg font-bold text-brass font-mono tabular-nums">
-                            रु {revenue.totals.totalAdminCommission.toLocaleString()}
-                          </span>
-                        </div>
-                        <div className="flex justify-between items-center px-4 py-4">
-                          <span className="text-ink-muted font-medium text-sm">Seller Payouts (95%)</span>
-                          <span className="text-lg font-bold text-ink font-mono tabular-nums">
-                            रु {revenue.totals.totalSellerRevenue.toLocaleString()}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="mt-6 border-l-2 border-brass px-4 py-4 bg-paper">
-                        <p className="text-sm text-ink-muted">
-                          <strong className="text-ink">Commission Rate:</strong> 5% of all platform sales
-                        </p>
-                        <p className="text-sm text-ink-muted mt-2">
-                          <strong className="text-ink">Total Orders:</strong>{' '}
-                          <span className="font-mono tabular-nums">{revenue.totals.totalOrders}</span>
-                        </p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="h-80 flex items-center justify-center text-ink-muted">
-                      No data available
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Monthly Sales Stats */}
-              <div className="bg-paper-raised border border-hairline p-6 mb-8">
-                <h2 className="text-xl font-bold text-ink mb-6">Monthly Sales Stats</h2>
-                {monthlyData.length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <table className="w-full border-collapse">
-                      <thead>
-                        <tr className="border-b-2 border-ink">
-                          <th className="p-4 text-left font-semibold text-ink text-xs uppercase tracking-wide">Month</th>
-                          <th className="p-4 text-center font-semibold text-ink text-xs uppercase tracking-wide">Orders</th>
-                          <th className="p-4 text-right font-semibold text-ink text-xs uppercase tracking-wide">Total Sales</th>
-                          <th className="p-4 text-right font-semibold text-ink text-xs uppercase tracking-wide">Admin Commission</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {monthlyData.map((data) => (
-                          <tr key={data.month} className="border-b border-hairline hover:bg-paper transition-colors">
-                            <td className="p-4 font-semibold text-ink">{data.month}</td>
-                            <td className="p-4 text-center font-mono tabular-nums text-ink-muted">{data.orderCount}</td>
-                            <td className="p-4 text-right font-mono tabular-nums font-semibold text-ink">
-                              रु {data.totalSalePrice.toLocaleString()}
-                            </td>
-                            <td className="p-4 text-right font-mono tabular-nums font-semibold text-brass">
-                              रु {data.adminCommission.toLocaleString()}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div className="h-40 flex items-center justify-center text-ink-muted">
-                    No data available
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    </>
-  );
-};
-
-export default AdminRevenueDashboard;
+  return <main>
+    <AdminHeading title="Revenue" description="Verified platform sales, commission, and estimated seller share."><button className="admin-button" disabled={loading} onClick={() => void load()}><RefreshCw size={14} className={loading ? 'animate-spin' : ''} aria-hidden="true" />Refresh</button></AdminHeading>
+    {loading ? <LoadingState description="Loading revenue data…" /> : error ? <ErrorState title="Revenue data is unavailable" description={error} action={<Button onClick={() => void load()}>Try again</Button>} /> : revenue && <>
+      <section className="admin-stats" aria-label="Revenue summary"><div className="admin-stat"><span>Verified platform sales</span><strong>रु {revenue.totals.totalSalePrice.toLocaleString()}</strong><small>{revenue.totals.totalOrders} paid orders</small></div><div className="admin-stat"><span>Platform commission (5%)</span><strong>रु {revenue.totals.totalAdminCommission.toLocaleString()}</strong><small>Calculated from verified sales</small></div><div className="admin-stat"><span>Estimated seller share (95%)</span><strong>रु {revenue.totals.totalSellerRevenue.toLocaleString()}</strong><small>Calculated share; this does not mean a payout was sent</small></div></section>
+      {months.length ? <div className="admin-home-columns mt-6">
+        <section className="admin-panel p-5" aria-labelledby="sales-trend-title"><h2 id="sales-trend-title" className="text-lg font-semibold text-ink">Monthly sales trend</h2><p className="mt-1 text-sm text-ink-muted">Verified sales and platform commission by month.</p><div className="mt-5" role="img" aria-label="Line chart of monthly verified sales and commission"><ResponsiveContainer width="100%" height={300}><LineChart data={months}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="month" /><YAxis /><Tooltip formatter={value => `रु ${Number(value).toLocaleString()}`} /><Line type="monotone" dataKey="totalSalePrice" stroke="#0F766E" name="Verified sales" strokeWidth={2} /><Line type="monotone" dataKey="adminCommission" stroke="#9A6A23" name="Commission" strokeWidth={2} /></LineChart></ResponsiveContainer></div></section>
+        <section className="admin-panel" aria-labelledby="monthly-data-title"><div className="admin-panel-head"><div><h2 id="monthly-data-title">Monthly values</h2><p>Accessible source data for the chart</p></div></div><div className="admin-table-wrap"><table className="admin-table"><thead><tr><th scope="col">Month</th><th scope="col">Orders</th><th scope="col">Sales</th><th scope="col">Commission</th></tr></thead><tbody>{months.map(month => <tr key={month.month}><td>{month.month}</td><td>{month.orderCount}</td><td>रु {month.totalSalePrice.toLocaleString()}</td><td>रु {month.adminCommission.toLocaleString()}</td></tr>)}</tbody></table></div></section>
+      </div> : <section className="admin-panel mt-6"><AdminEmptyState icon={<BarChart3 />} title="No verified revenue yet" description="Monthly sales and commission will appear after the first paid order is verified." action={<Link className="admin-button admin-button--primary" to="/admin/orders">Review orders</Link>} /></section>}
+    </>}
+  </main>;
+}

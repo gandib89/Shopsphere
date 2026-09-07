@@ -78,7 +78,7 @@ orderRouter.post("/send-confirmation/:orderId", verifyToken, sendOrderConfirmati
 // Confirm order and deduct stock after payment success
 orderRouter.put("/confirm/:orderId", verifyToken, confirmOrderAndDeductStock);
 
-// Cancel order (user) — restores stock, sets status Cancelled
+// Cancel order (user) — restores stock only when a confirmed order deducted it
 orderRouter.put("/cancel/:orderId", verifyToken, cancelOrder);
 
 // Request return (user) — only within 7 days of delivery
@@ -89,7 +89,7 @@ orderRouter.put("/admin/return/:orderId", verifyToken, authorizeAdmin, processRe
 // allow sellers to approve/reject return requests for their own products
 orderRouter.put("/seller/return/:orderId", verifyToken, authorizeSeller, processReturn);
 
-// Release refund (admin) — after return is approved
+// Complete a persisted sandbox refund (admin) after a return or paid cancellation
 orderRouter.put("/admin/refund/:orderId", verifyToken, authorizeAdmin, releaseRefund);
 
 // Track order (user) — full timeline

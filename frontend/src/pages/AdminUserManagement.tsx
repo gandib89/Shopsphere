@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Edit2, Trash2, Mail, Users, X, Search } from 'lucide-react';
+import { Edit2, Trash2, Mail, Users, Search } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
-import NavBar from '../components/NavBar';
 import CreateCustomer from '../components/account/CreateCustomer';
 import CreateSeller from '../components/account/CreateSeller';
+import { Dialog } from '../components/ui/Dialog';
+import { Field } from '../components/ui/Field';
+import { Button } from '../components/ui/Button';
+import { AdminEmptyState, AdminHeading } from '../components/admin/AdminUi';
 
 interface User {
   _id: string;
@@ -46,6 +49,7 @@ function AdminUserManagement() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [messageData, setMessageData] = useState({ subject: '', message: '' });
+  const [modalError, setModalError] = useState('');
 
   useEffect(() => {
     if (!token || localStorage.getItem('isAdmin') !== 'true') {
@@ -116,13 +120,15 @@ function AdminUserManagement() {
   };
 
   const handleEditUser = (user: User) => {
+    setModalError('');
     setEditingUser({ ...user });
     setShowEditModal(true);
   };
 
   const handleUpdateUser = async () => {
     if (!editingUser) return;
-
+    if (!editingUser.firstName.trim() || !editingUser.lastName.trim() || !/^\S+@\S+\.\S+$/.test(editingUser.email)) { setModalError('Enter a first name, last name, and valid email address.'); return; }
+    setModalError('');
     try {
       const response = await axios.put(
         `${import.meta.env.VITE_BACKEND_URL}/api/v1/users/${editingUser._id}`,
@@ -152,8 +158,9 @@ function AdminUserManagement() {
   };
 
   const handleSendMessage = async () => {
+    setModalError('');
     if (!selectedUser || !messageData.subject || !messageData.message) {
-      toast.error('Please fill in all fields');
+      setModalError('Enter both a subject and message.');
       return;
     }
 
@@ -205,36 +212,23 @@ function AdminUserManagement() {
   };
 
   return (
-    <>
-      <NavBar />
-      <div className="min-h-screen bg-paper">
-        {/* Header */}
-        <div className="bg-ink text-paper py-6 sm:py-8 border-b border-brass/40">
-          <div className="container mx-auto px-4 sm:px-6">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <h1 className="font-display text-2xl sm:text-4xl font-bold mb-1">{filter === 'user' ? 'Customers' : 'User Management'}</h1>
-                <p className="text-paper/60 text-sm">{filter === 'user' ? 'Manage customer accounts' : 'Manage users, sellers, and admins'}</p>
-              </div>
-              <div className="flex flex-wrap justify-end gap-2">
-              <button className="admin-button" onClick={() => setCreating('seller')}>Add seller</button>
-              <button className="admin-button" onClick={() => setCreating('customer')}>Add customer</button>
-              </div>
-            </div>
-          </div>
-        </div>
+    <main>
+      <AdminHeading title={filter === 'user' ? 'Customers' : 'User management'} description={filter === 'user' ? 'Manage customer accounts and support requests.' : 'Manage customers, sellers, and administrator accounts.'}>
+        <button className="admin-button" onClick={() => setCreating('seller')}>Add seller</button>
+        <button className="admin-button admin-button--primary" onClick={() => setCreating('customer')}>Add customer</button>
+      </AdminHeading>
 
-        {creating && <div className="container mx-auto px-4 sm:px-6 pt-6">
+        {creating && <section className="admin-panel mb-6 p-5" aria-label={`Create ${creating}`}>
           {creating === 'seller' ? <CreateSeller onCancel={() => setCreating(null)} /> : <CreateCustomer onCancel={() => setCreating(null)} onCreated={() => {
             setCreating(null); setSearchTerm(''); setSearchParams({ role: 'user' });
             toast.success('Customer created.'); void fetchUsers(); void fetchStats();
           }} />}
-        </div>}
+        </section>}
 
         {/* Statistics Cards */}
         {stats && (
-          <div className="container mx-auto px-4 py-8">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          <section className="admin-panel mb-6" aria-label="Account totals">
+            <div className="admin-stats admin-stats--accounts">
               <div className="bg-paper-raised border border-hairline p-6">
                 <p className="text-ink-muted text-xs uppercase tracking-wide mb-1">Total Users</p>
                 <p className="text-3xl font-bold text-ink font-mono tabular-nums">{stats.totalUsers}</p>
@@ -256,39 +250,38 @@ function AdminUserManagement() {
                 <p className="text-3xl font-bold text-ink font-mono tabular-nums">{stats.totalAdmins}</p>
               </div>
             </div>
-          </div>
+          </section>
         )}
 
         {/* Filters and Search */}
-        <div className="container mx-auto px-4 py-6">
-          <div className="mb-6 flex flex-col md:flex-row gap-3 md:items-center">
+        <section className="admin-panel">
+          <div className="admin-toolbar">
             {/* Search */}
             <div className="flex-1 w-full flex items-center border border-hairline bg-paper-raised overflow-hidden transition-colors duration-150 focus-within:border-brass">
               <div className="px-3.5 flex items-center border-r border-hairline">
                 <Search size={16} className="text-brass" />
               </div>
+              <label htmlFor="admin-user-search" className="sr-only">Search users by name or email</label>
               <input
-                type="text"
-                placeholder="Search by name or email..."
+                id="admin-user-search"
+                type="search"
+                aria-label="Search users by name or email"
+                placeholder="Search by name or email…"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="flex-1 px-3.5 py-2.5 text-sm text-ink bg-transparent outline-none"
               />
               {searchTerm && (
-                <button onClick={() => setSearchTerm('')} className="px-3.5 text-ink-muted hover:text-ink text-lg leading-none">×</button>
+                <button onClick={() => setSearchTerm('')} aria-label="Clear user search" className="min-h-11 px-3.5 text-ink-muted hover:text-ink text-lg leading-none">×</button>
               )}
             </div>
             {/* Role filter pills */}
-            <div className="flex gap-1.5 shrink-0">
+            <div className="admin-tabs mb-0 shrink-0" aria-label="Account role filters">
               {(['all', 'user', 'seller', 'admin'] as const).map((role) => (
                 <button
                   key={role}
                   onClick={() => setSearchParams(role === 'all' ? {} : { role })}
-                  className={`px-3.5 py-1.5 text-[13px] font-medium border transition-colors duration-150 ${
-                    filter === role
-                      ? 'bg-ink text-paper border-ink'
-                      : 'bg-transparent text-ink-muted border-hairline hover:border-brass hover:text-brass'
-                  }`}
+                  aria-pressed={filter === role}
                 >
                   {role === 'all' ? 'All' : role.charAt(0).toUpperCase() + role.slice(1) + 's'}
                 </button>
@@ -302,13 +295,17 @@ function AdminUserManagement() {
               <p className="text-ink-muted">Loading users...</p>
             </div>
           ) : filteredUsers.length === 0 ? (
-            <div className="text-center py-12 border border-dashed border-hairline">
-              <Users className="w-16 h-16 mx-auto text-ink-muted/40 mb-4" />
-              <p className="text-ink-muted">No users found</p>
-            </div>
+            <AdminEmptyState
+              icon={<Users />}
+              title={users.length ? 'No matching accounts' : 'No accounts yet'}
+              description={users.length ? 'Try another search or role filter.' : 'Create the first customer or seller account for this marketplace.'}
+              action={users.length
+                ? <button className="admin-button" onClick={() => { setSearchTerm(''); setSearchParams({}); }}>Clear filters</button>
+                : <><button className="admin-button admin-button--primary" onClick={() => setCreating('customer')}>Add first customer</button><button className="admin-button" onClick={() => setCreating('seller')}>Add seller</button></>}
+            />
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
+            <><div className="admin-table-wrap admin-desktop-table">
+              <table className="admin-table">
                 <thead>
                   <tr className="border-b-2 border-ink">
                     <th className="p-4 text-left font-semibold text-ink text-xs uppercase tracking-wide">Name</th>
@@ -345,25 +342,26 @@ function AdminUserManagement() {
                           {user.role === 'seller' && <Link className="admin-button" to={'/admin/sellers/' + user._id}>View seller</Link>}
                           <button
                             onClick={() => handleEditUser(user)}
-                            className="p-2 text-ink-muted hover:text-brass active:scale-[0.97] transition"
-                            title="Edit user"
+                            className="flex h-11 w-11 items-center justify-center text-ink-muted hover:text-brass active:scale-[0.97] transition"
+                            aria-label={`Edit ${user.firstName} ${user.lastName}`}
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => {
                               setSelectedUser(user);
+                              setModalError('');
                               setShowMessageModal(true);
                             }}
-                            className="p-2 text-ink-muted hover:text-ink active:scale-[0.97] transition"
-                            title="Send message"
+                            className="flex h-11 w-11 items-center justify-center text-ink-muted hover:text-ink active:scale-[0.97] transition"
+                            aria-label={`Message ${user.firstName} ${user.lastName}`}
                           >
                             <Mail className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => handleDeleteUser(user._id, user.email)}
-                            className="p-2 text-ink-muted hover:text-seal active:scale-[0.97] transition"
-                            title="Delete user"
+                            className="flex h-11 w-11 items-center justify-center text-ink-muted hover:text-seal active:scale-[0.97] transition"
+                            aria-label={`Delete ${user.firstName} ${user.lastName}`}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -374,145 +372,28 @@ function AdminUserManagement() {
                 </tbody>
               </table>
             </div>
+            <div className="admin-mobile-cards">{filteredUsers.map(user => <article className="admin-mobile-card" key={user._id}><div><h2 className="font-semibold text-ink">{user.firstName} {user.lastName}</h2><p className="text-xs text-ink-muted">{user.email}</p></div><dl><div><dt>Role</dt><dd>{getRoleLabel(user.role, user.isVerified)}</dd></div><div><dt>Joined</dt><dd>{new Date(user.createdAt).toLocaleDateString()}</dd></div></dl><div className="admin-mobile-card-actions"><button className="admin-button" onClick={() => handleEditUser(user)}>Edit</button><button className="admin-button" onClick={() => { setSelectedUser(user); setShowMessageModal(true); setModalError(''); }}>Message</button></div></article>)}</div></>
           )}
-        </div>
+        </section>
 
-        {/* Edit User Modal */}
-        {showEditModal && editingUser && (
-          <div className="fixed inset-0 bg-ink/50 flex items-center justify-center z-50 p-4 animate-overlay-in">
-            <div className="bg-paper-raised border border-hairline max-w-md w-full animate-panel-in">
-              <div className="flex items-center justify-between p-6 border-b border-hairline">
-                <h2 className="text-xl font-bold text-ink">Edit User Details</h2>
-                <button
-                  onClick={() => setShowEditModal(false)}
-                  className="text-ink-muted hover:text-ink transition"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <div className="p-6 space-y-4">
-                <input
-                  type="text"
-                  placeholder="First Name"
-                  value={editingUser.firstName}
-                  onChange={(e) => setEditingUser({ ...editingUser, firstName: e.target.value })}
-                  className="w-full px-4 py-2 border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition"
-                />
-                <input
-                  type="text"
-                  placeholder="Last Name"
-                  value={editingUser.lastName}
-                  onChange={(e) => setEditingUser({ ...editingUser, lastName: e.target.value })}
-                  className="w-full px-4 py-2 border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition"
-                />
-                <input
-                  type="email"
-                  placeholder="Email"
-                  value={editingUser.email}
-                  onChange={(e) => setEditingUser({ ...editingUser, email: e.target.value })}
-                  className="w-full px-4 py-2 border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition"
-                />
-                <input
-                  type="tel"
-                  placeholder="Phone"
-                  value={editingUser.phone || ''}
-                  onChange={(e) => setEditingUser({ ...editingUser, phone: e.target.value })}
-                  className="w-full px-4 py-2 border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition"
-                />
-                {editingUser.role === 'seller' && (
-                  <>
-                    <input
-                      type="text"
-                      placeholder="Shop Name"
-                      value={editingUser.shopName || ''}
-                      onChange={(e) => setEditingUser({ ...editingUser, shopName: e.target.value })}
-                      className="w-full px-4 py-2 border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition"
-                    />
-                    <textarea
-                      placeholder="Shop Description"
-                      value={editingUser.shopDescription || ''}
-                      onChange={(e) => setEditingUser({ ...editingUser, shopDescription: e.target.value })}
-                      className="w-full px-4 py-2 border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition resize-none"
-                      rows={3}
-                    />
-                  </>
-                )}
-              </div>
-
-              <div className="flex gap-3 p-6 border-t border-hairline">
-                <button
-                  onClick={() => setShowEditModal(false)}
-                  className="flex-1 px-4 py-2 border border-ink text-ink hover:bg-ink hover:text-paper active:scale-[0.98] transition font-semibold"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleUpdateUser}
-                  className="flex-1 px-4 py-2 bg-brass text-white hover:bg-brass-dark active:scale-[0.97] transition font-semibold"
-                >
-                  Update
-                </button>
-              </div>
-            </div>
+        <Dialog open={showEditModal && !!editingUser} title="Edit user details" description="Update the account information shown across ShopSphere." onClose={() => { setShowEditModal(false); setModalError(''); }} footer={<><Button variant="quiet" onClick={() => setShowEditModal(false)}>Cancel</Button><Button onClick={() => void handleUpdateUser()}>Update user</Button></>}>
+          {editingUser && <div className="space-y-4">
+            {modalError && <p className="text-sm text-seal" role="alert">{modalError}</p>}
+            <Field id="edit-first-name" label="First name" required><input id="edit-first-name" data-autofocus value={editingUser.firstName} onChange={event => setEditingUser({ ...editingUser, firstName: event.target.value })} className="w-full rounded-[var(--radius-control)] border border-hairline bg-paper px-4 py-3" /></Field>
+            <Field id="edit-last-name" label="Last name" required><input id="edit-last-name" value={editingUser.lastName} onChange={event => setEditingUser({ ...editingUser, lastName: event.target.value })} className="w-full rounded-[var(--radius-control)] border border-hairline bg-paper px-4 py-3" /></Field>
+            <Field id="edit-email" label="Email" required><input id="edit-email" type="email" value={editingUser.email} onChange={event => setEditingUser({ ...editingUser, email: event.target.value })} className="w-full rounded-[var(--radius-control)] border border-hairline bg-paper px-4 py-3" /></Field>
+            <Field id="edit-phone" label="Phone"><input id="edit-phone" type="tel" value={editingUser.phone || ''} onChange={event => setEditingUser({ ...editingUser, phone: event.target.value })} className="w-full rounded-[var(--radius-control)] border border-hairline bg-paper px-4 py-3" /></Field>
+            {editingUser.role === 'seller' && <><Field id="edit-shop" label="Shop name" required><input id="edit-shop" value={editingUser.shopName || ''} onChange={event => setEditingUser({ ...editingUser, shopName: event.target.value })} className="w-full rounded-[var(--radius-control)] border border-hairline bg-paper px-4 py-3" /></Field><Field id="edit-shop-description" label="Shop description"><textarea id="edit-shop-description" rows={3} value={editingUser.shopDescription || ''} onChange={event => setEditingUser({ ...editingUser, shopDescription: event.target.value })} className="w-full rounded-[var(--radius-control)] border border-hairline bg-paper px-4 py-3" /></Field></>}
+          </div>}
+        </Dialog>
+        <Dialog open={showMessageModal && !!selectedUser} title="Send message" description={selectedUser ? `This message will be emailed to ${selectedUser.email}.` : undefined} onClose={() => { setShowMessageModal(false); setModalError(''); }} footer={<><Button variant="quiet" onClick={() => setShowMessageModal(false)}>Cancel</Button><Button onClick={() => void handleSendMessage()}><Mail className="h-4 w-4" aria-hidden="true" />Send message</Button></>}>
+          <div className="space-y-4">
+            {modalError && <p className="text-sm text-seal" role="alert">{modalError}</p>}
+            <Field id="message-subject" label="Subject" required><input id="message-subject" data-autofocus value={messageData.subject} onChange={event => setMessageData({ ...messageData, subject: event.target.value })} className="w-full rounded-[var(--radius-control)] border border-hairline bg-paper px-4 py-3" /></Field>
+            <Field id="message-body" label="Message" required><textarea id="message-body" rows={6} value={messageData.message} onChange={event => setMessageData({ ...messageData, message: event.target.value })} className="w-full rounded-[var(--radius-control)] border border-hairline bg-paper px-4 py-3" /></Field>
           </div>
-        )}
-
-        {/* Message Modal */}
-        {showMessageModal && selectedUser && (
-          <div className="fixed inset-0 bg-ink/50 flex items-center justify-center z-50 p-4 animate-overlay-in">
-            <div className="bg-paper-raised border border-hairline max-w-md w-full animate-panel-in">
-              <div className="flex items-center justify-between p-6 border-b border-hairline">
-                <h2 className="text-xl font-bold text-ink">Send Message</h2>
-                <button
-                  onClick={() => setShowMessageModal(false)}
-                  className="text-ink-muted hover:text-ink transition"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <div className="p-6 space-y-4">
-                <div className="border border-hairline bg-paper p-4">
-                  <p className="text-sm text-ink-muted">Sending to:</p>
-                  <p className="font-semibold text-ink">{selectedUser.email}</p>
-                </div>
-                <input
-                  type="text"
-                  placeholder="Message Subject"
-                  value={messageData.subject}
-                  onChange={(e) => setMessageData({ ...messageData, subject: e.target.value })}
-                  className="w-full px-4 py-2 border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition"
-                />
-                <textarea
-                  placeholder="Message Content"
-                  value={messageData.message}
-                  onChange={(e) => setMessageData({ ...messageData, message: e.target.value })}
-                  className="w-full px-4 py-2 border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition resize-none"
-                  rows={6}
-                />
-              </div>
-
-              <div className="flex gap-3 p-6 border-t border-hairline">
-                <button
-                  onClick={() => setShowMessageModal(false)}
-                  className="flex-1 px-4 py-2 border border-ink text-ink hover:bg-ink hover:text-paper active:scale-[0.98] transition font-semibold"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSendMessage}
-                  className="flex-1 px-4 py-2 bg-brass text-white hover:bg-brass-dark active:scale-[0.97] transition font-semibold flex items-center justify-center gap-2"
-                >
-                  <Mail className="w-4 h-4" />
-                  Send
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </>
+        </Dialog>
+    </main>
   );
 }
 
