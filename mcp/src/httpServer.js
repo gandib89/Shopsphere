@@ -45,6 +45,50 @@ const withCors = (response, origin) => {
   });
 };
 
+const responseLimitFallback = (requestBody) => {
+  const messages = Array.isArray(requestBody) ? requestBody : [requestBody];
+  const request = messages.find((message) => message?.id !== undefined);
+  const isToolCall = request?.method === "tools/call";
+  const body = isToolCall
+    ? {
+        jsonrpc: "2.0",
+        id: request.id,
+        result: {
+          content: [{ type: "text", text: "Response limit exceeded" }],
+          isError: true,
+        },
+      }
+    : {
+        jsonrpc: "2.0",
+        id: request?.id ?? null,
+        error: { code: -32603, message: "Response limit exceeded" },
+      };
+  return { body: JSON.stringify(body), status: isToolCall ? 200 : 500 };
+};
+
+const enforceResponseLimit = async (response, maxResponseBytes, requestBody) => {
+  const body = Buffer.from(await response.arrayBuffer());
+  if (body.byteLength <= maxResponseBytes) {
+    return new Response(body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    });
+  }
+
+  const fallback = responseLimitFallback(requestBody);
+  if (Buffer.byteLength(fallback.body, "utf8") > maxResponseBytes) {
+    return new Response(null, { status: 507 });
+  }
+  return new Response(fallback.body, {
+    status: fallback.status,
+    headers: {
+      "cache-control": "no-store",
+      "content-type": "application/json",
+    },
+  });
+};
+
 const parseBody = async (request, maxRequestBytes) => {
   const contentLength = Number(request.headers.get("content-length"));
   if (Number.isFinite(contentLength) && contentLength > maxRequestBytes) {
@@ -130,8 +174,11 @@ export const createMcpHttpServer = ({
       }
 
       const versionError = validatePinnedProtocol(request, body);
-      if (versionError) return versionError;
-      return withCors(await handler.fetch(request, { parsedBody: body }), origin);
+      const mcpResponse = versionError ?? (await handler.fetch(request, { parsedBody: body }));
+      return withCors(
+        await enforceResponseLimit(mcpResponse, maxResponseBytes, body),
+        origin,
+      );
     },
   };
 

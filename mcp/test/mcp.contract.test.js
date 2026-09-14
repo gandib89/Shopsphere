@@ -180,17 +180,29 @@ test("rejects unknown tools and unknown get_capabilities fields", async (t) => {
 });
 
 test("returns a bounded error instead of an oversized tool response", async (t) => {
-  const server = createMcpHttpServer({ enabled: true, maxResponseBytes: 128 });
+  const maxResponseBytes = 128;
+  const server = createMcpHttpServer({ enabled: true, maxResponseBytes });
   const url = await listen(server);
   t.after(() => close(server));
 
-  const client = await connect(url);
-  t.after(() => client.close());
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      accept: "application/json, text/event-stream",
+      "content-type": "application/json",
+      "mcp-protocol-version": PROTOCOL_VERSION,
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 7,
+      method: "tools/call",
+      params: { name: "get_capabilities", arguments: {} },
+    }),
+  });
+  const responseBody = await response.text();
 
-  const result = await client.callTool({ name: "get_capabilities", arguments: {} });
-  assert.equal(result.isError, true);
-  assert.match(result.content[0].text, /response limit/i);
-  assert.ok(Buffer.byteLength(JSON.stringify(result), "utf8") <= 128);
+  assert.match(responseBody, /response limit/i);
+  assert.ok(Buffer.byteLength(responseBody, "utf8") <= maxResponseBytes);
 });
 
 test("the global kill switch disables MCP without affecting storefront liveness", async (t) => {

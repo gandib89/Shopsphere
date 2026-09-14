@@ -6,23 +6,6 @@ import {
   toolRegistry,
 } from "./toolRegistry.js";
 
-const byteLength = (value) => Buffer.byteLength(JSON.stringify(value), "utf8");
-
-const responseLimitError = (maxResponseBytes) => {
-  const result = {
-    content: [{ type: "text", text: "Response limit exceeded" }],
-    isError: true,
-  };
-
-  if (byteLength(result) > maxResponseBytes) {
-    return { content: [], isError: true };
-  }
-  return result;
-};
-
-const boundedResult = (result, maxResponseBytes) =>
-  byteLength(result) <= maxResponseBytes ? result : responseLimitError(maxResponseBytes);
-
 export const createShopSphereMcpServer = ({
   flags = {},
   maxRequestBytes,
@@ -51,13 +34,10 @@ export const createShopSphereMcpServer = ({
           maxRequestBytes,
           maxResponseBytes,
         });
-        return boundedResult(
-          {
-            content: [{ type: "text", text: JSON.stringify(output) }],
-            structuredContent: output,
-          },
-          maxResponseBytes,
-        );
+        return {
+          content: [{ type: "text", text: JSON.stringify(output) }],
+          structuredContent: output,
+        };
       },
     );
   }
