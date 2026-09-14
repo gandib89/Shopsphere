@@ -1,6 +1,8 @@
 import crypto from "node:crypto";
 
 import { prisma } from "../database/prismaClient.js";
+import { assistantPrisma } from "../database/assistantPrisma.js";
+import { withAssistantActor } from "../database/assistantTransaction.js";
 import { isDelegatedTokenShape, verifyDelegatedToken } from "../utils/mcpOAuth.js";
 
 const bearer = (req) => {
@@ -84,9 +86,14 @@ export const validateAssistantAccess = async (
   return { account };
 };
 
-export const authorizeAssistantOperation = (policy, client = prisma) => async (req, res, next) => {
+export const authorizeAssistantOperation = (policy = {}, client = assistantPrisma) => async (req, res, next) => {
   try {
-    const result = await validateAssistantAccess(req, policy, client);
+    const result = await withAssistantActor({
+      actorId: req.delegation.sub,
+      role: req.delegation.role,
+      operation: policy.operation ?? "authorization.resolve",
+      signal: req.signal,
+    }, (tx) => validateAssistantAccess(req, policy, tx), client);
     if (!result.account) {
       return res.status(result.status).json({ code: result.code, message: "Assistant operation is not available" });
     }

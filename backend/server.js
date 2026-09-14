@@ -2,6 +2,7 @@
 
 import app from "./app.js";
 import { prisma } from "./database/prismaClient.js";
+import { assistantPrisma } from "./database/assistantPrisma.js";
 import { dbConnection } from "./database/dbConnection.js";
 
 const PORT = process.env.PORT || 4000;
@@ -11,6 +12,9 @@ const validateProductionConfig = () => {
     const failures = [];
     if (!process.env.DATABASE_URL) failures.push("DATABASE_URL is required");
     if (!process.env.ASSISTANT_DATABASE_URL) failures.push("ASSISTANT_DATABASE_URL is required");
+    if (!process.env.ASSISTANT_DB_PASSWORD || process.env.ASSISTANT_DB_PASSWORD.length < 24) {
+        failures.push("ASSISTANT_DB_PASSWORD must contain at least 24 characters");
+    }
     if (!process.env.FRONTEND_URL) failures.push("FRONTEND_URL is required");
     if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
         failures.push("JWT_SECRET must contain at least 32 characters");
@@ -75,6 +79,7 @@ const shutdown = (signal) => {
     console.log(`\n${signal} received. Shutting down gracefully...`);
     server.close(async () => {
         await prisma.$disconnect();
+        await assistantPrisma.$disconnect();
         console.log(`✅ Port ${PORT} released. Server stopped.`);
         process.exit(0);
     });

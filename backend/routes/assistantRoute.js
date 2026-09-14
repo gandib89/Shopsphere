@@ -117,6 +117,7 @@ router.post(
   authenticateAssistantWorkload,
   authenticateAssistantDelegation,
   authorizeAssistantOperation({
+    operation: "profile.getMySummary",
     scope: "profile:read",
     rolloutFlag: "MCP_TOOL_GET_MY_PROFILE_SUMMARY_ENABLED",
   }),

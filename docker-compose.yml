@@ -65,7 +65,8 @@ services:
       - ./backend/config/config.env
     environment:
       DATABASE_URL: postgresql://shopsphere:shopsphere@postgres:5432/shopsphere?schema=public
-      ASSISTANT_DATABASE_URL: postgresql://shopsphere:shopsphere@postgres:5432/shopsphere?schema=public
+      ASSISTANT_DATABASE_URL: postgresql://shopsphere_assistant_runtime:${ASSISTANT_DB_PASSWORD:?set ASSISTANT_DB_PASSWORD}@postgres:5432/shopsphere?schema=public
+      ASSISTANT_DB_PASSWORD: ${ASSISTANT_DB_PASSWORD:?set ASSISTANT_DB_PASSWORD}
       ASSISTANT_API_TOKEN: ${ASSISTANT_API_TOKEN:?set ASSISTANT_API_TOKEN}
       ASSISTANT_CURSOR_SECRET: ${ASSISTANT_CURSOR_SECRET:?set ASSISTANT_CURSOR_SECRET}
       MCP_OAUTH_ISSUER: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}/realms/shopsphere
