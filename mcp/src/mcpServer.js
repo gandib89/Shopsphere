@@ -1,5 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/server";
 
+import { compareCatalog, searchCatalog } from "./catalogData.js";
 import { getStorePolicy } from "./policyContent.js";
 import {
   REGISTRY_VERSION,
@@ -18,12 +19,18 @@ export const createShopSphereMcpServer = ({
     version: "1.0.0",
   });
 
+  // Per-tool handlers keyed by registry name. Other issue agents add their own
+  // entry here; unknown registry names are skipped so tools register idempotently.
   const handlers = {
     get_capabilities: () =>
       describeCapabilities({ flags, maxRequestBytes, maxResponseBytes }),
     get_store_policy: (args) => ({
       ...getStorePolicy(args.topic),
       registryVersion: REGISTRY_VERSION,
+    }),
+    search_products: (args) => searchCatalog(args),
+    compare_products: (args) => ({
+      products: compareCatalog(args.productIds),
     }),
   };
 

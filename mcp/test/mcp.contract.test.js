@@ -45,6 +45,8 @@ test("negotiates the pinned protocol and serves public get_capabilities", async 
   assert.deepEqual(tools.tools.map(({ name }) => name), [
     "get_capabilities",
     "get_store_policy",
+    "search_products",
+    "compare_products",
   ]);
 
   const result = await client.callTool({ name: "get_capabilities", arguments: {} });
@@ -85,6 +87,42 @@ test("negotiates the pinned protocol and serves public get_capabilities", async 
       backendOperation: {
         kind: "local",
         operationId: "registry.getStorePolicy",
+        method: null,
+        path: null,
+      },
+    },
+    {
+      name: "search_products",
+      description: "Searches visible public products by text, category, and price with capped pages.",
+      operationClass: "read",
+      roles: ["public"],
+      scopes: [],
+      rateClass: "public-read",
+      rollout: {
+        flag: "MCP_TOOL_SEARCH_PRODUCTS_ENABLED",
+        enabled: true,
+      },
+      backendOperation: {
+        kind: "local",
+        operationId: "catalog.searchProducts",
+        method: null,
+        path: null,
+      },
+    },
+    {
+      name: "compare_products",
+      description: "Compares up to 5 visible public products using the same public projection.",
+      operationClass: "read",
+      roles: ["public"],
+      scopes: [],
+      rateClass: "public-read",
+      rollout: {
+        flag: "MCP_TOOL_COMPARE_PRODUCTS_ENABLED",
+        enabled: true,
+      },
+      backendOperation: {
+        kind: "local",
+        operationId: "catalog.compareProducts",
         method: null,
         path: null,
       },
@@ -283,7 +321,11 @@ test("the get_capabilities rollout flag removes discovery and dispatch", async (
   t.after(() => client.close());
 
   const tools = await client.listTools();
-  assert.deepEqual(tools.tools.map(({ name }) => name), ["get_store_policy"]);
+  assert.deepEqual(tools.tools.map(({ name }) => name), [
+    "get_store_policy",
+    "search_products",
+    "compare_products",
+  ]);
   await assert.rejects(
     client.callTool({ name: "get_capabilities", arguments: {} }),
     /get_capabilities|not found|unknown/i,

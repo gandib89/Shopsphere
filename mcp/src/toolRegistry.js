@@ -66,6 +66,52 @@ export const GetStorePolicyOutputSchema = z
   })
   .strict();
 
+// Minimized public storefront projection: availability label only — no
+// sellerId, no exact stock counts, no seller-private metadata.
+const PublicProductSchema = z
+  .object({
+    id: z.string().min(1).max(100),
+    name: z.string().min(1).max(200),
+    price: z.number().nonnegative(),
+    images: z.array(z.string().max(500)).max(20),
+    category: z.string().min(1).max(100),
+    availability: z.enum(["In stock", "Sold out"]),
+  })
+  .strict();
+
+const SearchProductsInputSchema = z
+  .object({
+    q: z.string().min(1).max(200).optional(),
+    category: z.string().min(1).max(100).optional(),
+    minPrice: z.number().nonnegative().max(1_000_000_000).optional(),
+    maxPrice: z.number().nonnegative().max(1_000_000_000).optional(),
+    sort: z.enum(["price-asc", "price-desc", "name-asc", "name-desc"]).optional(),
+    page: z.number().int().min(1).max(1000).optional(),
+    limit: z.number().int().min(1).max(50).optional(),
+  })
+  .strict();
+
+const SearchProductsOutputSchema = z
+  .object({
+    items: z.array(PublicProductSchema).max(50),
+    total: z.number().int().nonnegative(),
+    page: z.number().int().min(1),
+    pageSize: z.number().int().min(1).max(50),
+  })
+  .strict();
+
+const CompareProductsInputSchema = z
+  .object({
+    productIds: z.array(z.string().min(1).max(100)).min(1).max(5),
+  })
+  .strict();
+
+const CompareProductsOutputSchema = z
+  .object({
+    products: z.array(PublicProductSchema).max(5),
+  })
+  .strict();
+
 const definitions = [
   {
     name: "get_capabilities",
@@ -106,6 +152,48 @@ const definitions = [
     backendOperation: {
       kind: "local",
       operationId: "registry.getStorePolicy",
+      method: null,
+      path: null,
+    },
+  },
+  {
+    name: "search_products",
+    title: "Search ShopSphere products",
+    description: "Searches visible public products by text, category, and price with capped pages.",
+    inputSchema: SearchProductsInputSchema,
+    outputSchema: SearchProductsOutputSchema,
+    operationClass: "read",
+    roles: ["public"],
+    scopes: [],
+    rateClass: "public-read",
+    rollout: {
+      flag: "MCP_TOOL_SEARCH_PRODUCTS_ENABLED",
+      defaultEnabled: true,
+    },
+    backendOperation: {
+      kind: "local",
+      operationId: "catalog.searchProducts",
+      method: null,
+      path: null,
+    },
+  },
+  {
+    name: "compare_products",
+    title: "Compare ShopSphere products",
+    description: "Compares up to 5 visible public products using the same public projection.",
+    inputSchema: CompareProductsInputSchema,
+    outputSchema: CompareProductsOutputSchema,
+    operationClass: "read",
+    roles: ["public"],
+    scopes: [],
+    rateClass: "public-read",
+    rollout: {
+      flag: "MCP_TOOL_COMPARE_PRODUCTS_ENABLED",
+      defaultEnabled: true,
+    },
+    backendOperation: {
+      kind: "local",
+      operationId: "catalog.compareProducts",
       method: null,
       path: null,
     },

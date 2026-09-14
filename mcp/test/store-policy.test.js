@@ -111,6 +111,8 @@ test("injection text in policy data cannot register tools", async (t) => {
   assert.deepEqual(before.tools.map(({ name }) => name), [
     "get_capabilities",
     "get_store_policy",
+    "search_products",
+    "compare_products",
   ]);
 
   for (const topic of POLICY_TOPICS) {
@@ -126,6 +128,8 @@ test("injection text in policy data cannot register tools", async (t) => {
   assert.deepEqual(after.tools.map(({ name }) => name), [
     "get_capabilities",
     "get_store_policy",
+    "search_products",
+    "compare_products",
   ]);
 });
 
@@ -141,7 +145,11 @@ test("the get_store_policy rollout flag removes discovery and dispatch", async (
   t.after(() => client.close());
 
   const tools = await client.listTools();
-  assert.deepEqual(tools.tools.map(({ name }) => name), ["get_capabilities"]);
+  assert.deepEqual(tools.tools.map(({ name }) => name), [
+    "get_capabilities",
+    "search_products",
+    "compare_products",
+  ]);
   await assert.rejects(
     client.callTool({ name: "get_store_policy", arguments: { topic: "returns" } }),
     /get_store_policy|not found|unknown/i,

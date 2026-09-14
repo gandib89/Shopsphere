@@ -44,5 +44,13 @@ export const readConfig = (environment = process.env) => ({
       environment.MCP_TOOL_GET_STORE_POLICY_ENABLED,
       true,
     ),
+    MCP_TOOL_SEARCH_PRODUCTS_ENABLED: parseBoolean(
+      environment.MCP_TOOL_SEARCH_PRODUCTS_ENABLED,
+      true,
+    ),
+    MCP_TOOL_COMPARE_PRODUCTS_ENABLED: parseBoolean(
+      environment.MCP_TOOL_COMPARE_PRODUCTS_ENABLED,
+      true,
+    ),
   },
 });
