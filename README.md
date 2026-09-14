@@ -16,6 +16,7 @@ Technically, the project is interesting less for its CRUD surface and more for h
 ## Key Features
 
 **Implemented**
+- **MCP capability service** — a separately runnable Streamable HTTP process pinned to protocol `2025-11-25`, currently exposing only the public `get_capabilities` tracer bullet from a strict, versioned policy registry with per-tool rollout and a global kill switch
 - **Authentication & authorization** — email/password with Argon2id hashing (bcrypt-verified legacy accounts auto-upgrade on login), rotating refresh tokens with stolen-token detection, Google Sign-In, role-based access (customer / seller / admin)
 - **Multi-vendor catalog** — product CRUD with per-color and per-storage stock variants, image uploads, product reviews
 - **Cart & checkout** — persistent server-side cart, promo code discounts, single and bulk (multi-item) order creation
@@ -121,6 +122,7 @@ Shopsphere/
 │   ├── src/components/             Shared UI, auth, catalog, checkout, layout, operations
 │   ├── src/lib/session.ts          In-memory access token + refresh/interceptor logic
 │   └── src/test/                    Vitest setup and render helpers
+├── mcp/                              Separate Streamable HTTP MCP service and policy registry
 └── docker-compose.yml              Local PostgreSQL container
 ```
 
@@ -332,7 +334,19 @@ Covers auth components, catalog/product cards, cart checkout summary, layout, op
 git clone <repo-url>
 cd Shopsphere/backend && npm install
 cd ../frontend && npm install
+cd ../mcp && npm install
 ```
+
+### MCP service
+
+The MCP process runs independently from the storefront and backend:
+
+```bash
+cd mcp
+npm start
+```
+
+Configuration is read from the environment; [`mcp/.env.example`](mcp/.env.example) documents every setting for a process manager, container platform, or shell. The default endpoint is `http://127.0.0.1:4100/mcp`, pinned to MCP protocol `2025-11-25`. Terminate public HTTPS at the deployment ingress and forward only to this private listener. Set `MCP_ALLOWED_ORIGINS` to the comma-separated exact browser origins allowed to connect. `MCP_ENABLED=false` disables the MCP endpoint while keeping its liveness endpoint—and the independently deployed storefront—available.
 
 ### Environment Variables
 

@@ -38,6 +38,20 @@ services:
     volumes:
       - backend_uploads:/app/uploads
 
+  mcp:
+    build: ./mcp
+    restart: unless-stopped
+    environment:
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 4100
+      MCP_ENABLED: ${MCP_ENABLED:-true}
+      MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS:-http://localhost:5173}
+      MCP_TOOL_GET_CAPABILITIES_ENABLED: ${MCP_TOOL_GET_CAPABILITIES_ENABLED:-true}
+      MCP_MAX_REQUEST_BYTES: 32768
+      MCP_MAX_RESPONSE_BYTES: 65536
+    ports:
+      - "${MCP_PORT:-4100}:4100"
+
   frontend:
     build:
       context: ./frontend
