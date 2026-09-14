@@ -29,6 +29,10 @@ const validateProductionConfig = () => {
         "MCP_OAUTH_INTROSPECTION_CLIENT_ID",
         "MCP_OAUTH_INTROSPECTION_CLIENT_SECRET",
         "MCP_WORKLOAD_CLIENT_ID",
+        "KEYCLOAK_ADMIN_ORIGIN",
+        "KEYCLOAK_SYNC_CLIENT_ID",
+        "KEYCLOAK_SYNC_CLIENT_SECRET",
+        "MCP_CLIENT_REDIRECT_URIS",
     ]) {
         if (!process.env[name]) failures.push(`${name} is required`);
     }

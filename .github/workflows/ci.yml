@@ -18,6 +18,7 @@ jobs:
             --env KC_BOOTSTRAP_ADMIN_PASSWORD=ci-keycloak-admin-password \
             --env MCP_WORKLOAD_CLIENT_SECRET=ci-mcp-workload-client-secret \
             --env ASSISTANT_OAUTH_CLIENT_SECRET=ci-assistant-client-secret \
+            --env KEYCLOAK_SYNC_CLIENT_SECRET=ci-account-sync-client-secret \
             --volume "$PWD/infra/keycloak/realm-shopsphere.json:/opt/keycloak/data/import/realm-shopsphere.json:ro" \
             quay.io/keycloak/keycloak:26.7.3 start-dev --import-realm
       - name: Verify authorization-server metadata
@@ -32,6 +33,14 @@ jobs:
           jq -e '.issuer == "http://localhost:8080/realms/shopsphere"' metadata.json
           jq -e '.code_challenge_methods_supported[] | select(. == "S256")' metadata.json
           jq -e '.grant_types_supported[] | select(. == "urn:ietf:params:oauth:grant-type:token-exchange")' metadata.json
+          sync_token=$(curl --fail --silent --request POST \
+            --data-urlencode grant_type=client_credentials \
+            --data-urlencode client_id=shopsphere-account-sync \
+            --data-urlencode client_secret=ci-account-sync-client-secret \
+            http://localhost:8080/realms/shopsphere/protocol/openid-connect/token | jq -r .access_token)
+          test -n "$sync_token"
+          curl --fail --silent --header "Authorization: Bearer $sync_token" \
+            "http://localhost:8080/admin/realms/shopsphere/users?max=1" > /dev/null
 
   mcp:
     runs-on: ubuntu-latest

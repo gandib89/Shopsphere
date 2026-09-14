@@ -57,12 +57,12 @@
         }
       ]
     },
-    { "name": "catalog:read", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true" }, "protocolMappers": [] },
-    { "name": "policy:read", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true" }, "protocolMappers": [] },
-    { "name": "profile:read", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true" }, "protocolMappers": [] },
-    { "name": "notifications:read", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true" }, "protocolMappers": [] },
-    { "name": "orders:read", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true" }, "protocolMappers": [] },
-    { "name": "cart:read", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true" }, "protocolMappers": [] }
+    { "name": "catalog:read", "description": "Read permitted ShopSphere catalog information", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read permitted catalog information" }, "protocolMappers": [] },
+    { "name": "policy:read", "description": "Read approved ShopSphere policy", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read approved store policy" }, "protocolMappers": [] },
+    { "name": "profile:read", "description": "Read your minimal profile summary", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read your display name, role, and verification state" }, "protocolMappers": [] },
+    { "name": "notifications:read", "description": "Read your notifications", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read your notifications" }, "protocolMappers": [] },
+    { "name": "orders:read", "description": "Read your permitted orders", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read your permitted order history" }, "protocolMappers": [] },
+    { "name": "cart:read", "description": "Read and preview your cart", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read and preview your cart" }, "protocolMappers": [] }
   ],
   "clients": [
     {
@@ -70,6 +70,7 @@
       "name": "ShopSphere approved MCP client",
       "enabled": true,
       "publicClient": true,
+      "consentRequired": true,
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
@@ -109,6 +110,26 @@
       "standardFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": true
+    },
+    {
+      "clientId": "shopsphere-account-sync",
+      "name": "ShopSphere account linker",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "${KEYCLOAK_SYNC_CLIENT_SECRET}",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true
+    }
+  ],
+  "users": [
+    {
+      "username": "service-account-shopsphere-account-sync",
+      "enabled": true,
+      "serviceAccountClientId": "shopsphere-account-sync",
+      "clientRoles": {
+        "realm-management": ["manage-users", "view-users"]
+      }
     }
   ]
 }

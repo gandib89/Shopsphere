@@ -22,6 +22,7 @@ import testEmailRouter from "./routes/testEmailRoute.js";
 import assistantRouter from "./routes/assistantRoute.js";
 import mcpOAuthRouter from "./routes/mcpOAuthRoute.js";
 import { rejectDelegatedTokens } from "./middlewares/assistantDelegation.js";
+import aiConnectionRouter from "./routes/aiConnectionRoute.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -89,6 +90,7 @@ app.use(
 );
 
 app.use('/api/v1/auth',authRouter);
+app.use('/api/v1/ai-connections', aiConnectionRouter);
 app.use ('/api/v1/product',productRouter);
 app.use('/api/v1/order', orderRouter);
 app.use('/api/v1/payment', paymentRouter);

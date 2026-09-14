@@ -1,7 +1,7 @@
 import AccountDeletion from '../components/account/AccountDeletion';
 import { useEffect, useState } from "react";
 import NavBar from "../components/NavBar";
-import { ArrowLeft, User, Pencil, X, Store, Phone, Mail, Check, Lock, Eye, EyeOff } from "lucide-react";
+import { ArrowLeft, User, Pencil, X, Store, Phone, Mail, Check, Lock, Eye, EyeOff, Link2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { authFetch } from "../lib/session";
@@ -426,6 +426,17 @@ const Profile = () => {
               </div>
             )}
           </div>
+
+          <section className="mt-6 border border-hairline bg-paper-raised p-6">
+            <h3 className="flex items-center gap-2 text-lg font-bold text-ink">
+              <Link2 aria-hidden="true" className="h-5 w-5 text-brass" />
+              AI connections
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-ink-muted">Inspect which approved AI clients can access your account and revoke them at any time.</p>
+            <button type="button" onClick={() => navigate('/ai-connections')} className="mt-4 min-h-11 border border-ink px-4 text-sm font-semibold text-ink transition hover:bg-ink hover:text-paper focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink">
+              Manage AI connections
+            </button>
+          </section>
 
           {/* Change Password Section */}
           <div className="bg-paper-raised border border-hairline p-6 space-y-5 mt-6">
