@@ -4,7 +4,7 @@ import { assistantPrisma } from "./assistantPrisma.js";
 
 const roles = new Set(["user", "seller", "admin"]);
 const actorPattern = /^[a-f0-9]{24}$/;
-const operationPattern = /^[a-z][a-z0-9_.]{0,99}$/;
+const operationPattern = /^[A-Za-z][A-Za-z0-9_.]{0,99}$/;
 
 const abortError = () => Object.assign(new Error("Assistant operation cancelled"), { name: "AbortError" });
 
