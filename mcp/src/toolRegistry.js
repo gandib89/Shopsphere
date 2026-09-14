@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { POLICY_TOPICS, POLICY_VERSION } from "./policyContent.js";
+import { POLICY_VERSION } from "./policyContent.js";
 
 export const PROTOCOL_VERSION = "2025-11-25";
 export const REGISTRY_VERSION = "1.0.0";
@@ -52,7 +52,7 @@ export const CapabilitiesOutputSchema = z
 
 export const GetStorePolicyInputSchema = z
   .object({
-    topic: z.enum(POLICY_TOPICS),
+    topic: z.string().min(1).max(100),
   })
   .strict();
 
@@ -146,7 +146,7 @@ const PublicReviewSchema = z
     displayName: z.string().min(1).max(100),
     rating: z.number().int().min(1).max(5),
     comment: z.string().min(1).max(1000),
-    createdAt: z.string().min(1).max(100),
+    createdAt: z.iso.datetime().max(100),
   })
   .strict();
 

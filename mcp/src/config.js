@@ -5,6 +5,7 @@ import {
 
 const parseBoolean = (value, fallback) => {
   if (value === undefined) return fallback;
+  if (typeof value === "boolean") return value;
   return value.toLowerCase() === "true";
 };
 

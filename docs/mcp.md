@@ -1,6 +1,6 @@
 # ShopSphere MCP integration plan
 
-Status: phased implementation. The public `get_capabilities` tracer bullet, versioned registry, rollout controls, and separate Streamable HTTP service are implemented; later tools and private authorization controls remain proposed. Prepared against the repository on 2026-09-14. The capability lists below are a closed allowlist for the proposed integration: every unlisted action is denied, even if an existing REST endpoint supports it.
+Status: phased implementation. All 7 Phase 1 public tools (`get_capabilities`, `get_store_policy`, `search_products`, `compare_products`, `get_product`, `get_product_reviews`, `get_recommendations`) with versioned registry, rollout controls, and separate Streamable HTTP service are implemented; private authorization controls remain proposed. Prepared against the repository on 2026-09-14. The capability lists below are a closed allowlist for the proposed integration: every unlisted action is denied, even if an existing REST endpoint supports it.
 
 ## 1. Architecture
 

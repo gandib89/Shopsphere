@@ -73,9 +73,13 @@ test("unknown topics return an explicit unknown and never invent policy", async 
     name: "get_store_policy",
     arguments: { topic: "refund-for-moon-landing" },
   });
-  assert.equal(result.isError, true);
-  assert.match(result.content[0].text, /unknown|invalid/i);
-  assert.doesNotMatch(result.content[0].text, /7 days/);
+  assert.equal(result.isError, undefined);
+  const output = result.structuredContent;
+  assert.equal(output.topic, "refund-for-moon-landing");
+  assert.match(output.answer, /unknown/i);
+  assert.equal(output.sourceId, "unknown");
+  assert.equal(output.sourceVersion, POLICY_VERSION);
+  assert.doesNotMatch(output.answer, /7 days/);
 
   const direct = getStorePolicy("refund-for-moon-landing");
   assert.equal(direct.sourceId, "unknown");

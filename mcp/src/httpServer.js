@@ -163,7 +163,9 @@ export const createMcpHttpServer = ({
         return jsonResponse(403, { error: "Origin is not allowed" });
       }
       if (request.method === "OPTIONS") {
-        return new Response(null, { status: 204, headers: corsHeaders(origin) });
+        return origin
+          ? new Response(null, { status: 204, headers: corsHeaders(origin) })
+          : new Response(null, { status: 204 });
       }
 
       let body;
