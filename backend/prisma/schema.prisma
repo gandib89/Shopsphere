@@ -38,6 +38,7 @@ model User {
 
   productsAsSeller  Product[]        @relation("ProductSeller")
   orders            Order[]          @relation("OrderUser")
+  ordersAsSellerAtPurchase Order[]   @relation("OrderSellerAtPurchase")
   carts             Cart[]
   revenuesAsSeller  Revenue[]        @relation("RevenueSeller")
   revenuesAsAdmin   Revenue[]        @relation("RevenueAdmin")
@@ -100,6 +101,7 @@ model Product {
   bills           Bill[]
 
   @@map("products")
+  @@index([sellerId])
 }
 
 model ProductColorVariant {
@@ -193,6 +195,11 @@ model Order {
   bill                  Bill?     @relation("OrderBill", fields: [billId], references: [id])
   userId                String?   @db.VarChar(24)
   user                  User?     @relation("OrderUser", fields: [userId], references: [id])
+  // Immutable seller attribution captured at purchase time. Never updated afterwards:
+  // a later Product.sellerId transfer must not move historical sales to the new owner.
+  // Null = legacy/unrepaired row, quarantined from assistant reads until backfilled.
+  sellerIdAtPurchase    String?   @db.VarChar(24)
+  sellerAtPurchase      User?     @relation("OrderSellerAtPurchase", fields: [sellerIdAtPurchase], references: [id], onDelete: SetNull)
   confirmationEmailSent Boolean   @default(false)
   orderNumber           String?   @unique
   orderGroupId          String?
@@ -213,6 +220,8 @@ model Order {
   @@index([createdAt])
   @@index([email, createdAt])
   @@index([orderGroupId])
+  @@index([userId, createdAt])
+  @@index([sellerIdAtPurchase, createdAt])
   @@map("orders")
 }
 

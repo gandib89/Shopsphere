@@ -329,7 +329,7 @@ export const getOrder = async (req, res) => {
 
     // Include product with nested seller info
     const orders = await prisma.order.findMany({
-      where: { email: user.email },
+      where: { userId: user.id },
       include: {
         product: {
           include: {
@@ -382,7 +382,10 @@ export const getOrderDetails = async (req, res) => {
     }
 
     const isOwner = order.userId === req.user.id;
-    const isSeller = req.user.role === "seller" && order.product?.sellerId === req.user.id;
+    // Immutable sale attribution wins; the present-day product owner is only a
+    // fallback for not-yet-backfilled rows. A product transfer never moves history.
+    const sellerAttribution = order.sellerIdAtPurchase || order.product?.sellerId;
+    const isSeller = req.user.role === "seller" && sellerAttribution === req.user.id;
     if (req.user.role !== "admin" && !isOwner && !isSeller) {
       return res.status(403).json({ message: "Not authorized to view this order" });
     }
@@ -509,6 +512,7 @@ export const createOrder = async (req, res) => {
         totalPrice,
         adminCommission,
         userId,
+        sellerIdAtPurchase: productDetails.sellerId || null,
         size,
         color,
         variantStorage: variants?.storage,
@@ -657,6 +661,9 @@ export const createBulkOrderFromCart = async (req, res) => {
           totalPrice: itemTotal,
           adminCommission: itemTotal * 0.05,
           userId,
+          // Immutable seller snapshot per child: a multi-seller group must not
+          // collapse every child onto one seller.
+          sellerIdAtPurchase: productDetails.sellerId || null,
           size: item.size,
           color: item.color,
           variantStorage: item.variants?.storage,
@@ -874,9 +881,10 @@ export const userUpdateOrder = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Use the user's email to find the order
+    // Use the verified immutable user ID to find the order — never the
+    // changeable email address.
     let order = await prisma.order.findFirst({
-      where: { id, email: user.email },
+      where: { id, userId: user.id },
       include: { product: { select: { name: true, price: true } } },
     });
     if (!order) {
@@ -947,8 +955,9 @@ export const userDeleteOrder = async (req, res) => {
     }
 
     // Find the order by ID and ensure it belongs to the logged-in user
+    // (verified userId, never email).
     const order = await prisma.order.findFirst({
-      where: { id, email: user.email },
+      where: { id, userId: user.id },
       include: { product: true },
     });
     if (!order) {
@@ -1006,8 +1015,15 @@ export const getSellerOrders = async (req, res) => {
     const productIds = sellerProducts.map(p => p.id);
 
     // Find all orders for these products
+    // Prefer immutable sale attribution; fall back to the legacy present-day
+    // product-owner join only for not-yet-backfilled rows (sellerIdAtPurchase NULL).
     const orders = await prisma.order.findMany({
-      where: { productId: { in: productIds } },
+      where: {
+        OR: [
+          { sellerIdAtPurchase: sellerId },
+          { sellerIdAtPurchase: null, productId: { in: productIds } },
+        ],
+      },
       include: { product: { select: { name: true, price: true, category: true } } },
       orderBy: { createdAt: "desc" },
     });
@@ -1036,8 +1052,9 @@ export const updateSellerOrderStatus = async (req, res) => {
       return res.status(404).json({ message: "Order not found" });
     }
 
-    // Sellers may only touch orders for their own products; admins can update any order.
-    if (req.user.role !== "admin" && order.product.sellerId !== req.user.id) {
+    // Sellers may only touch their own sales (immutable attribution first,
+    // legacy product-owner join only for not-yet-backfilled rows); admins can update any order.
+    if (req.user.role !== "admin" && (order.sellerIdAtPurchase || order.product.sellerId) !== req.user.id) {
       return res.status(403).json({ message: "You can only update orders for your own products" });
     }
 
@@ -1137,7 +1154,7 @@ export const generateBill = async (req, res) => {
     }
 
     const isOwner = order.userId === req.user.id;
-    const isSeller = req.user.role === "seller" && order.product?.sellerId === req.user.id;
+    const isSeller = req.user.role === "seller" && (order.sellerIdAtPurchase || order.product?.sellerId) === req.user.id;
     if (req.user.role !== "admin" && !isOwner && !isSeller) {
       return res.status(403).json({ message: "Not authorized to view this order" });
     }
@@ -1292,7 +1309,7 @@ export const sendOrderConfirmationEmail = async (req, res) => {
     }
 
     const isOwner = order.userId === req.user.id;
-    const isSeller = req.user.role === "seller" && order.product?.sellerId === req.user.id;
+    const isSeller = req.user.role === "seller" && (order.sellerIdAtPurchase || order.product?.sellerId) === req.user.id;
     if (req.user.role !== "admin" && !isOwner && !isSeller) {
       return res.status(403).json({ message: "Not authorized to email this order's confirmation" });
     }
@@ -1783,10 +1800,11 @@ export const processReturn = async (req, res) => {
     let order = await prisma.order.findUnique({ where: { id: orderId }, include: { product: true } });
     if (!order) return res.status(404).json({ message: "Order not found" });
 
-    // sellers may only process returns for their own products
+    // sellers may only process returns for their own sales (immutable
+    // attribution first, legacy product-owner join for unrepaired rows)
     if (req.user.role === "seller") {
       const sellerId = req.user.id;
-      if (!order.product || order.product.sellerId !== sellerId) {
+      if (!order.product || (order.sellerIdAtPurchase || order.product.sellerId) !== sellerId) {
         return res.status(403).json({ message: "Access denied. This order does not belong to you." });
       }
     }
