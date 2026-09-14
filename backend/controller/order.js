@@ -177,37 +177,57 @@ export const adjustStock = async (productId, quantity, selectedColor, selectedSt
   return client.product.findUnique({ where: { id: productId } });
 };
 
-// Atomically claims the current cancellable state before restoring inventory. Pending orders
-// have not deducted stock yet; only Confirmed orders need a compensating increment.
-export const cancelOrderCore = async (orderId, actor, client = prisma) => client.$transaction(async (tx) => {
-  const actorId = typeof actor === "string" ? actor : actor.id;
-  const isAdmin = typeof actor === "object" && actor.role === "admin";
-  const order = await tx.order.findUnique({ where: { id: orderId }, include: { product: true } });
-  if (!order) throw Object.assign(new Error("Order not found"), { statusCode: 404 });
-  if (!isAdmin && order.userId !== actorId) throw Object.assign(new Error("Not authorized to cancel this order"), { statusCode: 403 });
-  if (!["Pending", "Confirmed"].includes(order.status)) {
-    throw Object.assign(new Error(`Order cannot be cancelled. Current status: ${order.status}`), { statusCode: 409 });
-  }
+// Cancellation eligibility is a pure state check so previews (e.g. MCP propose-only
+// flows) can call it without touching stock, payments, or refunds.
+export const CANCELLABLE_ORDER_STATUSES = Object.freeze(["Pending", "Confirmed"]);
+export const isCancelEligible = (orderOrStatus) => {
+  const status = typeof orderOrStatus === "string" ? orderOrStatus : orderOrStatus?.status;
+  return CANCELLABLE_ORDER_STATUSES.includes(status);
+};
 
-  const claim = await tx.order.updateMany({
-    where: { id: orderId, ...(isAdmin ? {} : { userId: actorId }), status: order.status },
-    data: { status: "Cancelled", cancelledAt: new Date() },
-  });
-  if (claim.count === 0) {
-    throw Object.assign(new Error("Order state changed; refresh and try again"), { statusCode: 409 });
-  }
+// State transition + eligible stock restore ONLY. Never calls a payment/refund provider,
+// never creates a Refund row, and never reports money moved: a paid (Confirmed) cancel
+// returns `refundRequired: "human"` so a separate human/admin refund step can run via
+// processRefundCore. `client` is an explicit Prisma client or transaction client — no
+// global fallback, so restricted pools (assistantPrisma) stay separated.
+export const cancelOrderCore = async (orderId, actor, client) => {
+  if (!client) throw Object.assign(new Error("cancelOrderCore requires an explicit transaction client"), { statusCode: 500 });
+  const run = async (tx) => {
+    const actorId = typeof actor === "string" ? actor : actor.id;
+    const isAdmin = typeof actor === "object" && actor.role === "admin";
+    const order = await tx.order.findUnique({ where: { id: orderId }, include: { product: true } });
+    if (!order) throw Object.assign(new Error("Order not found"), { statusCode: 404 });
+    if (!isAdmin && order.userId !== actorId) throw Object.assign(new Error("Not authorized to cancel this order"), { statusCode: 403 });
+    if (!isCancelEligible(order)) {
+      throw Object.assign(new Error(`Order cannot be cancelled. Current status: ${order.status}`), { statusCode: 409 });
+    }
 
-  const stockRestored = order.status === "Confirmed";
-  if (stockRestored) {
-    await adjustStock(order.productId, order.quantity, order.variantColor, order.variantStorage, 1, tx);
-  }
+    // Atomic claim: only one concurrent caller flips Pending/Confirmed -> Cancelled,
+    // so stock is restored at most once (second caller gets count 0 -> 409).
+    const claim = await tx.order.updateMany({
+      where: { id: orderId, ...(isAdmin ? {} : { userId: actorId }), status: order.status },
+      data: { status: "Cancelled", cancelledAt: new Date() },
+    });
+    if (claim.count === 0) {
+      throw Object.assign(new Error("Order state changed; refresh and try again"), { statusCode: 409 });
+    }
 
-  return {
-    order: await tx.order.findUnique({ where: { id: orderId }, include: { product: true } }),
-    stockRestored,
-    refundRequired: stockRestored,
+    const stockRestored = order.status === "Confirmed";
+    if (stockRestored) {
+      await adjustStock(order.productId, order.quantity, order.variantColor, order.variantStorage, 1, tx);
+    }
+
+    return {
+      order: await tx.order.findUnique({ where: { id: orderId }, include: { product: true } }),
+      stockRestored,
+      // Explicit human-handling flag (truthy when handling may be needed, null otherwise).
+      // Never a provider result — moneyMoved stays false here by design.
+      refundRequired: stockRestored ? "human" : null,
+      moneyMoved: false,
+    };
   };
-});
+  return typeof client.$transaction === "function" ? client.$transaction(run) : run(client);
+};
 
 // Mirrors Mongoose's Revenue.findOneAndUpdate({ orderId }, data) — updates only the first
 // matching revenue row (there's no unique constraint on orderId in the new schema either).
@@ -1644,11 +1664,12 @@ export const confirmOrderAndDeductStock = async (req, res) => {
 };
 
 // ─── Cancel Order (user-initiated) ────────────────────────────────────────────
-// Allowed only when status is Pending or Confirmed. Restores stock automatically.
+// Allowed only when status is Pending or Confirmed. Restores stock when eligible.
+// State change only — never releases money; a paid cancel reports human handling.
 export const cancelOrder = async (req, res) => {
   try {
     const { orderId } = req.params;
-    const { order, stockRestored, refundRequired } = await cancelOrderCore(orderId, req.user);
+    const { order, stockRestored, refundRequired, moneyMoved } = await cancelOrderCore(orderId, req.user, prisma);
 
     // Notify customer
     const cancelHtml = shopSphereEmail('Order Cancelled', `
@@ -1659,14 +1680,14 @@ export const cancelOrder = async (req, res) => {
         emailRow('Product', order.product?.name || 'Product')
       )}
       <p style="margin-top:16px;">${refundRequired
-        ? 'This paid sandbox order is now awaiting an admin-recorded sandbox refund. No real money moves in demo mode.'
+        ? 'This paid order is cancelled. A separate human/admin refund step may be required — no money moved automatically.'
         : 'This order was cancelled before payment, so no refund is required.'}</p>
     `, { accentColor: '#ef4444', icon: '❌' });
     sendEmail(order.email, "Order Cancelled – ShopSphere", "Your order has been cancelled.", cancelHtml);
 
     res.status(200).json({
-      message: refundRequired ? "Order cancelled; sandbox refund is pending" : "Unpaid order cancelled",
-      order: withNestedOrderShape(order), stockRestored, refundRequired,
+      message: refundRequired ? "Order cancelled; human refund handling required, no money moved" : "Unpaid order cancelled",
+      order: withNestedOrderShape(order), stockRestored, refundRequired, moneyMoved,
     });
   } catch (error) {
     console.error("Error cancelling order:", error);
