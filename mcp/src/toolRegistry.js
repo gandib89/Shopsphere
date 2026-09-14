@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { POLICY_TOPICS, POLICY_VERSION } from "./policyContent.js";
+
 export const PROTOCOL_VERSION = "2025-11-25";
 export const REGISTRY_VERSION = "1.0.0";
 export const DEFAULT_MAX_REQUEST_BYTES = 32 * 1024;
@@ -48,6 +50,22 @@ export const CapabilitiesOutputSchema = z
   })
   .strict();
 
+export const GetStorePolicyInputSchema = z
+  .object({
+    topic: z.enum(POLICY_TOPICS),
+  })
+  .strict();
+
+export const GetStorePolicyOutputSchema = z
+  .object({
+    topic: z.string().min(1).max(64),
+    answer: z.string().min(1).max(4000),
+    sourceId: z.string().min(1).max(100),
+    sourceVersion: z.literal(POLICY_VERSION),
+    registryVersion: z.literal(REGISTRY_VERSION),
+  })
+  .strict();
+
 const definitions = [
   {
     name: "get_capabilities",
@@ -66,6 +84,28 @@ const definitions = [
     backendOperation: {
       kind: "local",
       operationId: "registry.getCapabilities",
+      method: null,
+      path: null,
+    },
+  },
+  {
+    name: "get_store_policy",
+    title: "Get ShopSphere store policy",
+    description:
+      "Answers approved ShopSphere store policy questions from versioned curated sources.",
+    inputSchema: GetStorePolicyInputSchema,
+    outputSchema: GetStorePolicyOutputSchema,
+    operationClass: "read",
+    roles: ["public"],
+    scopes: [],
+    rateClass: "public-read",
+    rollout: {
+      flag: "MCP_TOOL_GET_STORE_POLICY_ENABLED",
+      defaultEnabled: true,
+    },
+    backendOperation: {
+      kind: "local",
+      operationId: "registry.getStorePolicy",
       method: null,
       path: null,
     },

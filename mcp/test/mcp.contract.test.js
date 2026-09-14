@@ -42,7 +42,10 @@ test("negotiates the pinned protocol and serves public get_capabilities", async 
 
   assert.equal(client.getNegotiatedProtocolVersion(), PROTOCOL_VERSION);
   const tools = await client.listTools();
-  assert.deepEqual(tools.tools.map(({ name }) => name), ["get_capabilities"]);
+  assert.deepEqual(tools.tools.map(({ name }) => name), [
+    "get_capabilities",
+    "get_store_policy",
+  ]);
 
   const result = await client.callTool({ name: "get_capabilities", arguments: {} });
   assert.equal(result.isError, undefined);
@@ -63,6 +66,25 @@ test("negotiates the pinned protocol and serves public get_capabilities", async 
       backendOperation: {
         kind: "local",
         operationId: "registry.getCapabilities",
+        method: null,
+        path: null,
+      },
+    },
+    {
+      name: "get_store_policy",
+      description:
+        "Answers approved ShopSphere store policy questions from versioned curated sources.",
+      operationClass: "read",
+      roles: ["public"],
+      scopes: [],
+      rateClass: "public-read",
+      rollout: {
+        flag: "MCP_TOOL_GET_STORE_POLICY_ENABLED",
+        enabled: true,
+      },
+      backendOperation: {
+        kind: "local",
+        operationId: "registry.getStorePolicy",
         method: null,
         path: null,
       },
@@ -261,7 +283,7 @@ test("the get_capabilities rollout flag removes discovery and dispatch", async (
   t.after(() => client.close());
 
   const tools = await client.listTools();
-  assert.deepEqual(tools.tools, []);
+  assert.deepEqual(tools.tools.map(({ name }) => name), ["get_store_policy"]);
   await assert.rejects(
     client.callTool({ name: "get_capabilities", arguments: {} }),
     /get_capabilities|not found|unknown/i,

@@ -40,5 +40,9 @@ export const readConfig = (environment = process.env) => ({
       environment.MCP_TOOL_GET_CAPABILITIES_ENABLED,
       true,
     ),
+    MCP_TOOL_GET_STORE_POLICY_ENABLED: parseBoolean(
+      environment.MCP_TOOL_GET_STORE_POLICY_ENABLED,
+      true,
+    ),
   },
 });

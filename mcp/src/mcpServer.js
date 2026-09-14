@@ -1,6 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/server";
 
+import { getStorePolicy } from "./policyContent.js";
 import {
+  REGISTRY_VERSION,
   describeCapabilities,
   isToolEnabled,
   toolRegistry,
@@ -16,8 +18,18 @@ export const createShopSphereMcpServer = ({
     version: "1.0.0",
   });
 
+  const handlers = {
+    get_capabilities: () =>
+      describeCapabilities({ flags, maxRequestBytes, maxResponseBytes }),
+    get_store_policy: (args) => ({
+      ...getStorePolicy(args.topic),
+      registryVersion: REGISTRY_VERSION,
+    }),
+  };
+
   for (const tool of toolRegistry.filter((definition) => isToolEnabled(definition, flags))) {
-    if (tool.name !== "get_capabilities") continue;
+    const handle = handlers[tool.name];
+    if (!handle) continue;
 
     server.registerTool(
       tool.name,
@@ -28,12 +40,8 @@ export const createShopSphereMcpServer = ({
         outputSchema: tool.outputSchema,
         annotations: { readOnlyHint: true },
       },
-      async () => {
-        const output = describeCapabilities({
-          flags,
-          maxRequestBytes,
-          maxResponseBytes,
-        });
+      async (args) => {
+        const output = handle(args);
         return {
           content: [{ type: "text", text: JSON.stringify(output) }],
           structuredContent: output,
