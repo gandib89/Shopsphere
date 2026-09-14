@@ -29,6 +29,8 @@ jobs:
 
   backend:
     runs-on: ubuntu-latest
+    env:
+      JWT_SECRET: ci-test-jwt-secret-at-least-32-characters
     defaults:
       run:
         working-directory: backend
