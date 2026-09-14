@@ -23,6 +23,18 @@ export const readConfig = (environment = process.env) => ({
   port: parsePositiveInteger(environment.MCP_PORT, 4100, "MCP_PORT"),
   enabled: parseBoolean(environment.MCP_ENABLED, false),
   accessToken: environment.MCP_ACCESS_TOKEN,
+  oauthIssuer: environment.MCP_OAUTH_ISSUER,
+  oauthJwksUri: environment.MCP_OAUTH_JWKS_URI,
+  oauthTokenEndpoint: environment.MCP_OAUTH_TOKEN_ENDPOINT,
+  oauthIntrospectionEndpoint: environment.MCP_OAUTH_INTROSPECTION_ENDPOINT,
+  oauthAudience: environment.MCP_OAUTH_AUDIENCE ?? "shopsphere-mcp",
+  oauthClientId: environment.MCP_WORKLOAD_CLIENT_ID ?? "shopsphere-mcp-workload",
+  oauthClientSecret: environment.MCP_WORKLOAD_CLIENT_SECRET,
+  assistantAudience: environment.ASSISTANT_AUDIENCE ?? "shopsphere-assistant-api",
+  trustedClients: (environment.MCP_OAUTH_CLIENTS ?? "shopsphere-mcp-client")
+    .split(",")
+    .map((client) => client.trim())
+    .filter(Boolean),
   backendOrigin: environment.MCP_BACKEND_ORIGIN ?? "http://127.0.0.1:4000",
   backendToken: environment.ASSISTANT_API_TOKEN,
   backendTimeoutMs: parsePositiveInteger(

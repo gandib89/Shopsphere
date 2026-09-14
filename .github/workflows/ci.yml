@@ -7,6 +7,32 @@ on:
     branches: [main]
 
 jobs:
+  oauth:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start the imported Keycloak realm
+        run: |
+          docker run --detach --name shopsphere-keycloak --publish 8080:8080 \
+            --env KC_BOOTSTRAP_ADMIN_USERNAME=admin \
+            --env KC_BOOTSTRAP_ADMIN_PASSWORD=ci-keycloak-admin-password \
+            --env MCP_WORKLOAD_CLIENT_SECRET=ci-mcp-workload-client-secret \
+            --env ASSISTANT_OAUTH_CLIENT_SECRET=ci-assistant-client-secret \
+            --volume "$PWD/infra/keycloak/realm-shopsphere.json:/opt/keycloak/data/import/realm-shopsphere.json:ro" \
+            quay.io/keycloak/keycloak:26.7.3 start-dev --import-realm
+      - name: Verify authorization-server metadata
+        run: |
+          for attempt in {1..60}; do
+            if curl --fail --silent http://localhost:8080/realms/shopsphere/.well-known/openid-configuration > metadata.json; then
+              break
+            fi
+            sleep 2
+          done
+          test -s metadata.json || { docker logs shopsphere-keycloak; exit 1; }
+          jq -e '.issuer == "http://localhost:8080/realms/shopsphere"' metadata.json
+          jq -e '.code_challenge_methods_supported[] | select(. == "S256")' metadata.json
+          jq -e '.grant_types_supported[] | select(. == "urn:ietf:params:oauth:grant-type:token-exchange")' metadata.json
+
   mcp:
     runs-on: ubuntu-latest
     defaults:

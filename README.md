@@ -403,18 +403,20 @@ See [backend/recommendation/README.md](backend/recommendation/README.md) for the
 
 ## Docker
 
-`docker-compose.yml` provisions Postgres, the backend API, the gated MCP service, and the frontend (built and served by nginx).
+`docker-compose.yml` provisions PostgreSQL, Keycloak, the backend API, the gated MCP service, and the frontend (built and served by nginx).
 
 ```bash
 cp backend/config/config.env.example backend/config/config.env  # fill in secrets first
-# Set ASSISTANT_API_TOKEN, ASSISTANT_CURSOR_SECRET, and MCP_ACCESS_TOKEN in your shell/.env.
+# Set the Keycloak database/admin/client secrets plus ASSISTANT_API_TOKEN and
+# ASSISTANT_CURSOR_SECRET in your shell/.env.
 docker compose up -d --build
 docker compose down            # stop (add -v to also drop the postgres_data volume)
 ```
 
 - **postgres** — `postgres:16-alpine`, exposed on `:5432`, with a healthcheck the backend waits on before starting.
+- **keycloak** — Keycloak 26.7 backed by its own PostgreSQL database. The imported realm requires authorization code with PKCE for the approved public client, issues five-minute MCP tokens, supports confidential workload token exchange, and exposes revocation-aware introspection. Production deployments must set a public HTTPS `KEYCLOAK_PUBLIC_URL` and replace every bootstrap/client secret.
 - **backend** ([backend/Dockerfile](backend/Dockerfile)) — Node 20-alpine; `prisma generate` runs at image build time since the generated client is gitignored; the container entrypoint runs `prisma migrate deploy` before starting the server, so committed migrations apply automatically on every start. Reads `backend/config/config.env` via `env_file`, with `DATABASE_URL` overridden in compose to point at the `postgres` service by name (containers can't reach each other via `localhost`). Exposed on `:4000`; uploaded files persist in the `backend_uploads` volume.
-- **mcp** ([mcp/Dockerfile](mcp/Dockerfile)) — authenticated Streamable HTTP on `:4100`; requires separate MCP and backend service tokens, applies request/response/rate/concurrency bounds, and starts with its global and per-tool flags disabled.
+- **mcp** ([mcp/Dockerfile](mcp/Dockerfile)) — OAuth-authenticated Streamable HTTP on `:4100`; validates Keycloak issuer/audience/client/session state, uses confidential token exchange for the assistant audience, applies request/response/rate/concurrency bounds, and starts with its global and per-tool flags disabled.
 - **frontend** ([frontend/Dockerfile](frontend/Dockerfile)) — multi-stage: `npm run build` in a Node stage, the resulting `dist/` served by `nginx:alpine` on `:5173→80`. No SPA rewrite rules are needed because the app uses `HashRouter` — every client route is a `#` fragment the browser never sends to the server.
 
 Not verified: no Docker runtime was available in the environment these images were authored in, so `docker compose up --build` has not actually been run end-to-end. The Dockerfiles and compose wiring were reasoned through carefully (multi-stage build, non-root backend user, healthcheck-gated startup, correct in-network hostnames) but treat a first real build as the actual test.

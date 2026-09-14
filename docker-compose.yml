@@ -1,4 +1,39 @@
 services:
+  keycloak-postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?set KEYCLOAK_DB_PASSWORD}
+      POSTGRES_DB: keycloak
+    expose:
+      - "5432"
+    volumes:
+      - keycloak_postgres_data:/var/lib/postgresql/data
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7.3
+    restart: unless-stopped
+    command: start --import-realm --http-enabled=true --hostname-strict=false
+    depends_on:
+      - keycloak-postgres
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://keycloak-postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?set KEYCLOAK_DB_PASSWORD}
+      KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}
+      KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "true"
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:?set KEYCLOAK_ADMIN_USERNAME}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?set KEYCLOAK_ADMIN_PASSWORD}
+      MCP_WORKLOAD_CLIENT_SECRET: ${MCP_WORKLOAD_CLIENT_SECRET:?set MCP_WORKLOAD_CLIENT_SECRET}
+      ASSISTANT_OAUTH_CLIENT_SECRET: ${ASSISTANT_OAUTH_CLIENT_SECRET:?set ASSISTANT_OAUTH_CLIENT_SECRET}
+    volumes:
+      - ./infra/keycloak/realm-shopsphere.json:/opt/keycloak/data/import/realm-shopsphere.json:ro
+    ports:
+      - "${KEYCLOAK_PORT:-8080}:8080"
+
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -32,6 +67,12 @@ services:
       ASSISTANT_DATABASE_URL: postgresql://shopsphere:shopsphere@postgres:5432/shopsphere?schema=public
       ASSISTANT_API_TOKEN: ${ASSISTANT_API_TOKEN:?set ASSISTANT_API_TOKEN}
       ASSISTANT_CURSOR_SECRET: ${ASSISTANT_CURSOR_SECRET:?set ASSISTANT_CURSOR_SECRET}
+      MCP_OAUTH_ISSUER: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}/realms/shopsphere
+      MCP_OAUTH_JWKS_URI: http://keycloak:8080/realms/shopsphere/protocol/openid-connect/certs
+      MCP_OAUTH_INTROSPECTION_ENDPOINT: http://keycloak:8080/realms/shopsphere/protocol/openid-connect/token/introspect
+      MCP_OAUTH_INTROSPECTION_CLIENT_ID: shopsphere-assistant-api
+      MCP_OAUTH_INTROSPECTION_CLIENT_SECRET: ${ASSISTANT_OAUTH_CLIENT_SECRET:?set ASSISTANT_OAUTH_CLIENT_SECRET}
+      MCP_WORKLOAD_CLIENT_ID: shopsphere-mcp-workload
       PORT: 4000
       NODE_ENV: production
       PAYMENT_MODE: ${PAYMENT_MODE:-sandbox}
@@ -51,9 +92,17 @@ services:
       MCP_PORT: 4100
       MCP_ENABLED: ${MCP_ENABLED:-false}
       MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS:-http://localhost:5173}
-      MCP_ACCESS_TOKEN: ${MCP_ACCESS_TOKEN:?set MCP_ACCESS_TOKEN}
       MCP_BACKEND_ORIGIN: http://backend:4000
       ASSISTANT_API_TOKEN: ${ASSISTANT_API_TOKEN:?set ASSISTANT_API_TOKEN}
+      MCP_OAUTH_ISSUER: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}/realms/shopsphere
+      MCP_OAUTH_JWKS_URI: http://keycloak:8080/realms/shopsphere/protocol/openid-connect/certs
+      MCP_OAUTH_TOKEN_ENDPOINT: http://keycloak:8080/realms/shopsphere/protocol/openid-connect/token
+      MCP_OAUTH_INTROSPECTION_ENDPOINT: http://keycloak:8080/realms/shopsphere/protocol/openid-connect/token/introspect
+      MCP_OAUTH_AUDIENCE: shopsphere-mcp
+      MCP_OAUTH_CLIENTS: shopsphere-mcp-client
+      MCP_WORKLOAD_CLIENT_ID: shopsphere-mcp-workload
+      MCP_WORKLOAD_CLIENT_SECRET: ${MCP_WORKLOAD_CLIENT_SECRET:?set MCP_WORKLOAD_CLIENT_SECRET}
+      ASSISTANT_AUDIENCE: shopsphere-assistant-api
       MCP_TOOL_GET_CAPABILITIES_ENABLED: ${MCP_TOOL_GET_CAPABILITIES_ENABLED:-false}
       MCP_TOOL_GET_STORE_POLICY_ENABLED: ${MCP_TOOL_GET_STORE_POLICY_ENABLED:-false}
       MCP_TOOL_SEARCH_PRODUCTS_ENABLED: ${MCP_TOOL_SEARCH_PRODUCTS_ENABLED:-false}
@@ -83,4 +132,5 @@ services:
 
 volumes:
   postgres_data:
+  keycloak_postgres_data:
   backend_uploads:

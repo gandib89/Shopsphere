@@ -15,7 +15,7 @@ export const createBackendClient = ({ origin, token, timeoutMs = 10_000, fetchIm
   }
 
   return Object.freeze({
-    async call(name, input, requestId) {
+    async call(name, input, context = {}) {
       const path = OPERATIONS[name];
       if (!path) throw new Error("Unknown backend operation");
       const response = await fetchImpl(new URL(path, base), {
@@ -25,7 +25,7 @@ export const createBackendClient = ({ origin, token, timeoutMs = 10_000, fetchIm
         headers: {
           authorization: `Bearer ${token}`,
           "content-type": "application/json",
-          ...(requestId ? { "x-request-id": requestId } : {}),
+          ...(context.requestId ? { "x-request-id": context.requestId } : {}),
         },
         body: JSON.stringify(input),
       });

@@ -160,16 +160,18 @@ export const createMcpHttpServer = ({
   maxRequestBytes = DEFAULT_MAX_REQUEST_BYTES,
   maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES,
   accessToken,
+  tokenVerifier,
+  protectedResourceMetadata,
   backendClient,
   requestsPerMinute = 60,
   maxConcurrency = 4,
 } = {}) => {
-  if (enabled && (!accessToken || accessToken.length < 32)) {
-    throw new Error("A 32-character MCP access token is required when MCP is enabled");
+  if (enabled && !tokenVerifier && (!accessToken || accessToken.length < 32)) {
+    throw new Error("OAuth verification or a 32-character test access token is required when MCP is enabled");
   }
   const requestScope = new AsyncLocalStorage();
   const scopedBackendClient = {
-    call: (name, input) => backendClient.call(name, input, requestScope.getStore()?.requestId),
+    call: (name, input) => backendClient.call(name, input, requestScope.getStore()),
   };
   const handler = createMcpHandler(
     () =>
@@ -199,6 +201,11 @@ export const createMcpHttpServer = ({
       if (url.pathname === "/health" && request.method === "GET") {
         return jsonResponse(200, { status: "ok", mcpEnabled: enabled });
       }
+      if (url.pathname === "/.well-known/oauth-protected-resource" && request.method === "GET") {
+        return protectedResourceMetadata
+          ? jsonResponse(200, protectedResourceMetadata)
+          : jsonResponse(503, { error: "OAuth is not configured" });
+      }
       if (url.pathname !== "/mcp") {
         return jsonResponse(404, { error: "Not found" });
       }
@@ -218,12 +225,20 @@ export const createMcpHttpServer = ({
 
       const authorization = request.headers.get("authorization") || "";
       const suppliedToken = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
-      if (!safeEqual(suppliedToken, accessToken)) {
-        return jsonResponse(401, { error: "Unauthorized" });
+      let authContext;
+      try {
+        if (tokenVerifier) authContext = await tokenVerifier(suppliedToken);
+        else if (!safeEqual(suppliedToken, accessToken)) throw Object.assign(new Error("Unauthorized"), { statusCode: 401 });
+      } catch (error) {
+        const status = error?.statusCode === 503 ? 503 : error?.statusCode === 403 ? 403 : 401;
+        return jsonResponse(status, { error: status === 503 ? "OAuth issuer unavailable" : "Unauthorized" });
       }
 
       const now = Date.now();
-      const rateKey = crypto.createHash("sha256").update(suppliedToken).digest("base64url");
+      const rateIdentity = authContext
+        ? `${authContext.sub}:${authContext.clientId}:${authContext.grantId}`
+        : suppliedToken;
+      const rateKey = crypto.createHash("sha256").update(rateIdentity).digest("base64url");
       const bucket = rateBuckets.get(rateKey);
       const current = !bucket || now - bucket.startedAt >= 60_000
         ? { startedAt: now, count: 0 }
@@ -262,7 +277,7 @@ export const createMcpHttpServer = ({
           headers: requestHeaders,
         });
         const mcpResponse = versionError ?? (await requestScope.run(
-          { requestId },
+          { requestId, auth: authContext, subjectToken: suppliedToken },
           () => handler.fetch(mcpRequest, { parsedBody: body }),
         ));
         const response = await enforceResponseLimit(mcpResponse, maxResponseBytes, body);

@@ -22,6 +22,16 @@ const validateProductionConfig = () => {
     if (!process.env.ASSISTANT_CURSOR_SECRET || process.env.ASSISTANT_CURSOR_SECRET.length < 32) {
         failures.push("ASSISTANT_CURSOR_SECRET must contain at least 32 characters");
     }
+    for (const name of [
+        "MCP_OAUTH_ISSUER",
+        "MCP_OAUTH_JWKS_URI",
+        "MCP_OAUTH_INTROSPECTION_ENDPOINT",
+        "MCP_OAUTH_INTROSPECTION_CLIENT_ID",
+        "MCP_OAUTH_INTROSPECTION_CLIENT_SECRET",
+        "MCP_WORKLOAD_CLIENT_ID",
+    ]) {
+        if (!process.env[name]) failures.push(`${name} is required`);
+    }
     if (process.env.SEED_DEMO_DATA === "true" && (!process.env.DEMO_PASSWORD || process.env.DEMO_PASSWORD.length < 12)) {
         failures.push("DEMO_PASSWORD must contain at least 12 characters when SEED_DEMO_DATA=true");
     }

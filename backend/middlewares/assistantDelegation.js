@@ -1,4 +1,4 @@
-import { verifyDelegatedToken } from "../utils/mcpOAuth.js";
+import { isDelegatedTokenShape, verifyDelegatedToken } from "../utils/mcpOAuth.js";
 
 const bearer = (req) => {
   const header = req.headers?.authorization ?? req.get?.("authorization") ?? "";
@@ -8,20 +8,20 @@ const bearer = (req) => {
 // Verifies the audience-separated delegated token family only. Never falls
 // back to the legacy browser JWT: a delegated failure is a denial, and a
 // browser/MCP-audience token here is a denial too.
-export const authenticateAssistantDelegation = (req, res, next) => {
+export const authenticateAssistantDelegation = async (req, res, next, verify = verifyDelegatedToken) => {
   const token = bearer(req);
   if (!token) {
     return res.status(401).json({ code: "invalid_token", message: "No delegated token provided" });
   }
   try {
-    const claims = verifyDelegatedToken(token);
+    const claims = await verify(token);
     req.delegation = {
       sub: claims.sub,
       clientId: claims.client_id,
       grantId: claims.grant_id,
-      scopes: claims.scope ? claims.scope.split(" ") : [],
+      scopes: claims.scopes,
       role: claims.role,
-      workload: claims.act.workload,
+      workload: claims.azp,
     };
     return next();
   } catch (error) {
@@ -32,13 +32,13 @@ export const authenticateAssistantDelegation = (req, res, next) => {
 
 // Global-restriction seam (wired to non-assistant routes in a later phase):
 // a valid delegated token is never valid outside /api/v1/assistant/*.
-export const rejectDelegatedTokens = (req, res, next) => {
+export const rejectDelegatedTokens = async (req, res, next, verify = verifyDelegatedToken) => {
   const token = bearer(req);
-  if (!token) return next();
+  if (!token || !isDelegatedTokenShape(token)) return next();
   try {
-    verifyDelegatedToken(token);
-    return res.status(403).json({ code: "delegated_not_allowed", message: "Delegated tokens are assistant-only" });
+    await verify(token);
   } catch {
-    return next();
+    // Token-like delegated credentials fail closed on non-assistant routes too.
   }
+  return res.status(403).json({ code: "delegated_not_allowed", message: "Delegated tokens are assistant-only" });
 };
