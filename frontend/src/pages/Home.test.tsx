@@ -288,22 +288,16 @@ describe('catalog sidebar filters', () => {
     expect(screen.getByRole('button', { name: 'Seller MacBook' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Reset filters' }));
     await user.click(screen.getByRole('checkbox', { name: 'Apple' }));
-    expect(screen.getByRole('button', { name: 'Seller Watch' })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Apply' }));
     expect(screen.queryByRole('button', { name: 'Seller Watch' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('checkbox', { name: 'In stock' }));
-    expect(screen.getByRole('button', { name: 'Seller iPhone' })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Apply' }));
     expect(screen.queryByRole('button', { name: 'Seller iPhone' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('checkbox', { name: 'iPhone' }));
-    expect(screen.getByRole('button', { name: 'Seller MacBook' })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Apply' }));
     expect(screen.getByText('No matching products')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Show all products' }));
     expect(screen.getByRole('button', { name: 'Seller Watch' })).toBeInTheDocument();
   });
 
-  it('prioritizes the most recently selected filter option after Apply', async () => {
+  it('immediately prioritizes the most recently selected filter option', async () => {
     const user = userEvent.setup();
     renderHome();
     await screen.findByRole('button', { name: 'Seller MacBook' });
@@ -311,8 +305,6 @@ describe('catalog sidebar filters', () => {
 
     await user.click(screen.getByRole('checkbox', { name: 'MacBook' }));
     await user.click(screen.getByRole('checkbox', { name: 'iPhone' }));
-    expect(catalogue.querySelectorAll('article')[0]).toHaveTextContent('Seller MacBook');
-    await user.click(screen.getByRole('button', { name: 'Apply' }));
     expect(catalogue.querySelectorAll('article')[0]).toHaveTextContent('Seller iPhone');
   });
 

@@ -12,6 +12,10 @@ interface UserProfile {
   lastName: string;
   email: string;
   phone: string;
+  homeStreet?: string;
+  homeCity?: string;
+  homeState?: string;
+  homeZipCode?: string;
   role: string;
   shopName: string;
   shopDescription: string;
@@ -20,6 +24,8 @@ interface UserProfile {
   hasPassword?: boolean;
   createdAt: string;
 }
+
+const provinces = ['Koshi', 'Madhesh', 'Bagmati', 'Gandaki', 'Lumbini', 'Karnali', 'Sudurpashchim'];
 
 const Profile = () => {
   const navigate = useNavigate();
@@ -34,6 +40,10 @@ const Profile = () => {
     firstName: "",
     lastName: "",
     phone: "",
+    homeStreet: "",
+    homeCity: "",
+    homeState: "",
+    homeZipCode: "",
     shopName: "",
     shopDescription: "",
   });
@@ -65,6 +75,10 @@ const Profile = () => {
         firstName: data.firstName || "",
         lastName: data.lastName || "",
         phone: data.phone || "",
+        homeStreet: data.homeStreet || "",
+        homeCity: data.homeCity || "",
+        homeState: data.homeState || "",
+        homeZipCode: data.homeZipCode || "",
         shopName: data.shopName || "",
         shopDescription: data.shopDescription || "",
       });
@@ -108,6 +122,10 @@ const Profile = () => {
         firstName: profile.firstName || "",
         lastName: profile.lastName || "",
         phone: profile.phone || "",
+        homeStreet: profile.homeStreet || "",
+        homeCity: profile.homeCity || "",
+        homeState: profile.homeState || "",
+        homeZipCode: profile.homeZipCode || "",
         shopName: profile.shopName || "",
         shopDescription: profile.shopDescription || "",
       });
@@ -294,6 +312,40 @@ const Profile = () => {
                 </div>
               )}
             </div>
+
+            <h3 className="text-lg font-bold text-ink border-b border-hairline pb-2 pt-2">Home Address</h3>
+            {editing ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
+                  <label htmlFor="home-street" className="block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-1">Street, ward, or local address</label>
+                  <input id="home-street" autoComplete="street-address" value={form.homeStreet} onChange={(e) => setForm({ ...form, homeStreet: e.target.value })} className="w-full px-3 py-2 border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition text-sm" />
+                </div>
+                <div>
+                  <label htmlFor="home-city" className="block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-1">Municipality or city</label>
+                  <input id="home-city" autoComplete="address-level2" value={form.homeCity} onChange={(e) => setForm({ ...form, homeCity: e.target.value })} className="w-full px-3 py-2 border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition text-sm" />
+                </div>
+                <div>
+                  <label htmlFor="home-state" className="block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-1">Province</label>
+                  <select id="home-state" autoComplete="address-level1" value={form.homeState} onChange={(e) => setForm({ ...form, homeState: e.target.value })} className="w-full px-3 py-2 border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition text-sm">
+                    <option value="">Select province</option>
+                    {provinces.map(province => <option key={province}>{province}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="home-postal-code" className="block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-1">Postal code</label>
+                  <input id="home-postal-code" autoComplete="postal-code" value={form.homeZipCode} onChange={(e) => setForm({ ...form, homeZipCode: e.target.value })} className="w-full px-3 py-2 border border-hairline bg-paper text-ink focus:outline-none focus:border-brass transition text-sm" />
+                </div>
+                <div>
+                  <label htmlFor="home-country" className="block text-xs font-semibold text-ink-muted uppercase tracking-wide mb-1">Country</label>
+                  <input id="home-country" value="Nepal" readOnly className="w-full px-3 py-2 border border-hairline bg-paper text-ink-muted text-sm" />
+                </div>
+              </div>
+            ) : (
+              <p className="text-ink font-medium">
+                {[profile.homeStreet, profile.homeCity, profile.homeState, profile.homeZipCode].filter(Boolean).join(', ') || <span className="text-ink-muted italic">Not provided</span>}
+                {(profile.homeStreet || profile.homeCity || profile.homeState || profile.homeZipCode) && <span className="block text-sm text-ink-muted mt-1">Nepal</span>}
+              </p>
+            )}
 
             {/* Seller-only fields */}
             {isSeller && (

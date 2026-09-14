@@ -61,7 +61,7 @@ authRouter.get('/me', authenticate, async (req, res) => {
 // Profile update route
 authRouter.put('/profile', authenticate, async (req, res) => {
   try {
-    const allowed = ['firstName', 'lastName', 'phone', 'shopName', 'shopDescription'];
+    const allowed = ['firstName', 'lastName', 'phone', 'homeStreet', 'homeCity', 'homeState', 'homeZipCode', 'shopName', 'shopDescription'];
     const updates = {};
     for (const key of allowed) {
       if (req.body[key] !== undefined) updates[key] = req.body[key];

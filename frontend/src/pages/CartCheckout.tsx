@@ -6,8 +6,9 @@ import NavBar from '../components/NavBar';
 import { PageHeader } from '../components/operations/PageHeader';
 import { Button } from '../components/ui/Button';
 import { EmptyState, ErrorState, LoadingState } from '../components/ui/AsyncState';
-import { Field } from '../components/ui/Field';
+import { Field, SelectField } from '../components/ui/Field';
 import { startESewaCheckout } from '../lib/esewa';
+import { authFetch } from '../lib/session';
 import { getImageUrl } from '../lib/utils';
 
 interface CartItem {
@@ -19,6 +20,7 @@ interface CartItem {
 }
 interface Cart { _id: string; email: string; items: CartItem[]; totalPrice: number }
 type Details = { firstName: string; lastName: string; email: string; phone: string; street: string; city: string; state: string; zipCode: string; country: string; deliveryDate: string };
+type ProfileDefaults = { firstName?: string; lastName?: string; email?: string; phone?: string; homeStreet?: string; homeCity?: string; homeState?: string; homeZipCode?: string };
 type FieldErrors = Partial<Record<keyof Details, string>>;
 
 const provinces = ['Koshi', 'Madhesh', 'Bagmati', 'Gandaki', 'Lumbini', 'Karnali', 'Sudurpashchim'];
@@ -44,10 +46,24 @@ export default function CartCheckout() {
   const fetchCart = useCallback(async () => {
     setLoading(true); setLoadError('');
     try {
-      const response = await axios.get(`${import.meta.env.VITE_BACKEND_URL}/api/v1/cart/get`);
+      const [response, profileResponse] = await Promise.all([
+        axios.get(`${import.meta.env.VITE_BACKEND_URL}/api/v1/cart/get`),
+        authFetch(`${import.meta.env.VITE_BACKEND_URL}/api/v1/auth/me`).catch(() => null),
+      ]);
       const next = response.data.data as Cart;
+      const profile = profileResponse?.ok ? await profileResponse.json() as ProfileDefaults : null;
       setCart(next);
-      if (next?.email) setDetails(previous => ({ ...previous, email: next.email }));
+      setDetails(previous => ({
+        ...previous,
+        firstName: profile?.firstName || previous.firstName,
+        lastName: profile?.lastName || previous.lastName,
+        email: profile?.email || next?.email || previous.email,
+        phone: profile?.phone || previous.phone,
+        street: profile?.homeStreet || previous.street,
+        city: profile?.homeCity || previous.city,
+        state: profile?.homeState || previous.state,
+        zipCode: profile?.homeZipCode || previous.zipCode,
+      }));
     } catch (error) {
       setLoadError(apiMessage(error, 'We could not load your cart. Please try again.'));
     } finally { setLoading(false); }
@@ -136,16 +152,16 @@ export default function CartCheckout() {
           <section className="rounded-[var(--radius-surface)] border border-hairline bg-paper-raised p-5 sm:p-7" aria-labelledby="delivery-title">
             <h2 id="delivery-title" className="text-xl font-semibold text-ink">Delivery details</h2><p className="mt-1 text-sm text-ink-muted">Fields marked required must be completed.</p>
             <div className="mt-6 grid gap-5 sm:grid-cols-2">
-              <Field id="first-name" label="First name" required error={errors.firstName}><input id="first-name" name="firstName" autoComplete="given-name" value={details.firstName} onChange={update} aria-invalid={!!errors.firstName} aria-describedby={errors.firstName ? 'first-name-error' : undefined} className={fieldClass} /></Field>
-              <Field id="last-name" label="Last name" required error={errors.lastName}><input id="last-name" name="lastName" autoComplete="family-name" value={details.lastName} onChange={update} aria-invalid={!!errors.lastName} aria-describedby={errors.lastName ? 'last-name-error' : undefined} className={fieldClass} /></Field>
-              <Field id="checkout-email" label="Email" required error={errors.email}><input id="checkout-email" name="email" type="email" autoComplete="email" value={details.email} onChange={update} aria-invalid={!!errors.email} aria-describedby={errors.email ? 'checkout-email-error' : undefined} className={fieldClass} /></Field>
-              <Field id="checkout-phone" label="Mobile number" required hint="Nepali mobile number, for delivery updates." error={errors.phone}><input id="checkout-phone" name="phone" type="tel" autoComplete="tel" placeholder="98XXXXXXXX" value={details.phone} onChange={update} aria-invalid={!!errors.phone} aria-describedby={errors.phone ? 'checkout-phone-error' : 'checkout-phone-hint'} className={fieldClass} /></Field>
-              <div className="sm:col-span-2"><Field id="street" label="Street, ward, or local address" required error={errors.street}><input id="street" name="street" autoComplete="street-address" value={details.street} onChange={update} aria-invalid={!!errors.street} aria-describedby={errors.street ? 'street-error' : undefined} className={fieldClass} /></Field></div>
-              <Field id="city" label="Municipality or city" required error={errors.city}><input id="city" name="city" autoComplete="address-level2" value={details.city} onChange={update} aria-invalid={!!errors.city} aria-describedby={errors.city ? 'city-error' : undefined} className={fieldClass} /></Field>
-              <Field id="province" label="Province" required error={errors.state}><select id="province" name="state" autoComplete="address-level1" value={details.state} onChange={update} aria-invalid={!!errors.state} aria-describedby={errors.state ? 'province-error' : undefined} className={fieldClass}><option value="">Select province</option>{provinces.map(province => <option key={province}>{province}</option>)}</select></Field>
-              <Field id="postal-code" label="Postal code" hint="Optional"><input id="postal-code" name="zipCode" autoComplete="postal-code" value={details.zipCode} onChange={update} className={fieldClass} /></Field>
-              <Field id="country" label="Country"><input id="country" name="country" value="Nepal" readOnly className={`${fieldClass} text-ink-muted`} /></Field>
-              <div className="sm:col-span-2"><Field id="delivery-date" label="Preferred delivery date" required hint="The seller will confirm the final delivery date." error={errors.deliveryDate}><input id="delivery-date" name="deliveryDate" type="date" min={today()} value={details.deliveryDate} onChange={update} aria-invalid={!!errors.deliveryDate} aria-describedby={errors.deliveryDate ? 'delivery-date-error' : 'delivery-date-hint'} className={fieldClass} /></Field></div>
+              <Field id="first-name" name="firstName" label="First name" required autoComplete="given-name" value={details.firstName} onChange={update} error={errors.firstName} className={fieldClass} />
+              <Field id="last-name" name="lastName" label="Last name" required autoComplete="family-name" value={details.lastName} onChange={update} error={errors.lastName} className={fieldClass} />
+              <Field id="checkout-email" name="email" label="Email" required type="email" autoComplete="email" value={details.email} onChange={update} error={errors.email} className={fieldClass} />
+              <Field id="checkout-phone" name="phone" label="Mobile number" required type="tel" autoComplete="tel" placeholder="98XXXXXXXX" value={details.phone} onChange={update} hint="Nepali mobile number, for delivery updates." error={errors.phone} className={fieldClass} />
+              <div className="sm:col-span-2"><Field id="street" name="street" label="Street, ward, or local address" required autoComplete="street-address" value={details.street} onChange={update} error={errors.street} className={fieldClass} /></div>
+              <Field id="city" name="city" label="Municipality or city" required autoComplete="address-level2" value={details.city} onChange={update} error={errors.city} className={fieldClass} />
+              <SelectField id="province" name="state" label="Province" required autoComplete="address-level1" value={details.state} onChange={update} error={errors.state} className={fieldClass}><option value="">Select province</option>{provinces.map(province => <option key={province}>{province}</option>)}</SelectField>
+              <Field id="postal-code" name="zipCode" label="Postal code" autoComplete="postal-code" value={details.zipCode} onChange={update} hint="Optional" className={fieldClass} />
+              <Field id="country" name="country" label="Country" value="Nepal" readOnly className={`${fieldClass} text-ink-muted`} />
+              <div className="sm:col-span-2"><Field id="delivery-date" name="deliveryDate" label="Preferred delivery date" required type="date" min={today()} value={details.deliveryDate} onChange={update} hint="The seller will confirm the final delivery date." error={errors.deliveryDate} className={fieldClass} /></div>
             </div>
           </section>
         </div>

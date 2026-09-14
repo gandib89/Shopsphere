@@ -1,6 +1,9 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { renderRoute } from '../../test/render';
+import type { StorefrontProduct } from '../StorefrontView';
+import CatalogFilters, { emptyFilters } from './CatalogFilters';
 import { Money } from './Money';
 import { ProductCard, type CatalogProduct } from './ProductCard';
 
@@ -15,6 +18,11 @@ const product: CatalogProduct = {
   discount: 20,
   reviews: [{ rating: 5 }, { rating: 4 }],
 };
+
+const filterProducts: StorefrontProduct[] = [
+  { id: 'iphone', name: 'iPhone 17 Pro', category: 'Phones', brand: 'Apple', price: 150000, rating: 5, reviews: 1, image: '', imageBackground: 'white', note: '', inStock: true },
+  { id: 'speaker', name: 'Marshall Speaker', category: 'Audio', brand: 'Marshall', price: 30000, rating: 4, reviews: 1, image: '', imageBackground: 'white', note: '', inStock: false },
+];
 
 describe('catalog presentation', () => {
   it('formats discounted NPR amounts without hiding the original price', () => {
@@ -37,5 +45,32 @@ describe('catalog presentation', () => {
 
     expect(screen.getByRole('button', { name: 'View iPhone 17 Pro' })).toBeVisible();
     expect(screen.queryByRole('button', { name: /add/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('catalog filters', () => {
+  it('applies checkbox filters immediately without the price Apply button', async () => {
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    renderRoute(<CatalogFilters products={filterProducts} value={emptyFilters} onChange={onChange} />);
+
+    expect(within(screen.getByRole('group', { name: 'Price' })).getByRole('button', { name: 'Apply' })).toBeVisible();
+
+    await user.click(screen.getByRole('checkbox', { name: 'In stock' }));
+    expect(onChange).toHaveBeenLastCalledWith({ ...emptyFilters, inStock: true });
+
+    await user.click(screen.getByRole('checkbox', { name: 'Apple' }));
+    expect(onChange).toHaveBeenLastCalledWith({
+      ...emptyFilters,
+      brands: ['Apple'],
+      priority: [{ field: 'brands', value: 'Apple' }],
+    });
+
+    await user.click(screen.getByRole('checkbox', { name: 'Audio' }));
+    expect(onChange).toHaveBeenLastCalledWith({
+      ...emptyFilters,
+      types: ['Audio'],
+      priority: [{ field: 'types', value: 'Audio' }],
+    });
   });
 });

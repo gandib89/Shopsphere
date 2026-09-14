@@ -19,6 +19,10 @@ model User {
   lastName                    String
   email                       String    @unique
   phone                       String?
+  homeStreet                  String?
+  homeCity                    String?
+  homeState                   String?
+  homeZipCode                 String?
   password                    String?
   googleId                    String?   @unique
   role                        String    @default("user") // "user" | "admin" | "seller"
