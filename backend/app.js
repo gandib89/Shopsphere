@@ -20,6 +20,7 @@ import notificationRouter from "./routes/notificationRoute.js";
 import promoRouter from "./routes/promoCodeRoute.js";
 import testEmailRouter from "./routes/testEmailRoute.js";
 import assistantRouter from "./routes/assistantRoute.js";
+import mcpOAuthRouter from "./routes/mcpOAuthRoute.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -70,6 +71,7 @@ app.use(express.urlencoded({extended: true }));
 app.use(cookieParser());
 app.use(requestContext);
 app.use(healthRouter);
+app.use(mcpOAuthRouter);
 app.use('/api/v1/assistant', assistantRouter);
 
 // General backstop against scripted abuse on any endpoint — the auth routes layer a much
