@@ -66,3 +66,17 @@ it('revokes only the selected owned connection and updates immediately', async (
   expect(screen.queryByRole('button', { name: 'Revoke' })).not.toBeInTheDocument();
   expect(authFetch).toHaveBeenCalledWith(expect.stringContaining(`/ai-connections/${client.id}`), { method: 'DELETE' });
 });
+
+it('keeps the connection visible when the server denies revocation ownership', async () => {
+  vi.mocked(authFetch).mockImplementation(async (input, init) => {
+    const url = String(input);
+    if (init?.method === 'DELETE') return json({ message: 'Connection not found' }, 404);
+    if (url.endsWith('/catalog')) return json({ clients: [client] });
+    return json({ connections: [connection] });
+  });
+  const user = userEvent.setup();
+  renderRoute(<AiConnections />, '/ai-connections');
+  await user.click(await screen.findByRole('button', { name: 'Revoke' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Could not revoke this connection');
+  expect(screen.getByRole('button', { name: 'Revoke' })).toBeVisible();
+});
