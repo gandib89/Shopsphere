@@ -10,11 +10,18 @@ const validateProductionConfig = () => {
     if (process.env.NODE_ENV !== "production") return;
     const failures = [];
     if (!process.env.DATABASE_URL) failures.push("DATABASE_URL is required");
+    if (!process.env.ASSISTANT_DATABASE_URL) failures.push("ASSISTANT_DATABASE_URL is required");
     if (!process.env.FRONTEND_URL) failures.push("FRONTEND_URL is required");
     if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
         failures.push("JWT_SECRET must contain at least 32 characters");
     }
     if (!process.env.ESEWA_SECRET_KEY) failures.push("ESEWA_SECRET_KEY is required");
+    if (!process.env.ASSISTANT_API_TOKEN || process.env.ASSISTANT_API_TOKEN.length < 32) {
+        failures.push("ASSISTANT_API_TOKEN must contain at least 32 characters");
+    }
+    if (!process.env.ASSISTANT_CURSOR_SECRET || process.env.ASSISTANT_CURSOR_SECRET.length < 32) {
+        failures.push("ASSISTANT_CURSOR_SECRET must contain at least 32 characters");
+    }
     if (process.env.SEED_DEMO_DATA === "true" && (!process.env.DEMO_PASSWORD || process.env.DEMO_PASSWORD.length < 12)) {
         failures.push("DEMO_PASSWORD must contain at least 12 characters when SEED_DEMO_DATA=true");
     }

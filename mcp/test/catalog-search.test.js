@@ -4,7 +4,16 @@ import test from "node:test";
 import { Client } from "@modelcontextprotocol/client";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 
-import { createMcpHttpServer } from "../src/httpServer.js";
+import { createMcpHttpServer as createRawMcpHttpServer } from "../src/httpServer.js";
+import { ACCESS_TOKEN, ALL_FLAGS, fakeBackendClient } from "./support/fakeBackend.js";
+
+const createMcpHttpServer = (options = {}) =>
+  createRawMcpHttpServer({
+    accessToken: ACCESS_TOKEN,
+    backendClient: fakeBackendClient,
+    ...options,
+    flags: { ...ALL_FLAGS, ...options.flags },
+  });
 
 const PUBLIC_KEYS = ["availability", "category", "id", "images", "name", "price"];
 
@@ -28,7 +37,9 @@ const connect = async (url) => {
     { name: "shopsphere-catalog-test", version: "1.0.0" },
     { versionNegotiation: { mode: "legacy" } },
   );
-  await client.connect(new StreamableHTTPClientTransport(url));
+  await client.connect(new StreamableHTTPClientTransport(url, {
+    requestInit: { headers: { authorization: `Bearer ${ACCESS_TOKEN}` } },
+  }));
   return client;
 };
 
@@ -61,12 +72,11 @@ test("search_products exposes the discovery list and the public projection only"
 
     const result = await client.callTool({ name: "search_products", arguments: { q: "macbook" } });
     assert.equal(result.isError, undefined);
-    const { items, total, page, pageSize } = result.structuredContent;
+    const { items, total, nextCursor } = result.structuredContent;
     // The archived "MacBook Air M2 Refurbished" (prod_009) must not surface.
     assert.deepEqual(items.map(({ id }) => id), ["prod_001", "prod_002"]);
     assert.equal(total, 2);
-    assert.equal(page, 1);
-    assert.equal(pageSize, 20);
+    assert.equal(nextCursor, null);
     for (const item of items) {
       assert.deepEqual(Object.keys(item).sort(), PUBLIC_KEYS);
     }
@@ -92,22 +102,25 @@ test("search_products filters by category, price, and sort with capped pages", a
 
     const byPrice = await client.callTool({
       name: "search_products",
-      arguments: { minPrice: 90000, maxPrice: 100000 },
+      arguments: { minPrice: "90000.00", maxPrice: "100000.00" },
     });
     assert.equal(byPrice.isError, undefined);
     assert.ok(byPrice.structuredContent.items.length > 0);
     for (const item of byPrice.structuredContent.items) {
-      assert.ok(item.price >= 90000 && item.price <= 100000);
+      assert.ok(Number(item.price.amount) >= 90000 && Number(item.price.amount) <= 100000);
+      assert.equal(item.price.currency, "NPR");
     }
 
+    const firstPage = await client.callTool({
+      name: "search_products",
+      arguments: { limit: 1, sort: "price-desc" },
+    });
     const paged = await client.callTool({
       name: "search_products",
-      arguments: { limit: 1, page: 2, sort: "price-desc" },
+      arguments: { limit: 1, cursor: firstPage.structuredContent.nextCursor, sort: "price-desc" },
     });
     assert.equal(paged.isError, undefined);
     assert.equal(paged.structuredContent.items.length, 1);
-    assert.equal(paged.structuredContent.page, 2);
-    assert.equal(paged.structuredContent.pageSize, 1);
 
     await expectToolError(client, {
       name: "search_products",

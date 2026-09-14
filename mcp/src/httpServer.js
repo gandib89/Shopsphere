@@ -1,4 +1,6 @@
 import http from "node:http";
+import crypto from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 
 import { toNodeHandler } from "@modelcontextprotocol/node";
 import { createMcpHandler } from "@modelcontextprotocol/server";
@@ -94,17 +96,35 @@ const parseBody = async (request, maxRequestBytes) => {
   if (Number.isFinite(contentLength) && contentLength > maxRequestBytes) {
     return { error: jsonResponse(413, { error: "MCP request exceeds the request limit" }) };
   }
-
-  const text = await request.clone().text();
-  if (Buffer.byteLength(text, "utf8") > maxRequestBytes) {
-    return { error: jsonResponse(413, { error: "MCP request exceeds the request limit" }) };
+  const chunks = [];
+  let size = 0;
+  const reader = request.body?.getReader();
+  while (reader) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > maxRequestBytes) {
+      await reader.cancel();
+      return { error: jsonResponse(413, { error: "MCP request exceeds the request limit" }) };
+    }
+    chunks.push(Buffer.from(value));
   }
-
   try {
-    return { body: JSON.parse(text) };
+    return { body: JSON.parse(Buffer.concat(chunks).toString("utf8")) };
   } catch {
     return { error: protocolError(400, null, "Invalid JSON") };
   }
+};
+
+const safeEqual = (left, right) => {
+  const a = Buffer.from(left || "");
+  const b = Buffer.from(right || "");
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+};
+
+const requestIdFor = (request) => {
+  const supplied = request.headers.get("x-request-id");
+  return supplied && /^[A-Za-z0-9_-]{1,100}$/.test(supplied) ? supplied : crypto.randomUUID();
 };
 
 const validatePinnedProtocol = (request, body) => {
@@ -139,11 +159,39 @@ export const createMcpHttpServer = ({
   allowedOrigins = [],
   maxRequestBytes = DEFAULT_MAX_REQUEST_BYTES,
   maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES,
+  accessToken,
+  backendClient,
+  requestsPerMinute = 60,
+  maxConcurrency = 4,
 } = {}) => {
+  if (enabled && (!accessToken || accessToken.length < 32)) {
+    throw new Error("A 32-character MCP access token is required when MCP is enabled");
+  }
+  const requestScope = new AsyncLocalStorage();
+  const scopedBackendClient = {
+    call: (name, input) => backendClient.call(name, input, requestScope.getStore()?.requestId),
+  };
   const handler = createMcpHandler(
-    () => createShopSphereMcpServer({ flags, maxRequestBytes, maxResponseBytes }),
+    () =>
+      createShopSphereMcpServer({
+        flags,
+        maxRequestBytes,
+        maxResponseBytes,
+        backendClient: scopedBackendClient,
+        audit: (event) =>
+          console.log(
+            JSON.stringify({
+              type: "mcp_audit",
+              time: new Date().toISOString(),
+              ...event,
+              requestId: event.requestId ?? requestScope.getStore()?.requestId,
+            }),
+          ),
+      }),
     { legacy: "stateless" },
   );
+  const rateBuckets = new Map();
+  let activeRequests = 0;
 
   const guardedHandler = {
     async fetch(request) {
@@ -168,19 +216,65 @@ export const createMcpHttpServer = ({
           : new Response(null, { status: 204 });
       }
 
-      let body;
-      if (request.method === "POST") {
-        const parsed = await parseBody(request, maxRequestBytes);
-        if (parsed.error) return parsed.error;
-        body = parsed.body;
+      const authorization = request.headers.get("authorization") || "";
+      const suppliedToken = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
+      if (!safeEqual(suppliedToken, accessToken)) {
+        return jsonResponse(401, { error: "Unauthorized" });
       }
 
-      const versionError = validatePinnedProtocol(request, body);
-      const mcpResponse = versionError ?? (await handler.fetch(request, { parsedBody: body }));
-      return withCors(
-        await enforceResponseLimit(mcpResponse, maxResponseBytes, body),
-        origin,
-      );
+      const now = Date.now();
+      const rateKey = crypto.createHash("sha256").update(suppliedToken).digest("base64url");
+      const bucket = rateBuckets.get(rateKey);
+      const current = !bucket || now - bucket.startedAt >= 60_000
+        ? { startedAt: now, count: 0 }
+        : bucket;
+      current.count += 1;
+      rateBuckets.set(rateKey, current);
+      if (current.count > requestsPerMinute) {
+        return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
+          status: 429,
+          headers: { "content-type": "application/json", "retry-after": "60" },
+        });
+      }
+      if (activeRequests >= maxConcurrency) {
+        return new Response(JSON.stringify({ error: "Server is busy" }), {
+          status: 503,
+          headers: { "content-type": "application/json", "retry-after": "1" },
+        });
+      }
+      activeRequests += 1;
+      const requestId = requestIdFor(request);
+
+      try {
+
+        let body;
+        if (request.method === "POST") {
+          const parsed = await parseBody(request, maxRequestBytes);
+          if (parsed.error) return parsed.error;
+          body = parsed.body;
+        }
+
+        const versionError = validatePinnedProtocol(request, body);
+        const requestHeaders = new Headers(request.headers);
+        requestHeaders.set("x-request-id", requestId);
+        const mcpRequest = new Request(request.url, {
+          method: request.method,
+          headers: requestHeaders,
+        });
+        const mcpResponse = versionError ?? (await requestScope.run(
+          { requestId },
+          () => handler.fetch(mcpRequest, { parsedBody: body }),
+        ));
+        const response = await enforceResponseLimit(mcpResponse, maxResponseBytes, body);
+        const headers = new Headers(response.headers);
+        headers.set("x-request-id", requestId);
+        return withCors(
+          new Response(response.body, { status: response.status, statusText: response.statusText, headers }),
+          origin,
+        );
+      } finally {
+        activeRequests -= 1;
+      }
     },
   };
 

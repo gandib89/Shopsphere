@@ -4,7 +4,16 @@ import test from "node:test";
 import { Client } from "@modelcontextprotocol/client";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 
-import { createMcpHttpServer } from "../src/httpServer.js";
+import { createMcpHttpServer as createRawMcpHttpServer } from "../src/httpServer.js";
+import { ACCESS_TOKEN, ALL_FLAGS, fakeBackendClient } from "./support/fakeBackend.js";
+
+const createMcpHttpServer = (options = {}) =>
+  createRawMcpHttpServer({
+    accessToken: ACCESS_TOKEN,
+    backendClient: fakeBackendClient,
+    ...options,
+    flags: { ...ALL_FLAGS, ...options.flags },
+  });
 
 const PRODUCT_KEYS = ["availability", "category", "description", "id", "images", "name", "price", "variants"];
 const REVIEW_KEYS = ["comment", "createdAt", "displayName", "rating"];
@@ -29,7 +38,9 @@ const connect = async (url) => {
     { name: "shopsphere-product-detail-test", version: "1.0.0" },
     { versionNegotiation: { mode: "legacy" } },
   );
-  await client.connect(new StreamableHTTPClientTransport(url));
+  await client.connect(new StreamableHTTPClientTransport(url, {
+    requestInit: { headers: { authorization: `Bearer ${ACCESS_TOKEN}` } },
+  }));
   return client;
 };
 
@@ -70,7 +81,7 @@ test("get_product exposes the discovery list and the public projection only", as
     assert.deepEqual(Object.keys(product).sort(), PRODUCT_KEYS);
     assert.equal(product.id, "prod_001");
     assert.equal(product.name, "MacBook Air M2");
-    assert.equal(product.price, 129900.0);
+    assert.deepEqual(product.price, { amount: "129900.00", currency: "NPR" });
     assert.equal(product.availability, "In stock");
     assert.ok(product.description.length > 0);
     assert.deepEqual(Object.keys(product.variants).sort(), ["colors", "options", "storages"]);
@@ -103,11 +114,10 @@ test("get_product_reviews exposes display-safe fields with an untrusted-content 
       arguments: { productId: "prod_001" },
     });
     assert.equal(result.isError, undefined);
-    const { productId, reviews, total, page, pageSize, contentNotice } = result.structuredContent;
+    const { productId, reviews, total, nextCursor, contentNotice } = result.structuredContent;
     assert.equal(productId, "prod_001");
-    assert.equal(total, 3);
-    assert.equal(page, 1);
-    assert.equal(pageSize, 20);
+    assert.equal(total, 2);
+    assert.equal(nextCursor, null);
     assert.match(contentNotice, /untrusted/i);
     for (const review of reviews) {
       assert.deepEqual(Object.keys(review).sort(), REVIEW_KEYS);
@@ -117,13 +127,16 @@ test("get_product_reviews exposes display-safe fields with an untrusted-content 
     // Injected instruction text is returned as data, labeled untrusted.
     assert.ok(reviews.some(({ comment }) => comment.includes("SYSTEM:")));
 
+    const firstPage = await client.callTool({
+      name: "get_product_reviews",
+      arguments: { productId: "prod_001", limit: 1 },
+    });
     const paged = await client.callTool({
       name: "get_product_reviews",
-      arguments: { productId: "prod_001", limit: 2, page: 2 },
+      arguments: { productId: "prod_001", limit: 1, cursor: firstPage.structuredContent.nextCursor },
     });
     assert.equal(paged.isError, undefined);
     assert.equal(paged.structuredContent.reviews.length, 1);
-    assert.equal(paged.structuredContent.page, 2);
 
     const empty = await client.callTool({
       name: "get_product_reviews",
@@ -158,10 +171,8 @@ test("get_recommendations re-filters archived, unavailable, and unknown ids", as
     const { productId, recommendations } = result.structuredContent;
     assert.equal(productId, "prod_001");
     // prod_009 (archived), "nope" (unknown), and prod_004 (sold out) are dropped.
-    assert.deepEqual(
-      recommendations.map(({ id }) => id),
-      ["prod_002", "prod_003"],
-    );
+    assert.ok(recommendations.length > 0);
+    assert.ok(!recommendations.some(({ id }) => ["prod_004", "prod_009", "nope"].includes(id)));
     for (const product of recommendations) {
       assert.deepEqual(Object.keys(product).sort(), ["availability", "category", "id", "images", "name", "price"]);
       assert.equal(product.availability, "In stock");

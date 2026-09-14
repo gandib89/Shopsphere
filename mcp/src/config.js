@@ -21,7 +21,25 @@ const parsePositiveInteger = (value, fallback, name) => {
 export const readConfig = (environment = process.env) => ({
   host: environment.MCP_HOST ?? "127.0.0.1",
   port: parsePositiveInteger(environment.MCP_PORT, 4100, "MCP_PORT"),
-  enabled: parseBoolean(environment.MCP_ENABLED, true),
+  enabled: parseBoolean(environment.MCP_ENABLED, false),
+  accessToken: environment.MCP_ACCESS_TOKEN,
+  backendOrigin: environment.MCP_BACKEND_ORIGIN ?? "http://127.0.0.1:4000",
+  backendToken: environment.ASSISTANT_API_TOKEN,
+  backendTimeoutMs: parsePositiveInteger(
+    environment.MCP_BACKEND_TIMEOUT_MS,
+    10_000,
+    "MCP_BACKEND_TIMEOUT_MS",
+  ),
+  requestsPerMinute: parsePositiveInteger(
+    environment.MCP_REQUESTS_PER_MINUTE,
+    60,
+    "MCP_REQUESTS_PER_MINUTE",
+  ),
+  maxConcurrency: parsePositiveInteger(
+    environment.MCP_MAX_CONCURRENCY,
+    4,
+    "MCP_MAX_CONCURRENCY",
+  ),
   allowedOrigins: (environment.MCP_ALLOWED_ORIGINS ?? "")
     .split(",")
     .map((origin) => origin.trim())
@@ -39,31 +57,31 @@ export const readConfig = (environment = process.env) => ({
   flags: {
     MCP_TOOL_GET_CAPABILITIES_ENABLED: parseBoolean(
       environment.MCP_TOOL_GET_CAPABILITIES_ENABLED,
-      true,
+      false,
     ),
     MCP_TOOL_GET_STORE_POLICY_ENABLED: parseBoolean(
       environment.MCP_TOOL_GET_STORE_POLICY_ENABLED,
-      true,
+      false,
     ),
     MCP_TOOL_SEARCH_PRODUCTS_ENABLED: parseBoolean(
       environment.MCP_TOOL_SEARCH_PRODUCTS_ENABLED,
-      true,
+      false,
     ),
     MCP_TOOL_COMPARE_PRODUCTS_ENABLED: parseBoolean(
       environment.MCP_TOOL_COMPARE_PRODUCTS_ENABLED,
-      true,
+      false,
     ),
     MCP_TOOL_GET_PRODUCT_ENABLED: parseBoolean(
       environment.MCP_TOOL_GET_PRODUCT_ENABLED,
-      true,
+      false,
     ),
     MCP_TOOL_GET_PRODUCT_REVIEWS_ENABLED: parseBoolean(
       environment.MCP_TOOL_GET_PRODUCT_REVIEWS_ENABLED,
-      true,
+      false,
     ),
     MCP_TOOL_GET_RECOMMENDATIONS_ENABLED: parseBoolean(
       environment.MCP_TOOL_GET_RECOMMENDATIONS_ENABLED,
-      true,
+      false,
     ),
   },
 });

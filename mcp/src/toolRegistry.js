@@ -1,9 +1,19 @@
 import { z } from "zod";
 
-import { POLICY_VERSION } from "./policyContent.js";
-
 export const PROTOCOL_VERSION = "2025-11-25";
 export const REGISTRY_VERSION = "1.0.0";
+export const POLICY_VERSION = "1.0.0";
+export const POLICY_TOPICS = Object.freeze([
+  "returns",
+  "delivery",
+  "payment",
+  "warranty",
+  "authenticity",
+  "tracking",
+  "cancellation",
+  "seller-onboarding",
+  "support-contact",
+]);
 export const DEFAULT_MAX_REQUEST_BYTES = 32 * 1024;
 export const DEFAULT_MAX_RESPONSE_BYTES = 64 * 1024;
 
@@ -52,7 +62,7 @@ export const CapabilitiesOutputSchema = z
 
 export const GetStorePolicyInputSchema = z
   .object({
-    topic: z.string().min(1).max(100),
+    topic: z.enum(POLICY_TOPICS),
   })
   .strict();
 
@@ -60,11 +70,34 @@ export const GetStorePolicyOutputSchema = z
   .object({
     topic: z.string().min(1).max(64),
     answer: z.string().min(1).max(4000),
-    sourceId: z.string().min(1).max(100),
-    sourceVersion: z.literal(POLICY_VERSION),
-    registryVersion: z.literal(REGISTRY_VERSION),
+    sources: z
+      .array(
+        z
+          .object({
+            sourceId: z.string().min(1).max(100),
+            sourceVersion: z.literal(POLICY_VERSION),
+          })
+          .strict(),
+      )
+      .max(10),
   })
   .strict();
+
+const MoneySchema = z
+  .object({
+    amount: z.string().regex(/^\d{1,10}(\.\d{1,2})?$/),
+    currency: z.literal("NPR"),
+  })
+  .strict();
+
+const SignedMoneySchema = z
+  .object({
+    amount: z.string().regex(/^-?\d{1,10}(\.\d{1,2})?$/),
+    currency: z.literal("NPR"),
+  })
+  .strict();
+
+const DecimalInputSchema = z.string().regex(/^\d{1,10}(\.\d{1,2})?$/);
 
 // Minimized public storefront projection: availability label only — no
 // sellerId, no exact stock counts, no seller-private metadata.
@@ -72,7 +105,7 @@ const PublicProductSchema = z
   .object({
     id: z.string().min(1).max(100),
     name: z.string().min(1).max(200),
-    price: z.number().nonnegative(),
+    price: MoneySchema,
     images: z.array(z.string().max(500)).max(20),
     category: z.string().min(1).max(100),
     availability: z.enum(["In stock", "Sold out"]),
@@ -83,20 +116,24 @@ const SearchProductsInputSchema = z
   .object({
     q: z.string().min(1).max(200).optional(),
     category: z.string().min(1).max(100).optional(),
-    minPrice: z.number().nonnegative().max(1_000_000_000).optional(),
-    maxPrice: z.number().nonnegative().max(1_000_000_000).optional(),
+    minPrice: DecimalInputSchema.optional(),
+    maxPrice: DecimalInputSchema.optional(),
     sort: z.enum(["price-asc", "price-desc", "name-asc", "name-desc"]).optional(),
-    page: z.number().int().min(1).max(1000).optional(),
+    cursor: z.string().min(1).max(2048).optional(),
     limit: z.number().int().min(1).max(50).optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    ({ minPrice, maxPrice }) =>
+      minPrice === undefined || maxPrice === undefined || Number(minPrice) <= Number(maxPrice),
+    { message: "minPrice must not exceed maxPrice" },
+  );
 
 const SearchProductsOutputSchema = z
   .object({
     items: z.array(PublicProductSchema).max(50),
     total: z.number().int().nonnegative(),
-    page: z.number().int().min(1),
-    pageSize: z.number().int().min(1).max(50),
+    nextCursor: z.string().min(1).max(2048).nullable(),
   })
   .strict();
 
@@ -116,7 +153,7 @@ const VariantOptionSchema = z
   .object({
     kind: z.enum(["color", "storage", "ram", "screenSize", "processor"]),
     value: z.string().min(1).max(100),
-    priceDelta: z.number().min(-1_000_000_000).max(1_000_000_000),
+    priceDelta: SignedMoneySchema,
   })
   .strict();
 
@@ -153,7 +190,7 @@ const PublicReviewSchema = z
 const GetProductReviewsInputSchema = z
   .object({
     productId: z.string().min(1).max(100),
-    page: z.number().int().min(1).max(1000).optional(),
+    cursor: z.string().min(1).max(2048).optional(),
     limit: z.number().int().min(1).max(50).optional(),
   })
   .strict();
@@ -163,8 +200,7 @@ const GetProductReviewsOutputSchema = z
     productId: z.string().min(1).max(100),
     reviews: z.array(PublicReviewSchema).max(50),
     total: z.number().int().nonnegative(),
-    page: z.number().int().min(1),
-    pageSize: z.number().int().min(1).max(50),
+    nextCursor: z.string().min(1).max(2048).nullable(),
     contentNotice: z.string().min(1).max(500),
   })
   .strict();
@@ -196,7 +232,7 @@ const definitions = [
     rateClass: "discovery",
     rollout: {
       flag: "MCP_TOOL_GET_CAPABILITIES_ENABLED",
-      defaultEnabled: true,
+      defaultEnabled: false,
     },
     backendOperation: {
       kind: "local",
@@ -218,13 +254,13 @@ const definitions = [
     rateClass: "public-read",
     rollout: {
       flag: "MCP_TOOL_GET_STORE_POLICY_ENABLED",
-      defaultEnabled: true,
+      defaultEnabled: false,
     },
     backendOperation: {
-      kind: "local",
-      operationId: "registry.getStorePolicy",
-      method: null,
-      path: null,
+      kind: "http",
+      operationId: "policy.getStorePolicy",
+      method: "POST",
+      path: "/api/v1/assistant/get_store_policy",
     },
   },
   {
@@ -239,13 +275,13 @@ const definitions = [
     rateClass: "public-read",
     rollout: {
       flag: "MCP_TOOL_SEARCH_PRODUCTS_ENABLED",
-      defaultEnabled: true,
+      defaultEnabled: false,
     },
     backendOperation: {
-      kind: "local",
+      kind: "http",
       operationId: "catalog.searchProducts",
-      method: null,
-      path: null,
+      method: "POST",
+      path: "/api/v1/assistant/search_products",
     },
   },
   {
@@ -260,13 +296,13 @@ const definitions = [
     rateClass: "public-read",
     rollout: {
       flag: "MCP_TOOL_COMPARE_PRODUCTS_ENABLED",
-      defaultEnabled: true,
+      defaultEnabled: false,
     },
     backendOperation: {
-      kind: "local",
+      kind: "http",
       operationId: "catalog.compareProducts",
-      method: null,
-      path: null,
+      method: "POST",
+      path: "/api/v1/assistant/compare_products",
     },
   },
   {
@@ -281,13 +317,13 @@ const definitions = [
     rateClass: "public-read",
     rollout: {
       flag: "MCP_TOOL_GET_PRODUCT_ENABLED",
-      defaultEnabled: true,
+      defaultEnabled: false,
     },
     backendOperation: {
-      kind: "local",
+      kind: "http",
       operationId: "catalog.getProduct",
-      method: null,
-      path: null,
+      method: "POST",
+      path: "/api/v1/assistant/get_product",
     },
   },
   {
@@ -302,13 +338,13 @@ const definitions = [
     rateClass: "public-read",
     rollout: {
       flag: "MCP_TOOL_GET_PRODUCT_REVIEWS_ENABLED",
-      defaultEnabled: true,
+      defaultEnabled: false,
     },
     backendOperation: {
-      kind: "local",
+      kind: "http",
       operationId: "catalog.getProductReviews",
-      method: null,
-      path: null,
+      method: "POST",
+      path: "/api/v1/assistant/get_product_reviews",
     },
   },
   {
@@ -323,13 +359,13 @@ const definitions = [
     rateClass: "public-read",
     rollout: {
       flag: "MCP_TOOL_GET_RECOMMENDATIONS_ENABLED",
-      defaultEnabled: true,
+      defaultEnabled: false,
     },
     backendOperation: {
-      kind: "local",
+      kind: "http",
       operationId: "catalog.getRecommendations",
-      method: null,
-      path: null,
+      method: "POST",
+      path: "/api/v1/assistant/get_recommendations",
     },
   },
 ];

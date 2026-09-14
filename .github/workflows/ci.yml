@@ -20,6 +20,9 @@ jobs:
           cache: npm
           cache-dependency-path: mcp/package-lock.json
       - run: npm ci --prefix ../backend
+      - name: Generate Prisma client
+        working-directory: backend
+        run: npx prisma generate --schema=prisma/schema.prisma
       - run: npm ci
       - run: npm run check
       - run: npm test
@@ -37,6 +40,7 @@ jobs:
           cache: npm
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
+      - run: npx prisma generate --schema=prisma/schema.prisma
       - run: npm test
 
   frontend:

@@ -19,6 +19,7 @@ import chatRouter from "./routes/chatRoute.js";
 import notificationRouter from "./routes/notificationRoute.js";
 import promoRouter from "./routes/promoCodeRoute.js";
 import testEmailRouter from "./routes/testEmailRoute.js";
+import assistantRouter from "./routes/assistantRoute.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -69,6 +70,7 @@ app.use(express.urlencoded({extended: true }));
 app.use(cookieParser());
 app.use(requestContext);
 app.use(healthRouter);
+app.use('/api/v1/assistant', assistantRouter);
 
 // General backstop against scripted abuse on any endpoint — the auth routes layer a much
 // tighter limiter on top of this for login/register/refresh specifically (see authRoute.js).

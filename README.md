@@ -16,7 +16,7 @@ Technically, the project is interesting less for its CRUD surface and more for h
 ## Key Features
 
 **Implemented**
-- **MCP capability service** — a separately runnable Streamable HTTP process pinned to protocol `2025-11-25`, currently exposing only the public `get_capabilities` tracer bullet from a strict, versioned policy registry with per-tool rollout and a global kill switch
+- **MCP public-read service** — a separately runnable authenticated Streamable HTTP process pinned to protocol `2025-11-25`; seven strict catalog/policy tools call a fixed authenticated Express assistant API and remain disabled by default until the public-pilot gate is complete
 - **Authentication & authorization** — email/password with Argon2id hashing (bcrypt-verified legacy accounts auto-upgrade on login), rotating refresh tokens with stolen-token detection, Google Sign-In, role-based access (customer / seller / admin)
 - **Multi-vendor catalog** — product CRUD with per-color and per-storage stock variants, image uploads, product reviews
 - **Cart & checkout** — persistent server-side cart, promo code discounts, single and bulk (multi-item) order creation
@@ -403,16 +403,18 @@ See [backend/recommendation/README.md](backend/recommendation/README.md) for the
 
 ## Docker
 
-`docker-compose.yml` provisions all three pieces: Postgres, the backend API, and the frontend (built and served by nginx).
+`docker-compose.yml` provisions Postgres, the backend API, the gated MCP service, and the frontend (built and served by nginx).
 
 ```bash
 cp backend/config/config.env.example backend/config/config.env  # fill in secrets first
+# Set ASSISTANT_API_TOKEN, ASSISTANT_CURSOR_SECRET, and MCP_ACCESS_TOKEN in your shell/.env.
 docker compose up -d --build
 docker compose down            # stop (add -v to also drop the postgres_data volume)
 ```
 
 - **postgres** — `postgres:16-alpine`, exposed on `:5432`, with a healthcheck the backend waits on before starting.
 - **backend** ([backend/Dockerfile](backend/Dockerfile)) — Node 20-alpine; `prisma generate` runs at image build time since the generated client is gitignored; the container entrypoint runs `prisma migrate deploy` before starting the server, so committed migrations apply automatically on every start. Reads `backend/config/config.env` via `env_file`, with `DATABASE_URL` overridden in compose to point at the `postgres` service by name (containers can't reach each other via `localhost`). Exposed on `:4000`; uploaded files persist in the `backend_uploads` volume.
+- **mcp** ([mcp/Dockerfile](mcp/Dockerfile)) — authenticated Streamable HTTP on `:4100`; requires separate MCP and backend service tokens, applies request/response/rate/concurrency bounds, and starts with its global and per-tool flags disabled.
 - **frontend** ([frontend/Dockerfile](frontend/Dockerfile)) — multi-stage: `npm run build` in a Node stage, the resulting `dist/` served by `nginx:alpine` on `:5173→80`. No SPA rewrite rules are needed because the app uses `HashRouter` — every client route is a `#` fragment the browser never sends to the server.
 
 Not verified: no Docker runtime was available in the environment these images were authored in, so `docker compose up --build` has not actually been run end-to-end. The Dockerfiles and compose wiring were reasoned through carefully (multi-stage build, non-root backend user, healthcheck-gated startup, correct in-network hostnames) but treat a first real build as the actual test.

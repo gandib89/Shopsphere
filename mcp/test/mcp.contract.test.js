@@ -4,9 +4,17 @@ import test from "node:test";
 import { Client } from "@modelcontextprotocol/client";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 
-import { createMcpHttpServer } from "../src/httpServer.js";
+import { createMcpHttpServer as createRawMcpHttpServer } from "../src/httpServer.js";
+import { ACCESS_TOKEN, ALL_FLAGS, fakeBackendClient } from "./support/fakeBackend.js";
 
 const PROTOCOL_VERSION = "2025-11-25";
+const createMcpHttpServer = (options = {}) =>
+  createRawMcpHttpServer({
+    accessToken: ACCESS_TOKEN,
+    backendClient: fakeBackendClient,
+    ...options,
+    flags: { ...ALL_FLAGS, ...options.flags },
+  });
 
 const listen = async (server) => {
   await new Promise((resolve, reject) => {
@@ -28,7 +36,11 @@ const connect = async (url) => {
     { name: "shopsphere-contract-test", version: "1.0.0" },
     { versionNegotiation: { mode: "legacy" } },
   );
-  await client.connect(new StreamableHTTPClientTransport(url));
+  await client.connect(
+    new StreamableHTTPClientTransport(url, {
+      requestInit: { headers: { authorization: `Bearer ${ACCESS_TOKEN}` } },
+    }),
+  );
   return client;
 };
 
@@ -88,10 +100,10 @@ test("negotiates the pinned protocol and serves public get_capabilities", async 
         enabled: true,
       },
       backendOperation: {
-        kind: "local",
-        operationId: "registry.getStorePolicy",
-        method: null,
-        path: null,
+        kind: "http",
+        operationId: "policy.getStorePolicy",
+        method: "POST",
+        path: "/api/v1/assistant/get_store_policy",
       },
     },
     {
@@ -106,10 +118,10 @@ test("negotiates the pinned protocol and serves public get_capabilities", async 
         enabled: true,
       },
       backendOperation: {
-        kind: "local",
+        kind: "http",
         operationId: "catalog.searchProducts",
-        method: null,
-        path: null,
+        method: "POST",
+        path: "/api/v1/assistant/search_products",
       },
     },
     {
@@ -124,10 +136,10 @@ test("negotiates the pinned protocol and serves public get_capabilities", async 
         enabled: true,
       },
       backendOperation: {
-        kind: "local",
+        kind: "http",
         operationId: "catalog.compareProducts",
-        method: null,
-        path: null,
+        method: "POST",
+        path: "/api/v1/assistant/compare_products",
       },
     },
     {
@@ -142,10 +154,10 @@ test("negotiates the pinned protocol and serves public get_capabilities", async 
         enabled: true,
       },
       backendOperation: {
-        kind: "local",
+        kind: "http",
         operationId: "catalog.getProduct",
-        method: null,
-        path: null,
+        method: "POST",
+        path: "/api/v1/assistant/get_product",
       },
     },
     {
@@ -160,10 +172,10 @@ test("negotiates the pinned protocol and serves public get_capabilities", async 
         enabled: true,
       },
       backendOperation: {
-        kind: "local",
+        kind: "http",
         operationId: "catalog.getProductReviews",
-        method: null,
-        path: null,
+        method: "POST",
+        path: "/api/v1/assistant/get_product_reviews",
       },
     },
     {
@@ -178,10 +190,10 @@ test("negotiates the pinned protocol and serves public get_capabilities", async 
         enabled: true,
       },
       backendOperation: {
-        kind: "local",
+        kind: "http",
         operationId: "catalog.getRecommendations",
-        method: null,
-        path: null,
+        method: "POST",
+        path: "/api/v1/assistant/get_recommendations",
       },
     },
   ]);
@@ -194,7 +206,7 @@ test("rejects protocol revisions other than the pinned version", async (t) => {
 
   const response = await fetch(url, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { authorization: `Bearer ${ACCESS_TOKEN}`, "content-type": "application/json" },
     body: JSON.stringify({
       jsonrpc: "2.0",
       id: 1,
@@ -211,6 +223,18 @@ test("rejects protocol revisions other than the pinned version", async (t) => {
   assert.match(JSON.stringify(await response.json()), /2025-11-25/);
 });
 
+test("rejects unauthenticated requests before protocol handling", async (t) => {
+  const server = createMcpHttpServer({ enabled: true });
+  const url = await listen(server);
+  t.after(() => close(server));
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} }),
+  });
+  assert.equal(response.status, 401);
+});
+
 test("allows only exact configured browser Origins", async (t) => {
   const server = createMcpHttpServer({
     enabled: true,
@@ -222,6 +246,7 @@ test("allows only exact configured browser Origins", async (t) => {
   const response = await fetch(url, {
     method: "POST",
     headers: {
+      authorization: `Bearer ${ACCESS_TOKEN}`,
       "content-type": "application/json",
       origin: "https://shop.example.attacker.test",
     },
@@ -259,7 +284,7 @@ test("rejects request bodies over the configured contract limit", async (t) => {
 
   const response = await fetch(url, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { authorization: `Bearer ${ACCESS_TOKEN}`, "content-type": "application/json" },
     body: JSON.stringify({
       jsonrpc: "2.0",
       id: 1,
@@ -272,6 +297,26 @@ test("rejects request bodies over the configured contract limit", async (t) => {
     }),
   });
 
+  assert.equal(response.status, 413);
+});
+
+test("stops oversized chunked bodies without relying on Content-Length", async (t) => {
+  const server = createMcpHttpServer({ enabled: true, maxRequestBytes: 64 });
+  const url = await listen(server);
+  t.after(() => close(server));
+  const body = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode("{"));
+      controller.enqueue(new TextEncoder().encode(`"payload":"${"x".repeat(128)}"}`));
+      controller.close();
+    },
+  });
+  const response = await fetch(url, {
+    method: "POST",
+    duplex: "half",
+    headers: { authorization: `Bearer ${ACCESS_TOKEN}`, "content-type": "application/json" },
+    body,
+  });
   assert.equal(response.status, 413);
 });
 
@@ -306,6 +351,7 @@ test("returns a bounded error instead of an oversized tool response", async (t) 
     method: "POST",
     headers: {
       accept: "application/json, text/event-stream",
+      authorization: `Bearer ${ACCESS_TOKEN}`,
       "content-type": "application/json",
       "mcp-protocol-version": PROTOCOL_VERSION,
     },
@@ -335,7 +381,7 @@ test("the global kill switch disables MCP without affecting storefront liveness"
 
   const disabledResponse = await fetch(mcpUrl, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { authorization: `Bearer ${ACCESS_TOKEN}`, "content-type": "application/json" },
     body: JSON.stringify({
       jsonrpc: "2.0",
       id: 1,

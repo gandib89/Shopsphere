@@ -4,8 +4,17 @@ import test from "node:test";
 import { Client } from "@modelcontextprotocol/client";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 
-import { createMcpHttpServer } from "../src/httpServer.js";
-import { POLICY_TOPICS, POLICY_VERSION, getStorePolicy } from "../src/policyContent.js";
+import { createMcpHttpServer as createRawMcpHttpServer } from "../src/httpServer.js";
+import { POLICY_TOPICS, POLICY_VERSION } from "../src/toolRegistry.js";
+import { ACCESS_TOKEN, ALL_FLAGS, fakeBackendClient } from "./support/fakeBackend.js";
+
+const createMcpHttpServer = (options = {}) =>
+  createRawMcpHttpServer({
+    accessToken: ACCESS_TOKEN,
+    backendClient: fakeBackendClient,
+    ...options,
+    flags: { ...ALL_FLAGS, ...options.flags },
+  });
 import { DEFAULT_MAX_RESPONSE_BYTES } from "../src/toolRegistry.js";
 
 const listen = async (server) => {
@@ -28,7 +37,9 @@ const connect = async (url) => {
     { name: "shopsphere-policy-test", version: "1.0.0" },
     { versionNegotiation: { mode: "legacy" } },
   );
-  await client.connect(new StreamableHTTPClientTransport(url));
+  await client.connect(new StreamableHTTPClientTransport(url, {
+    requestInit: { headers: { authorization: `Bearer ${ACCESS_TOKEN}` } },
+  }));
   return client;
 };
 
@@ -46,9 +57,8 @@ test("allowlisted topics return versioned answers within response bounds", async
     const output = result.structuredContent;
     assert.equal(output.topic, topic);
     assert.ok(output.answer.length > 0);
-    assert.ok(output.sourceId.length > 0);
-    assert.equal(output.sourceVersion, POLICY_VERSION);
-    assert.equal(output.registryVersion, "1.0.0");
+    assert.ok(output.sources.length > 0);
+    assert.ok(output.sources.every(({ sourceId, sourceVersion }) => sourceId.length > 0 && sourceVersion === POLICY_VERSION));
     assert.ok(
       Buffer.byteLength(JSON.stringify(output), "utf8") <= DEFAULT_MAX_RESPONSE_BYTES,
     );
@@ -61,7 +71,7 @@ test("allowlisted topics return versioned answers within response bounds", async
   assert.match(returns.structuredContent.answer, /7 days/);
 });
 
-test("unknown topics return an explicit unknown and never invent policy", async (t) => {
+test("topics outside the allowlist are rejected", async (t) => {
   const server = createMcpHttpServer({ enabled: true });
   const url = await listen(server);
   t.after(() => close(server));
@@ -73,18 +83,8 @@ test("unknown topics return an explicit unknown and never invent policy", async 
     name: "get_store_policy",
     arguments: { topic: "refund-for-moon-landing" },
   });
-  assert.equal(result.isError, undefined);
-  const output = result.structuredContent;
-  assert.equal(output.topic, "refund-for-moon-landing");
-  assert.match(output.answer, /unknown/i);
-  assert.equal(output.sourceId, "unknown");
-  assert.equal(output.sourceVersion, POLICY_VERSION);
-  assert.doesNotMatch(output.answer, /7 days/);
-
-  const direct = getStorePolicy("refund-for-moon-landing");
-  assert.equal(direct.sourceId, "unknown");
-  assert.equal(direct.sourceVersion, POLICY_VERSION);
-  assert.match(direct.answer, /unknown/i);
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /invalid|option|enum/i);
 });
 
 test("unknown fields on get_store_policy are rejected", async (t) => {

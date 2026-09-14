@@ -1,7 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/server";
+import crypto from "node:crypto";
 
-import { compareCatalog, getProductDetail, getProductReviews, getRecommendations, searchCatalog } from "./catalogData.js";
-import { getStorePolicy } from "./policyContent.js";
 import {
   REGISTRY_VERSION,
   describeCapabilities,
@@ -13,6 +12,8 @@ export const createShopSphereMcpServer = ({
   flags = {},
   maxRequestBytes,
   maxResponseBytes,
+  backendClient,
+  audit = () => {},
 }) => {
   const server = new McpServer({
     name: "shopsphere-mcp",
@@ -24,17 +25,12 @@ export const createShopSphereMcpServer = ({
   const handlers = {
     get_capabilities: () =>
       describeCapabilities({ flags, maxRequestBytes, maxResponseBytes }),
-    get_store_policy: (args) => ({
-      ...getStorePolicy(args.topic),
-      registryVersion: REGISTRY_VERSION,
-    }),
-    search_products: (args) => searchCatalog(args),
-    compare_products: (args) => ({
-      products: compareCatalog(args.productIds),
-    }),
-    get_product: (args) => getProductDetail(args.productId),
-    get_product_reviews: (args) => getProductReviews(args),
-    get_recommendations: (args) => getRecommendations(args),
+    get_store_policy: (args, requestId) => backendClient.call("get_store_policy", args, requestId),
+    search_products: (args, requestId) => backendClient.call("search_products", args, requestId),
+    compare_products: (args, requestId) => backendClient.call("compare_products", args, requestId),
+    get_product: (args, requestId) => backendClient.call("get_product", args, requestId),
+    get_product_reviews: (args, requestId) => backendClient.call("get_product_reviews", args, requestId),
+    get_recommendations: (args, requestId) => backendClient.call("get_recommendations", args, requestId),
   };
 
   for (const tool of toolRegistry.filter((definition) => isToolEnabled(definition, flags))) {
@@ -50,12 +46,38 @@ export const createShopSphereMcpServer = ({
         outputSchema: tool.outputSchema,
         annotations: { readOnlyHint: true },
       },
-      async (args) => {
-        const output = handle(args);
-        return {
-          content: [{ type: "text", text: JSON.stringify(output) }],
-          structuredContent: output,
-        };
+      async (args, extra) => {
+        const startedAt = Date.now();
+        const requestId = extra?.requestInfo?.headers?.get("x-request-id");
+        try {
+          const output = await handle(args, requestId);
+          const serialized = JSON.stringify(output);
+          audit({
+            requestId,
+            tool: tool.name,
+            registryVersion: REGISTRY_VERSION,
+            operation: tool.backendOperation.operationId,
+            outcome: "success",
+            durationMs: Date.now() - startedAt,
+            responseBytes: Buffer.byteLength(serialized),
+            responseDigest: crypto.createHash("sha256").update(serialized).digest("base64url"),
+            fields: Object.keys(output),
+          });
+          return {
+            content: [{ type: "text", text: serialized }],
+            structuredContent: output,
+          };
+        } catch (error) {
+          audit({
+            requestId,
+            tool: tool.name,
+            registryVersion: REGISTRY_VERSION,
+            operation: tool.backendOperation.operationId,
+            outcome: "error",
+            durationMs: Date.now() - startedAt,
+          });
+          throw error;
+        }
       },
     );
   }
