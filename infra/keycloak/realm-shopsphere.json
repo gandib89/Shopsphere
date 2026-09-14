@@ -46,6 +46,25 @@
           }
         },
         {
+          "name": "ShopSphere verification",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "shopsphere_verified",
+            "claim.name": "shopsphere_verified",
+            "jsonType.label": "boolean",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "name": "shopsphere-mcp-audience",
+      "protocol": "openid-connect",
+      "attributes": { "include.in.token.scope": "false" },
+      "protocolMappers": [
+        {
           "name": "MCP audience",
           "protocol": "openid-connect",
           "protocolMapper": "oidc-audience-mapper",
@@ -80,7 +99,7 @@
         "pkce.code.challenge.method": "S256",
         "post.logout.redirect.uris": "+"
       },
-      "defaultClientScopes": ["openid", "profile", "shopsphere-identity"],
+      "defaultClientScopes": ["openid", "profile", "shopsphere-identity", "shopsphere-mcp-audience"],
       "optionalClientScopes": [
         "catalog:read",
         "policy:read",
@@ -99,7 +118,16 @@
       "standardFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": true,
-      "attributes": { "standard.token.exchange.enabled": "true" }
+      "attributes": { "standard.token.exchange.enabled": "true" },
+      "defaultClientScopes": ["shopsphere-identity"],
+      "optionalClientScopes": [
+        "catalog:read",
+        "policy:read",
+        "profile:read",
+        "notifications:read",
+        "orders:read",
+        "cart:read"
+      ]
     },
     {
       "clientId": "shopsphere-assistant-api",

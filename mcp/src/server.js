@@ -7,11 +7,6 @@ const config = readConfig();
 if (config.enabled && (!config.backendToken || config.backendToken.length < 32)) {
   throw new Error("ASSISTANT_API_TOKEN must contain at least 32 characters when MCP is enabled");
 }
-const backendClient = createBackendClient({
-  origin: config.backendOrigin,
-  token: config.backendToken || "disabled",
-  timeoutMs: config.backendTimeoutMs,
-});
 const oauth = config.enabled
   ? createKeycloakMcpAuth({
       issuer: config.oauthIssuer,
@@ -25,10 +20,17 @@ const oauth = config.enabled
       trustedClients: config.trustedClients,
     })
   : null;
+const backendClient = createBackendClient({
+  origin: config.backendOrigin,
+  token: config.backendToken || "disabled",
+  exchangeToken: oauth?.exchange,
+  timeoutMs: config.backendTimeoutMs,
+});
 const server = createMcpHttpServer({
   ...config,
   backendClient,
   tokenVerifier: oauth?.verify,
+  authContextResolver: oauth ? (context) => backendClient.resolveAuthorization(context) : undefined,
   protectedResourceMetadata: oauth?.protectedResourceMetadata,
 });
 

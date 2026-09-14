@@ -11,6 +11,11 @@ import {
   searchPublicProducts,
 } from "../services/assistantPublicCatalog.js";
 import { getApprovedPolicy, POLICY_TOPICS } from "../services/assistantPolicy.js";
+import {
+  authenticateAssistantDelegation,
+  authenticateAssistantWorkload,
+  authorizeAssistantOperation,
+} from "../middlewares/assistantDelegation.js";
 
 const router = express.Router();
 const decimal = z.string().regex(/^\d{1,10}(\.\d{1,2})?$/);
@@ -62,7 +67,7 @@ const safeEqual = (left, right) => {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 };
 
-router.use((req, res, next) => {
+const authenticatePublicWorkload = (req, res, next) => {
   const expected = process.env.ASSISTANT_API_TOKEN;
   const authorization = req.get("authorization") || "";
   const supplied = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
@@ -70,7 +75,7 @@ router.use((req, res, next) => {
     return res.status(401).json({ error: "Unauthorized" });
   }
   next();
-});
+};
 
 router.use(
   rateLimit({
@@ -82,6 +87,43 @@ router.use(
       crypto.createHash("sha256").update(req.get("authorization") || req.ip).digest("base64url"),
   }),
 );
+
+const authenticatedContext = [
+  authenticateAssistantWorkload,
+  authenticateAssistantDelegation,
+  authorizeAssistantOperation(),
+];
+
+export const sendAuthorizationContext = (req, res) => {
+  res.json({
+    subject: req.assistantAccount.id,
+    role: req.assistantAccount.role,
+    verified: Boolean(req.assistantAccount.isVerified),
+    scopes: req.delegation.scopes,
+    grantId: req.delegation.grantId,
+  });
+};
+
+export const sendProfileSummary = (req, res) => res.json({
+  displayName: `${req.assistantAccount.firstName} ${req.assistantAccount.lastName}`.trim(),
+  role: req.assistantAccount.role,
+  verified: Boolean(req.assistantAccount.isVerified),
+});
+
+router.post("/authorization-context", ...authenticatedContext, sendAuthorizationContext);
+
+router.post(
+  "/get_my_profile_summary",
+  authenticateAssistantWorkload,
+  authenticateAssistantDelegation,
+  authorizeAssistantOperation({
+    scope: "profile:read",
+    rolloutFlag: "MCP_TOOL_GET_MY_PROFILE_SUMMARY_ENABLED",
+  }),
+  sendProfileSummary,
+);
+
+router.use(authenticatePublicWorkload);
 
 router.post("/:operation", async (req, res, next) => {
   const schema = schemas[req.params.operation];

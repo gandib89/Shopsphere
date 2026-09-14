@@ -6,6 +6,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 
 import { createMcpHttpServer as createRawMcpHttpServer } from "../src/httpServer.js";
 import { ACCESS_TOKEN, ALL_FLAGS, fakeBackendClient } from "./support/fakeBackend.js";
+import { close, listen } from "./support/httpServer.js";
 
 const createMcpHttpServer = (options = {}) =>
   createRawMcpHttpServer({
@@ -17,21 +18,6 @@ const createMcpHttpServer = (options = {}) =>
 
 const PRODUCT_KEYS = ["availability", "category", "description", "id", "images", "name", "price", "variants"];
 const REVIEW_KEYS = ["comment", "createdAt", "displayName", "rating"];
-
-const listen = async (server) => {
-  await new Promise((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolve);
-  });
-  const address = server.address();
-  return new URL(`http://127.0.0.1:${address.port}/mcp`);
-};
-
-const close = async (server) => {
-  await new Promise((resolve, reject) => {
-    server.close((error) => (error ? reject(error) : resolve()));
-  });
-};
 
 const connect = async (url) => {
   const client = new Client(

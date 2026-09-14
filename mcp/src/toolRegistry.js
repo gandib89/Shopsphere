@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const PROTOCOL_VERSION = "2025-11-25";
-export const REGISTRY_VERSION = "1.0.0";
+export const REGISTRY_VERSION = "1.1.0";
 export const POLICY_VERSION = "1.0.0";
 export const POLICY_TOPICS = Object.freeze([
   "returns",
@@ -219,11 +219,19 @@ const GetRecommendationsOutputSchema = z
   })
   .strict();
 
+const GetMyProfileSummaryOutputSchema = z
+  .object({
+    displayName: z.string().min(1).max(201),
+    role: z.enum(["user", "seller", "admin"]),
+    verified: z.boolean(),
+  })
+  .strict();
+
 const definitions = [
   {
     name: "get_capabilities",
     title: "Get ShopSphere capabilities",
-    description: "Lists the currently enabled public ShopSphere MCP capabilities and their policy metadata.",
+    description: "Lists the ShopSphere MCP capabilities currently available to this caller and their policy metadata.",
     inputSchema: z.object({}).strict(),
     outputSchema: CapabilitiesOutputSchema,
     operationClass: "read",
@@ -239,6 +247,27 @@ const definitions = [
       operationId: "registry.getCapabilities",
       method: null,
       path: null,
+    },
+  },
+  {
+    name: "get_my_profile_summary",
+    title: "Get my ShopSphere profile summary",
+    description: "Reads the authenticated user's display name, current role, and verification state.",
+    inputSchema: z.object({}).strict(),
+    outputSchema: GetMyProfileSummaryOutputSchema,
+    operationClass: "read",
+    roles: ["user", "seller", "admin"],
+    scopes: ["profile:read"],
+    rateClass: "authenticated-read",
+    rollout: {
+      flag: "MCP_TOOL_GET_MY_PROFILE_SUMMARY_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "profile.getMySummary",
+      method: "POST",
+      path: "/api/v1/assistant/get_my_profile_summary",
     },
   },
   {
@@ -384,14 +413,25 @@ export const toolRegistry = Object.freeze(definitions.map(freezeDefinition));
 export const isToolEnabled = (definition, flags = {}) =>
   flags[definition.rollout.flag] ?? definition.rollout.defaultEnabled;
 
+export const isToolAvailable = (definition, flags = {}, auth) => {
+  if (!isToolEnabled(definition, flags)) return false;
+  if (definition.roles.includes("public")) return true;
+  return Boolean(
+    auth
+    && definition.roles.includes(auth.role)
+    && definition.scopes.every((scope) => auth.scopes?.includes(scope)),
+  );
+};
+
 export const describeCapabilities = ({
   flags = {},
   maxRequestBytes = DEFAULT_MAX_REQUEST_BYTES,
   maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES,
+  auth,
 } = {}) => ({
   registryVersion: REGISTRY_VERSION,
   protocolVersion: PROTOCOL_VERSION,
-  tools: toolRegistry.filter((tool) => isToolEnabled(tool, flags)).map((tool) => ({
+  tools: toolRegistry.filter((tool) => isToolAvailable(tool, flags, auth)).map((tool) => ({
     name: tool.name,
     description: tool.description,
     operationClass: tool.operationClass,

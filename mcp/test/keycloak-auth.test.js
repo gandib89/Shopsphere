@@ -17,6 +17,7 @@ const tokenFixture = async ({ azp = "shopsphere-mcp-client", audience = AUDIENCE
     scope: "profile:read catalog:read",
     shopsphere_user_id: "user-1",
     shopsphere_role: "user",
+    shopsphere_verified: true,
   })
     .setProtectedHeader({ alg: "RS256", kid: "test-key" })
     .setIssuer(ISSUER)
@@ -48,6 +49,7 @@ test("verifies an active audience-bound token from an approved client", async ()
   assert.deepEqual(await auth.verify(token), {
     sub: "user-1",
     role: "user",
+    verified: true,
     clientId: "shopsphere-mcp-client",
     grantId: "grant-1",
     scopes: ["profile:read", "catalog:read"],

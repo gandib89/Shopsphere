@@ -71,6 +71,10 @@ export const readConfig = (environment = process.env) => ({
       environment.MCP_TOOL_GET_CAPABILITIES_ENABLED,
       false,
     ),
+    MCP_TOOL_GET_MY_PROFILE_SUMMARY_ENABLED: parseBoolean(
+      environment.MCP_TOOL_GET_MY_PROFILE_SUMMARY_ENABLED,
+      false,
+    ),
     MCP_TOOL_GET_STORE_POLICY_ENABLED: parseBoolean(
       environment.MCP_TOOL_GET_STORE_POLICY_ENABLED,
       false,

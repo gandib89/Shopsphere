@@ -57,6 +57,7 @@ const search = (input) => {
 export const ACCESS_TOKEN = "mcp-test-token-123456789012345678";
 export const ALL_FLAGS = Object.freeze({
   MCP_TOOL_GET_CAPABILITIES_ENABLED: true,
+  MCP_TOOL_GET_MY_PROFILE_SUMMARY_ENABLED: true,
   MCP_TOOL_GET_STORE_POLICY_ENABLED: true,
   MCP_TOOL_SEARCH_PRODUCTS_ENABLED: true,
   MCP_TOOL_COMPARE_PRODUCTS_ENABLED: true,
@@ -67,6 +68,7 @@ export const ALL_FLAGS = Object.freeze({
 
 export const fakeBackendClient = Object.freeze({
   async call(name, input) {
+    if (name === "get_my_profile_summary") return { displayName: "Ada Buyer", role: "user", verified: true };
     if (name === "search_products") return search(input);
     if (name === "compare_products") {
       const byId = new Map(rows.map((row) => [row.id, row]));

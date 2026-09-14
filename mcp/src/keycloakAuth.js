@@ -28,7 +28,7 @@ export const createKeycloakMcpAuth = ({
         issuer,
         audience,
         algorithms,
-        requiredClaims: ["sub", "exp", "iat", "sid"],
+        requiredClaims: ["sub", "exp", "iat", "sid", "shopsphere_user_id", "shopsphere_role", "shopsphere_verified"],
       }));
     } catch {
       const error = new Error("Invalid MCP access token");
@@ -68,6 +68,7 @@ export const createKeycloakMcpAuth = ({
     return {
       sub: payload.shopsphere_user_id ?? payload.sub,
       role: payload.shopsphere_role,
+      verified: payload.shopsphere_verified === true || payload.shopsphere_verified === "true",
       clientId: sourceClient,
       grantId: payload.sid,
       scopes: typeof payload.scope === "string" ? payload.scope.split(" ").filter(Boolean) : [],

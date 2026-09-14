@@ -77,7 +77,11 @@ export const createKeycloakAdmin = ({
       lastName: user.lastName,
       enabled: true,
       emailVerified: true,
-      attributes: { shopsphere_user_id: [user.id], shopsphere_role: [user.role] },
+      attributes: {
+        shopsphere_user_id: [user.id],
+        shopsphere_role: [user.role],
+        shopsphere_verified: [String(Boolean(user.isVerified))],
+      },
     };
     if (!linked) {
       await request(`/admin/realms/${REALM}/users`, { method: "POST", body: JSON.stringify(representation) });

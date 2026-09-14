@@ -52,6 +52,7 @@ const bearerClaims = (payload) => ({
   client_id: payload.client_id ?? payload.azp,
   grant_id: payload.sid,
   role: payload.shopsphere_role,
+  verified: payload.shopsphere_verified === true || payload.shopsphere_verified === "true",
   scopes: typeof payload.scope === "string" ? payload.scope.split(" ").filter(Boolean) : [],
 });
 
@@ -102,7 +103,7 @@ export const createKeycloakTokenVerifier = ({
         issuer,
         audience,
         algorithms: [...TOKEN_ALGORITHMS],
-        requiredClaims: ["sub", "exp", "iat", "sid"],
+        requiredClaims: ["sub", "exp", "iat", "sid", "shopsphere_user_id", "shopsphere_role", "shopsphere_verified"],
       }));
     } catch {
       throw new OAuthError("invalid_token", "Token verification failed");

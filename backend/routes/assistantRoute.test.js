@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import express from "express";
 
-import assistantRouter from "./assistantRoute.js";
+import assistantRouter, { sendProfileSummary } from "./assistantRoute.js";
 
 const token = "assistant-test-token-123456789012345";
 
@@ -54,4 +54,20 @@ test("assistant policy accepts only allowlisted topics and returns every source"
 
   const invertedRange = await call("search_products", { minPrice: "20.00", maxPrice: "10.00" });
   assert.equal(invertedRange.status, 400);
+});
+
+test("profile summary exposes only display name, current role, and verification", () => {
+  let output;
+  sendProfileSummary({
+    assistantAccount: {
+      id: "user-1",
+      firstName: "Ada",
+      lastName: "Buyer",
+      role: "user",
+      isVerified: true,
+      email: "private@example.com",
+      password: "secret",
+    },
+  }, { json: (body) => { output = body; } });
+  assert.deepEqual(output, { displayName: "Ada Buyer", role: "user", verified: true });
 });

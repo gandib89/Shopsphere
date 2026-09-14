@@ -6,6 +6,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 
 import { createMcpHttpServer as createRawMcpHttpServer } from "../src/httpServer.js";
 import { ACCESS_TOKEN, ALL_FLAGS, fakeBackendClient } from "./support/fakeBackend.js";
+import { close, listen } from "./support/httpServer.js";
 
 const PROTOCOL_VERSION = "2025-11-25";
 const createMcpHttpServer = (options = {}) =>
@@ -15,21 +16,6 @@ const createMcpHttpServer = (options = {}) =>
     ...options,
     flags: { ...ALL_FLAGS, ...options.flags },
   });
-
-const listen = async (server) => {
-  await new Promise((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolve);
-  });
-  const address = server.address();
-  return new URL(`http://127.0.0.1:${address.port}/mcp`);
-};
-
-const close = async (server) => {
-  await new Promise((resolve, reject) => {
-    server.close((error) => (error ? reject(error) : resolve()));
-  });
-};
 
 const connect = async (url) => {
   const client = new Client(
@@ -67,11 +53,11 @@ test("negotiates the pinned protocol and serves public get_capabilities", async 
   const result = await client.callTool({ name: "get_capabilities", arguments: {} });
   assert.equal(result.isError, undefined);
   assert.equal(result.structuredContent.protocolVersion, PROTOCOL_VERSION);
-  assert.equal(result.structuredContent.registryVersion, "1.0.0");
+  assert.equal(result.structuredContent.registryVersion, "1.1.0");
   assert.deepEqual(result.structuredContent.tools, [
     {
       name: "get_capabilities",
-      description: "Lists the currently enabled public ShopSphere MCP capabilities and their policy metadata.",
+      description: "Lists the ShopSphere MCP capabilities currently available to this caller and their policy metadata.",
       operationClass: "read",
       roles: ["public"],
       scopes: [],
@@ -221,6 +207,59 @@ test("rejects protocol revisions other than the pinned version", async (t) => {
 
   assert.equal(response.status, 400);
   assert.match(JSON.stringify(await response.json()), /2025-11-25/);
+});
+
+test("private discovery and calls enforce live grant scope, role, verification, and rollout", async (t) => {
+  let liveVerification = true;
+  const auth = {
+    sub: "user-1",
+    role: "user",
+    verified: true,
+    clientId: "shopsphere-mcp-client",
+    grantId: "grant-1",
+    scopes: ["profile:read"],
+  };
+  const server = createMcpHttpServer({
+    enabled: true,
+    tokenVerifier: async () => auth,
+    authContextResolver: async (context) => {
+      if (!liveVerification) throw Object.assign(new Error("Verification changed"), { statusCode: 403 });
+      return { ...context, auth: { ...auth }, delegatedToken: "delegated-token" };
+    },
+  });
+  const url = await listen(server);
+  t.after(() => close(server));
+  const client = await connect(url);
+  t.after(() => client.close());
+
+  assert.ok((await client.listTools()).tools.some(({ name }) => name === "get_my_profile_summary"));
+  const result = await client.callTool({ name: "get_my_profile_summary", arguments: {} });
+  assert.deepEqual(result.structuredContent, { displayName: "Ada Buyer", role: "user", verified: true });
+
+  liveVerification = false;
+  await assert.rejects(
+    client.callTool({ name: "get_my_profile_summary", arguments: {} }),
+    /401|403|unauthorized|forbidden|authorization|verification/i,
+  );
+});
+
+test("a missing private scope hides the tool and forged calls are independently denied", async (t) => {
+  const auth = { sub: "user-1", role: "user", verified: true, clientId: "shopsphere-mcp-client", grantId: "grant-1", scopes: [] };
+  const server = createMcpHttpServer({
+    enabled: true,
+    tokenVerifier: async () => auth,
+    authContextResolver: async (context) => ({ ...context, auth, delegatedToken: "delegated-token" }),
+  });
+  const url = await listen(server);
+  t.after(() => close(server));
+  const client = await connect(url);
+  t.after(() => client.close());
+
+  assert.equal((await client.listTools()).tools.some(({ name }) => name === "get_my_profile_summary"), false);
+  await assert.rejects(
+    client.callTool({ name: "get_my_profile_summary", arguments: {} }),
+    /get_my_profile_summary|not found|unknown/i,
+  );
 });
 
 test("rejects unauthenticated requests before protocol handling", async (t) => {

@@ -4,7 +4,7 @@ import crypto from "node:crypto";
 import {
   REGISTRY_VERSION,
   describeCapabilities,
-  isToolEnabled,
+  isToolAvailable,
   toolRegistry,
 } from "./toolRegistry.js";
 
@@ -13,6 +13,7 @@ export const createShopSphereMcpServer = ({
   maxRequestBytes,
   maxResponseBytes,
   backendClient,
+  authContext,
   audit = () => {},
 }) => {
   const server = new McpServer({
@@ -24,7 +25,8 @@ export const createShopSphereMcpServer = ({
   // entry here; unknown registry names are skipped so tools register idempotently.
   const handlers = {
     get_capabilities: () =>
-      describeCapabilities({ flags, maxRequestBytes, maxResponseBytes }),
+      describeCapabilities({ flags, maxRequestBytes, maxResponseBytes, auth: authContext }),
+    get_my_profile_summary: (args, requestId) => backendClient.call("get_my_profile_summary", args, requestId),
     get_store_policy: (args, requestId) => backendClient.call("get_store_policy", args, requestId),
     search_products: (args, requestId) => backendClient.call("search_products", args, requestId),
     compare_products: (args, requestId) => backendClient.call("compare_products", args, requestId),
@@ -33,7 +35,7 @@ export const createShopSphereMcpServer = ({
     get_recommendations: (args, requestId) => backendClient.call("get_recommendations", args, requestId),
   };
 
-  for (const tool of toolRegistry.filter((definition) => isToolEnabled(definition, flags))) {
+  for (const tool of toolRegistry.filter((definition) => isToolAvailable(definition, flags, authContext))) {
     const handle = handlers[tool.name];
     if (!handle) continue;
 

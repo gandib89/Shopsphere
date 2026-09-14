@@ -161,6 +161,7 @@ export const createMcpHttpServer = ({
   maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES,
   accessToken,
   tokenVerifier,
+  authContextResolver,
   protectedResourceMetadata,
   backendClient,
   requestsPerMinute = 60,
@@ -180,6 +181,7 @@ export const createMcpHttpServer = ({
         maxRequestBytes,
         maxResponseBytes,
         backendClient: scopedBackendClient,
+        authContext: requestScope.getStore()?.auth,
         audit: (event) =>
           console.log(
             JSON.stringify({
@@ -229,6 +231,10 @@ export const createMcpHttpServer = ({
       try {
         if (tokenVerifier) authContext = await tokenVerifier(suppliedToken);
         else if (!safeEqual(suppliedToken, accessToken)) throw Object.assign(new Error("Unauthorized"), { statusCode: 401 });
+        if (authContextResolver) {
+          const resolved = await authContextResolver({ auth: authContext, subjectToken: suppliedToken });
+          authContext = resolved.auth;
+        }
       } catch (error) {
         const status = error?.statusCode === 503 ? 503 : error?.statusCode === 403 ? 403 : 401;
         return jsonResponse(status, { error: status === 503 ? "OAuth issuer unavailable" : "Unauthorized" });
