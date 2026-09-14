@@ -191,6 +191,9 @@ test("catalog rollout flags remove discovery and dispatch", async (t) => {
   assert.deepEqual(tools.tools.map(({ name }) => name), [
     "get_capabilities",
     "get_store_policy",
+    "get_product",
+    "get_product_reviews",
+    "get_recommendations",
   ]);
   await expectToolError(client, { name: "search_products", arguments: {} });
   await expectToolError(client, {

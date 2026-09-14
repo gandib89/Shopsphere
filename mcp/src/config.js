@@ -52,5 +52,17 @@ export const readConfig = (environment = process.env) => ({
       environment.MCP_TOOL_COMPARE_PRODUCTS_ENABLED,
       true,
     ),
+    MCP_TOOL_GET_PRODUCT_ENABLED: parseBoolean(
+      environment.MCP_TOOL_GET_PRODUCT_ENABLED,
+      true,
+    ),
+    MCP_TOOL_GET_PRODUCT_REVIEWS_ENABLED: parseBoolean(
+      environment.MCP_TOOL_GET_PRODUCT_REVIEWS_ENABLED,
+      true,
+    ),
+    MCP_TOOL_GET_RECOMMENDATIONS_ENABLED: parseBoolean(
+      environment.MCP_TOOL_GET_RECOMMENDATIONS_ENABLED,
+      true,
+    ),
   },
 });

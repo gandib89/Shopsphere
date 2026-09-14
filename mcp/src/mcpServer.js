@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/server";
 
-import { compareCatalog, searchCatalog } from "./catalogData.js";
+import { compareCatalog, getProductDetail, getProductReviews, getRecommendations, searchCatalog } from "./catalogData.js";
 import { getStorePolicy } from "./policyContent.js";
 import {
   REGISTRY_VERSION,
@@ -32,6 +32,9 @@ export const createShopSphereMcpServer = ({
     compare_products: (args) => ({
       products: compareCatalog(args.productIds),
     }),
+    get_product: (args) => getProductDetail(args.productId),
+    get_product_reviews: (args) => getProductReviews(args),
+    get_recommendations: (args) => getRecommendations(args),
   };
 
   for (const tool of toolRegistry.filter((definition) => isToolEnabled(definition, flags))) {

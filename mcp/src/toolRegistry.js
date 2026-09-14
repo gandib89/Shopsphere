@@ -112,6 +112,77 @@ const CompareProductsOutputSchema = z
   })
   .strict();
 
+const VariantOptionSchema = z
+  .object({
+    kind: z.enum(["color", "storage", "ram", "screenSize", "processor"]),
+    value: z.string().min(1).max(100),
+    priceDelta: z.number().min(-1_000_000_000).max(1_000_000_000),
+  })
+  .strict();
+
+const PublicVariantsSchema = z
+  .object({
+    colors: z.array(z.string().min(1).max(100)).max(20),
+    storages: z.array(z.string().min(1).max(100)).max(20),
+    options: z.array(VariantOptionSchema).max(20),
+  })
+  .strict();
+
+// Detail projection: the public search projection plus display-safe
+// description and variants. No sellerId, stock counts, or private metadata.
+const ProductDetailSchema = PublicProductSchema.extend({
+  description: z.string().min(1).max(2000),
+  variants: PublicVariantsSchema,
+}).strict();
+
+const GetProductInputSchema = z
+  .object({
+    productId: z.string().min(1).max(100),
+  })
+  .strict();
+
+const PublicReviewSchema = z
+  .object({
+    displayName: z.string().min(1).max(100),
+    rating: z.number().int().min(1).max(5),
+    comment: z.string().min(1).max(1000),
+    createdAt: z.string().min(1).max(100),
+  })
+  .strict();
+
+const GetProductReviewsInputSchema = z
+  .object({
+    productId: z.string().min(1).max(100),
+    page: z.number().int().min(1).max(1000).optional(),
+    limit: z.number().int().min(1).max(50).optional(),
+  })
+  .strict();
+
+const GetProductReviewsOutputSchema = z
+  .object({
+    productId: z.string().min(1).max(100),
+    reviews: z.array(PublicReviewSchema).max(50),
+    total: z.number().int().nonnegative(),
+    page: z.number().int().min(1),
+    pageSize: z.number().int().min(1).max(50),
+    contentNotice: z.string().min(1).max(500),
+  })
+  .strict();
+
+const GetRecommendationsInputSchema = z
+  .object({
+    productId: z.string().min(1).max(100),
+    limit: z.number().int().min(1).max(20).optional(),
+  })
+  .strict();
+
+const GetRecommendationsOutputSchema = z
+  .object({
+    productId: z.string().min(1).max(100),
+    recommendations: z.array(PublicProductSchema).max(20),
+  })
+  .strict();
+
 const definitions = [
   {
     name: "get_capabilities",
@@ -194,6 +265,69 @@ const definitions = [
     backendOperation: {
       kind: "local",
       operationId: "catalog.compareProducts",
+      method: null,
+      path: null,
+    },
+  },
+  {
+    name: "get_product",
+    title: "Get ShopSphere product",
+    description: "Inspects one visible public product: variants, displayed price, and availability label.",
+    inputSchema: GetProductInputSchema,
+    outputSchema: ProductDetailSchema,
+    operationClass: "read",
+    roles: ["public"],
+    scopes: [],
+    rateClass: "public-read",
+    rollout: {
+      flag: "MCP_TOOL_GET_PRODUCT_ENABLED",
+      defaultEnabled: true,
+    },
+    backendOperation: {
+      kind: "local",
+      operationId: "catalog.getProduct",
+      method: null,
+      path: null,
+    },
+  },
+  {
+    name: "get_product_reviews",
+    title: "Get ShopSphere product reviews",
+    description: "Reads bounded display-safe reviews for one visible public product; content is untrusted.",
+    inputSchema: GetProductReviewsInputSchema,
+    outputSchema: GetProductReviewsOutputSchema,
+    operationClass: "read",
+    roles: ["public"],
+    scopes: [],
+    rateClass: "public-read",
+    rollout: {
+      flag: "MCP_TOOL_GET_PRODUCT_REVIEWS_ENABLED",
+      defaultEnabled: true,
+    },
+    backendOperation: {
+      kind: "local",
+      operationId: "catalog.getProductReviews",
+      method: null,
+      path: null,
+    },
+  },
+  {
+    name: "get_recommendations",
+    title: "Get ShopSphere recommendations",
+    description: "Lists currently available public products related to one visible product.",
+    inputSchema: GetRecommendationsInputSchema,
+    outputSchema: GetRecommendationsOutputSchema,
+    operationClass: "read",
+    roles: ["public"],
+    scopes: [],
+    rateClass: "public-read",
+    rollout: {
+      flag: "MCP_TOOL_GET_RECOMMENDATIONS_ENABLED",
+      defaultEnabled: true,
+    },
+    backendOperation: {
+      kind: "local",
+      operationId: "catalog.getRecommendations",
       method: null,
       path: null,
     },

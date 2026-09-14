@@ -113,6 +113,9 @@ test("injection text in policy data cannot register tools", async (t) => {
     "get_store_policy",
     "search_products",
     "compare_products",
+    "get_product",
+    "get_product_reviews",
+    "get_recommendations",
   ]);
 
   for (const topic of POLICY_TOPICS) {
@@ -130,6 +133,9 @@ test("injection text in policy data cannot register tools", async (t) => {
     "get_store_policy",
     "search_products",
     "compare_products",
+    "get_product",
+    "get_product_reviews",
+    "get_recommendations",
   ]);
 });
 
@@ -149,6 +155,9 @@ test("the get_store_policy rollout flag removes discovery and dispatch", async (
     "get_capabilities",
     "search_products",
     "compare_products",
+    "get_product",
+    "get_product_reviews",
+    "get_recommendations",
   ]);
   await assert.rejects(
     client.callTool({ name: "get_store_policy", arguments: { topic: "returns" } }),

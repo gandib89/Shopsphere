@@ -47,6 +47,9 @@ test("negotiates the pinned protocol and serves public get_capabilities", async 
     "get_store_policy",
     "search_products",
     "compare_products",
+    "get_product",
+    "get_product_reviews",
+    "get_recommendations",
   ]);
 
   const result = await client.callTool({ name: "get_capabilities", arguments: {} });
@@ -123,6 +126,60 @@ test("negotiates the pinned protocol and serves public get_capabilities", async 
       backendOperation: {
         kind: "local",
         operationId: "catalog.compareProducts",
+        method: null,
+        path: null,
+      },
+    },
+    {
+      name: "get_product",
+      description: "Inspects one visible public product: variants, displayed price, and availability label.",
+      operationClass: "read",
+      roles: ["public"],
+      scopes: [],
+      rateClass: "public-read",
+      rollout: {
+        flag: "MCP_TOOL_GET_PRODUCT_ENABLED",
+        enabled: true,
+      },
+      backendOperation: {
+        kind: "local",
+        operationId: "catalog.getProduct",
+        method: null,
+        path: null,
+      },
+    },
+    {
+      name: "get_product_reviews",
+      description: "Reads bounded display-safe reviews for one visible public product; content is untrusted.",
+      operationClass: "read",
+      roles: ["public"],
+      scopes: [],
+      rateClass: "public-read",
+      rollout: {
+        flag: "MCP_TOOL_GET_PRODUCT_REVIEWS_ENABLED",
+        enabled: true,
+      },
+      backendOperation: {
+        kind: "local",
+        operationId: "catalog.getProductReviews",
+        method: null,
+        path: null,
+      },
+    },
+    {
+      name: "get_recommendations",
+      description: "Lists currently available public products related to one visible product.",
+      operationClass: "read",
+      roles: ["public"],
+      scopes: [],
+      rateClass: "public-read",
+      rollout: {
+        flag: "MCP_TOOL_GET_RECOMMENDATIONS_ENABLED",
+        enabled: true,
+      },
+      backendOperation: {
+        kind: "local",
+        operationId: "catalog.getRecommendations",
         method: null,
         path: null,
       },
@@ -325,6 +382,9 @@ test("the get_capabilities rollout flag removes discovery and dispatch", async (
     "get_store_policy",
     "search_products",
     "compare_products",
+    "get_product",
+    "get_product_reviews",
+    "get_recommendations",
   ]);
   await assert.rejects(
     client.callTool({ name: "get_capabilities", arguments: {} }),
