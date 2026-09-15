@@ -1,6 +1,6 @@
 # ShopSphere MCP integration plan
 
-Status: proposed design; no MCP server or security changes are implemented by this document. Prepared against the repository on 2026-09-14. The capability lists below are a closed allowlist for the proposed integration: every unlisted action is denied, even if an existing REST endpoint supports it.
+Status: Phase 1 code is implemented but intentionally disabled pending issue #30's interoperability, staging, load, audit, and rollback evidence. The seven public tools use an authenticated Streamable HTTP service and fixed authenticated Express assistant operations over live minimized projections; private delegated-user authorization remains proposed. Prepared against the repository on 2026-09-14. The capability lists below are a closed allowlist: every unlisted action is denied, even if an existing REST endpoint supports it.
 
 ## 1. Architecture
 

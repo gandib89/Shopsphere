@@ -19,6 +19,10 @@ import chatRouter from "./routes/chatRoute.js";
 import notificationRouter from "./routes/notificationRoute.js";
 import promoRouter from "./routes/promoCodeRoute.js";
 import testEmailRouter from "./routes/testEmailRoute.js";
+import assistantRouter from "./routes/assistantRoute.js";
+import mcpOAuthRouter from "./routes/mcpOAuthRoute.js";
+import { rejectDelegatedTokens } from "./middlewares/assistantDelegation.js";
+import aiConnectionRouter from "./routes/aiConnectionRoute.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -64,11 +68,15 @@ app.use((req, res, next) => {
     next();
 });
 
+app.use('/api/v1/assistant', express.json({ limit: '32kb' }), express.urlencoded({ extended: true, limit: '32kb' }));
 app.use(express.json());
 app.use(express.urlencoded({extended: true }));
 app.use(cookieParser());
 app.use(requestContext);
 app.use(healthRouter);
+app.use(mcpOAuthRouter);
+app.use('/api/v1/assistant', assistantRouter);
+app.use('/api/', rejectDelegatedTokens);
 
 // General backstop against scripted abuse on any endpoint — the auth routes layer a much
 // tighter limiter on top of this for login/register/refresh specifically (see authRoute.js).
@@ -83,6 +91,7 @@ app.use(
 );
 
 app.use('/api/v1/auth',authRouter);
+app.use('/api/v1/ai-connections', aiConnectionRouter);
 app.use ('/api/v1/product',productRouter);
 app.use('/api/v1/order', orderRouter);
 app.use('/api/v1/payment', paymentRouter);

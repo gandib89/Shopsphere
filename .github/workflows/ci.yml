@@ -7,8 +7,65 @@ on:
     branches: [main]
 
 jobs:
+  oauth:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start the imported Keycloak realm
+        run: |
+          docker run --detach --name shopsphere-keycloak --publish 8080:8080 \
+            --env KC_BOOTSTRAP_ADMIN_USERNAME=admin \
+            --env KC_BOOTSTRAP_ADMIN_PASSWORD=ci-keycloak-admin-password \
+            --env MCP_WORKLOAD_CLIENT_SECRET=ci-mcp-workload-client-secret \
+            --env ASSISTANT_OAUTH_CLIENT_SECRET=ci-assistant-client-secret \
+            --env KEYCLOAK_SYNC_CLIENT_SECRET=ci-account-sync-client-secret \
+            --volume "$PWD/infra/keycloak/realm-shopsphere.json:/opt/keycloak/data/import/realm-shopsphere.json:ro" \
+            quay.io/keycloak/keycloak:26.7.3 start-dev --import-realm
+      - name: Verify authorization-server metadata
+        run: |
+          for attempt in {1..60}; do
+            if curl --fail --silent http://localhost:8080/realms/shopsphere/.well-known/openid-configuration > metadata.json; then
+              break
+            fi
+            sleep 2
+          done
+          test -s metadata.json || { docker logs shopsphere-keycloak; exit 1; }
+          jq -e '.issuer == "http://localhost:8080/realms/shopsphere"' metadata.json
+          jq -e '.code_challenge_methods_supported[] | select(. == "S256")' metadata.json
+          jq -e '.grant_types_supported[] | select(. == "urn:ietf:params:oauth:grant-type:token-exchange")' metadata.json
+          sync_token=$(curl --fail --silent --request POST \
+            --data-urlencode grant_type=client_credentials \
+            --data-urlencode client_id=shopsphere-account-sync \
+            --data-urlencode client_secret=ci-account-sync-client-secret \
+            http://localhost:8080/realms/shopsphere/protocol/openid-connect/token | jq -r .access_token)
+          test -n "$sync_token"
+          curl --fail --silent --header "Authorization: Bearer $sync_token" \
+            "http://localhost:8080/admin/realms/shopsphere/users?max=1" > /dev/null
+
+  mcp:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mcp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mcp/package-lock.json
+      - run: npm ci --prefix ../backend
+      - name: Generate Prisma client
+        working-directory: backend
+        run: npx prisma generate --schema=prisma/schema.prisma
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+
   backend:
     runs-on: ubuntu-latest
+    env:
+      JWT_SECRET: ci-test-jwt-secret-at-least-32-characters
     defaults:
       run:
         working-directory: backend
@@ -20,7 +77,63 @@ jobs:
           cache: npm
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
+      - run: npx prisma generate --schema=prisma/schema.prisma
       - run: npm test
+
+  assistant-rls:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: shopsphere
+          POSTGRES_PASSWORD: ci-owner-password
+          POSTGRES_DB: shopsphere
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U shopsphere"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://shopsphere:ci-owner-password@localhost:5432/shopsphere?schema=public
+      ASSISTANT_DATABASE_URL: postgresql://shopsphere_assistant_runtime:ci-assistant-runtime-password@localhost:5432/shopsphere?schema=public
+      ASSISTANT_DB_PASSWORD: ci-assistant-runtime-password
+      REDIS_URL: redis://localhost:6379
+      RUN_POSTGRES_INTEGRATION: "true"
+      RUN_REDIS_INTEGRATION: "true"
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npx prisma generate --schema=prisma/schema.prisma
+      - run: npx prisma migrate deploy --schema=prisma/schema.prisma
+      - run: node scripts/provisionAssistantRole.js
+      - run: node scripts/seedAssistantRlsTest.js
+      - run: node --test database/assistantRls.integration.test.js
+      - run: node --test services/assistantRedis.integration.test.js
+      - name: Verify MCP session isolation against Redis
+        working-directory: mcp
+        run: |
+          npm ci
+          node --test test/redis-controls.integration.test.js
 
   frontend:
     runs-on: ubuntu-latest

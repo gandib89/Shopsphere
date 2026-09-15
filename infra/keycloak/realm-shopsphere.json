@@ -1,0 +1,163 @@
+{
+  "realm": "shopsphere",
+  "enabled": true,
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "rememberMe": false,
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 3600,
+  "ssoSessionMaxLifespan": 28800,
+  "roles": {
+    "realm": [
+      { "name": "user" },
+      { "name": "seller" },
+      { "name": "admin" }
+    ]
+  },
+  "clientScopes": [
+    {
+      "name": "shopsphere-identity",
+      "protocol": "openid-connect",
+      "attributes": { "include.in.token.scope": "true" },
+      "protocolMappers": [
+        {
+          "name": "ShopSphere user id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "shopsphere_user_id",
+            "claim.name": "shopsphere_user_id",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "true"
+          }
+        },
+        {
+          "name": "ShopSphere role",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "shopsphere_role",
+            "claim.name": "shopsphere_role",
+            "jsonType.label": "String",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "ShopSphere verification",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "shopsphere_verified",
+            "claim.name": "shopsphere_verified",
+            "jsonType.label": "boolean",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "name": "shopsphere-mcp-audience",
+      "protocol": "openid-connect",
+      "attributes": { "include.in.token.scope": "false" },
+      "protocolMappers": [
+        {
+          "name": "MCP audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "shopsphere-mcp",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    },
+    { "name": "catalog:read", "description": "Read permitted ShopSphere catalog information", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read permitted catalog information" }, "protocolMappers": [] },
+    { "name": "policy:read", "description": "Read approved ShopSphere policy", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read approved store policy" }, "protocolMappers": [] },
+    { "name": "profile:read", "description": "Read your minimal profile summary", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read your display name, role, and verification state" }, "protocolMappers": [] },
+    { "name": "notifications:read", "description": "Read your notifications", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read your notifications" }, "protocolMappers": [] },
+    { "name": "orders:read", "description": "Read your permitted orders", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read your permitted order history" }, "protocolMappers": [] },
+    { "name": "cart:read", "description": "Read and preview your cart", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read and preview your cart" }, "protocolMappers": [] }
+  ],
+  "clients": [
+    {
+      "clientId": "shopsphere-mcp-client",
+      "name": "ShopSphere approved MCP client",
+      "enabled": true,
+      "publicClient": true,
+      "consentRequired": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["http://127.0.0.1:*/*", "http://localhost:*/*"],
+      "webOrigins": ["http://127.0.0.1:*", "http://localhost:*"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "+"
+      },
+      "defaultClientScopes": ["openid", "profile", "shopsphere-identity", "shopsphere-mcp-audience"],
+      "optionalClientScopes": [
+        "catalog:read",
+        "policy:read",
+        "profile:read",
+        "notifications:read",
+        "orders:read",
+        "cart:read"
+      ]
+    },
+    {
+      "clientId": "shopsphere-mcp-workload",
+      "name": "ShopSphere MCP workload",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "${MCP_WORKLOAD_CLIENT_SECRET}",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "attributes": { "standard.token.exchange.enabled": "true" },
+      "defaultClientScopes": ["shopsphere-identity"],
+      "optionalClientScopes": [
+        "catalog:read",
+        "policy:read",
+        "profile:read",
+        "notifications:read",
+        "orders:read",
+        "cart:read"
+      ]
+    },
+    {
+      "clientId": "shopsphere-assistant-api",
+      "name": "ShopSphere assistant API",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "${ASSISTANT_OAUTH_CLIENT_SECRET}",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true
+    },
+    {
+      "clientId": "shopsphere-account-sync",
+      "name": "ShopSphere account linker",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "${KEYCLOAK_SYNC_CLIENT_SECRET}",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true
+    }
+  ],
+  "users": [
+    {
+      "username": "service-account-shopsphere-account-sync",
+      "enabled": true,
+      "serviceAccountClientId": "shopsphere-account-sync",
+      "clientRoles": {
+        "realm-management": ["manage-users", "view-users"]
+      }
+    }
+  ]
+}
