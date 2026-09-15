@@ -14,10 +14,15 @@ test("Redis shares principal-bound sessions across MCP replicas", { skip: !enabl
 
   const prefix = `shopsphere:test:mcp:${process.pid}:${Date.now()}`;
   t.after(async () => {
-    const keys = [];
-    for await (const key of firstClient.scanIterator({ MATCH: `${prefix}:*` })) keys.push(key);
-    if (keys.length) await firstClient.del(keys);
-    await Promise.all([firstClient.quit(), secondClient.quit()]);
+    try {
+      const keys = [];
+      for await (const batch of firstClient.scanIterator({ MATCH: `${prefix}:*` })) {
+        keys.push(...(Array.isArray(batch) ? batch : [batch]));
+      }
+      if (keys.length) await firstClient.del(keys);
+    } finally {
+      await Promise.all([firstClient.quit(), secondClient.quit()]);
+    }
   });
 
   const firstReplica = createPrincipalSessionStore({ redis: firstClient, prefix });
