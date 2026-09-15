@@ -16,6 +16,12 @@ try {
       role = EXCLUDED.role,
       "isVerified" = EXCLUDED."isVerified"
   `);
+  await pool.query(`
+    INSERT INTO notifications (id, "userId", type, title, message, read, "createdAt") VALUES
+      ('111111111111111111111111', 'aaaaaaaaaaaaaaaaaaaaaaaa', 'order', 'Ada notice', 'Owned by Ada', false, now()),
+      ('222222222222222222222222', 'bbbbbbbbbbbbbbbbbbbbbbbb', 'order', 'Ben notice', 'Owned by Ben', false, now())
+    ON CONFLICT (id) DO NOTHING
+  `);
 } finally {
   await pool.end();
 }

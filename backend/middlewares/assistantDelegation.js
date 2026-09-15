@@ -4,6 +4,9 @@ import { prisma } from "../database/prismaClient.js";
 import { assistantPrisma } from "../database/assistantPrisma.js";
 import { withAssistantActor } from "../database/assistantTransaction.js";
 import { isDelegatedTokenShape, verifyDelegatedToken } from "../utils/mcpOAuth.js";
+import { auditContext, recordAssistantAudit } from "../services/assistantAudit.js";
+import { createAssistantLimitStore } from "../services/assistantLimits.js";
+import { getAssistantRedis } from "../services/assistantRedis.js";
 
 const bearer = (req) => {
   const header = req.headers?.authorization ?? req.get?.("authorization") ?? "";
@@ -16,7 +19,7 @@ const bearer = (req) => {
 export const authenticateAssistantDelegation = async (req, res, next, verify = verifyDelegatedToken) => {
   const token = bearer(req);
   if (!token) {
-    return res.status(401).json({ code: "invalid_token", message: "No delegated token provided" });
+    return auditedDenial(req, res, 401, "invalid_token", "No delegated token provided");
   }
   try {
     const claims = await verify(token);
@@ -32,7 +35,7 @@ export const authenticateAssistantDelegation = async (req, res, next, verify = v
     return next();
   } catch (error) {
     const status = error?.status === 403 ? 403 : 401;
-    return res.status(status).json({ code: error?.code ?? "invalid_token", message: "Invalid delegated credential" });
+    return auditedDenial(req, res, status, error?.code ?? "invalid_token", "Invalid delegated credential");
   }
 };
 
@@ -55,12 +58,68 @@ const safeEqual = (left, right) => {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 };
 
-export const authenticateAssistantWorkload = (req, res, next) => {
+const auditedDenial = async (req, res, status, code, message, operation = "authorization.resolve") => {
+  // Direct middleware unit tests do not install requestContext. Every real app
+  // request has a trace id and therefore must use the durable fail-closed path.
+  if (!req.requestId) return res.status(status).json({ code, message });
+  try {
+    await recordAssistantAudit(auditContext(req, {
+      operation,
+      authorizationOutcome: "denied",
+      outcome: code,
+      failureReason: code,
+      latencyMs: 0,
+    }));
+  } catch {
+    return res.status(503).json({ code: "audit_unavailable", message: "Audit service is unavailable" });
+  }
+  return res.status(status).json({ code, message });
+};
+
+export const authenticateAssistantWorkload = async (req, res, next) => {
   const expected = process.env.ASSISTANT_API_TOKEN;
   if (!expected || !safeEqual(req.get?.("x-assistant-api-token"), expected)) {
-    return res.status(401).json({ code: "invalid_workload", message: "Invalid assistant workload" });
+    return auditedDenial(req, res, 401, "invalid_workload", "Invalid assistant workload");
   }
   return next();
+};
+
+export const enforceAssistantDistributedLimit = () => async (req, res, next) => {
+  try {
+    const store = createAssistantLimitStore({ redis: await getAssistantRedis() });
+    const result = await store.consume({
+      subject: req.delegation.sub,
+      clientId: req.delegation.clientId,
+      role: req.delegation.role,
+      sellerId: req.delegation.role === "seller" ? req.delegation.sub : null,
+      ip: req.ip,
+      limit: 60,
+    });
+    if (!result.allowed) {
+      res.set("retry-after", String(Math.max(1, Math.ceil(result.retryAfterMs / 1_000))));
+      return auditedDenial(req, res, 429, "rate_limited", "Assistant rate limit exceeded");
+    }
+    const lease = await store.acquire({
+      subject: req.delegation.sub,
+      clientId: req.delegation.clientId,
+      maxConcurrency: 4,
+    });
+    if (!lease.allowed) {
+      res.set("retry-after", "1");
+      return auditedDenial(req, res, 503, "concurrency_limited", "Assistant service is busy");
+    }
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      void lease.release().catch(() => {});
+    };
+    res.once("finish", release);
+    res.once("close", release);
+    return next();
+  } catch {
+    return auditedDenial(req, res, 503, "limit_unavailable", "Distributed limit state is unavailable");
+  }
 };
 
 export const validateAssistantAccess = async (
@@ -95,11 +154,11 @@ export const authorizeAssistantOperation = (policy = {}, client = assistantPrism
       signal: req.signal,
     }, (tx) => validateAssistantAccess(req, policy, tx), client);
     if (!result.account) {
-      return res.status(result.status).json({ code: result.code, message: "Assistant operation is not available" });
+      return auditedDenial(req, res, result.status, result.code, "Assistant operation is not available", policy.operation);
     }
     req.assistantAccount = result.account;
     return next();
   } catch {
-    return res.status(503).json({ code: "account_check_unavailable", message: "Account check is unavailable" });
+    return auditedDenial(req, res, 503, "account_check_unavailable", "Account check is unavailable", policy.operation);
   }
 };

@@ -5,7 +5,10 @@ import { logger } from "../utils/logger.js";
 // when present) and logs one structured line per request on completion — the minimum needed to
 // answer "what happened to request X" without a full APM tier.
 export const requestContext = (req, res, next) => {
-  const requestId = req.headers["x-request-id"] || crypto.randomUUID();
+  const supplied = req.headers["x-request-id"];
+  const requestId = typeof supplied === "string" && /^[A-Za-z0-9_-]{1,100}$/.test(supplied)
+    ? supplied
+    : crypto.randomUUID();
   req.requestId = requestId;
   res.setHeader("X-Request-Id", requestId);
 

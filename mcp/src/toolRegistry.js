@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const PROTOCOL_VERSION = "2025-11-25";
-export const REGISTRY_VERSION = "1.1.0";
+export const REGISTRY_VERSION = "1.2.0";
 export const POLICY_VERSION = "1.0.0";
 export const POLICY_TOPICS = Object.freeze([
   "returns",
@@ -227,6 +227,27 @@ const GetMyProfileSummaryOutputSchema = z
   })
   .strict();
 
+const ListMyNotificationsInputSchema = z.object({
+  cursor: z.string().min(1).max(2048).optional(),
+  limit: z.number().int().min(1).max(50).optional(),
+}).strict();
+
+const NotificationSchema = z.object({
+  id: z.string().min(1).max(100),
+  type: z.string().min(1).max(100),
+  title: z.string().min(1).max(200),
+  message: z.string().max(1000),
+  read: z.boolean(),
+  productId: z.string().min(1).max(100).nullable(),
+  productName: z.string().min(1).max(200).nullable(),
+  createdAt: z.iso.datetime(),
+}).strict();
+
+const ListMyNotificationsOutputSchema = z.object({
+  notifications: z.array(NotificationSchema).max(50),
+  nextCursor: z.string().min(1).max(2048).nullable(),
+}).strict();
+
 const definitions = [
   {
     name: "get_capabilities",
@@ -268,6 +289,27 @@ const definitions = [
       operationId: "profile.getMySummary",
       method: "POST",
       path: "/api/v1/assistant/get_my_profile_summary",
+    },
+  },
+  {
+    name: "list_my_notifications",
+    title: "List my ShopSphere notifications",
+    description: "Reads one bounded page of notifications owned by the authenticated user.",
+    inputSchema: ListMyNotificationsInputSchema,
+    outputSchema: ListMyNotificationsOutputSchema,
+    operationClass: "read",
+    roles: ["user", "seller", "admin"],
+    scopes: ["notifications:read"],
+    rateClass: "authenticated-read",
+    rollout: {
+      flag: "MCP_TOOL_LIST_MY_NOTIFICATIONS_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "notifications.listMine",
+      method: "POST",
+      path: "/api/v1/assistant/list_my_notifications",
     },
   },
   {

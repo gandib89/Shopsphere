@@ -68,6 +68,7 @@ app.use((req, res, next) => {
     next();
 });
 
+app.use('/api/v1/assistant', express.json({ limit: '32kb' }), express.urlencoded({ extended: true, limit: '32kb' }));
 app.use(express.json());
 app.use(express.urlencoded({extended: true }));
 app.use(cookieParser());

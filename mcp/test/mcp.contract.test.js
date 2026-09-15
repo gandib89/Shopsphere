@@ -53,7 +53,7 @@ test("negotiates the pinned protocol and serves public get_capabilities", async 
   const result = await client.callTool({ name: "get_capabilities", arguments: {} });
   assert.equal(result.isError, undefined);
   assert.equal(result.structuredContent.protocolVersion, PROTOCOL_VERSION);
-  assert.equal(result.structuredContent.registryVersion, "1.1.0");
+  assert.equal(result.structuredContent.registryVersion, "1.2.0");
   assert.deepEqual(result.structuredContent.tools, [
     {
       name: "get_capabilities",
@@ -262,6 +262,35 @@ test("a missing private scope hides the tool and forged calls are independently 
   );
 });
 
+test("list_my_notifications is private, bounded, and exposed only with its live scope", async (t) => {
+  const auth = {
+    sub: "user-1",
+    role: "user",
+    verified: true,
+    clientId: "shopsphere-mcp-client",
+    grantId: "grant-1",
+    scopes: ["notifications:read"],
+  };
+  const server = createMcpHttpServer({
+    enabled: true,
+    tokenVerifier: async () => auth,
+    authContextResolver: async (context) => ({ ...context, auth }),
+  });
+  const url = await listen(server);
+  t.after(() => close(server));
+  const client = await connect(url);
+  t.after(() => client.close());
+
+  const tools = await client.listTools();
+  assert.equal(tools.tools.some(({ name }) => name === "get_my_profile_summary"), false);
+  assert.equal(tools.tools.some(({ name }) => name === "list_my_notifications"), true);
+  const result = await client.callTool({ name: "list_my_notifications", arguments: { limit: 20 } });
+  assert.equal(result.structuredContent.notifications.length, 1);
+  assert.deepEqual(Object.keys(result.structuredContent.notifications[0]), [
+    "id", "type", "title", "message", "read", "productId", "productName", "createdAt",
+  ]);
+});
+
 test("rejects unauthenticated requests before protocol handling", async (t) => {
   const server = createMcpHttpServer({ enabled: true });
   const url = await listen(server);
@@ -314,6 +343,65 @@ test("allows only exact configured browser Origins", async (t) => {
   assert.equal(preflight.status, 204);
   assert.equal(preflight.headers.get("access-control-allow-origin"), "https://shop.example");
   assert.match(preflight.headers.get("access-control-allow-headers"), /mcp-protocol-version/i);
+});
+
+test("transport sessions are bounded to the subject, client, role, and grant", async (t) => {
+  const sessions = new Map();
+  let sequence = 0;
+  const fingerprint = (auth) => JSON.stringify([auth.sub, auth.clientId, auth.role, auth.grantId]);
+  const sessionStore = {
+    async create(auth) { const id = `opaque-${++sequence}`; sessions.set(id, fingerprint(auth)); return id; },
+    async validate(id, auth) { return sessions.get(id) === fingerprint(auth); },
+    async destroy(id) { sessions.delete(id); },
+  };
+  const identities = {
+    "token-a": { sub: "user-a", clientId: "client-1", role: "user", grantId: "grant-a", scopes: [] },
+    "token-b": { sub: "user-b", clientId: "client-1", role: "user", grantId: "grant-b", scopes: [] },
+  };
+  const server = createMcpHttpServer({
+    enabled: true,
+    tokenVerifier: async (token) => identities[token],
+    authContextResolver: async (context) => context,
+    sessionStore,
+  });
+  const url = await listen(server);
+  t.after(() => close(server));
+  const initialize = await fetch(url, {
+    method: "POST",
+    headers: { authorization: "Bearer token-a", accept: "application/json, text/event-stream", "content-type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: "session-test", version: "1" } } }),
+  });
+  const sessionId = initialize.headers.get("mcp-session-id");
+  assert.ok(sessionId);
+
+  const foreign = await fetch(url, {
+    method: "POST",
+    headers: {
+      authorization: "Bearer token-b",
+      "content-type": "application/json",
+      "mcp-protocol-version": PROTOCOL_VERSION,
+      "mcp-session-id": sessionId,
+    },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }),
+  });
+  assert.equal(foreign.status, 404);
+  assert.deepEqual(await foreign.json(), { error: "Session not found" });
+});
+
+test("distributed limit dependency failure denies work before protocol dispatch", async (t) => {
+  const server = createMcpHttpServer({
+    enabled: true,
+    distributedControls: { enter: async () => { throw new Error("redis unavailable"); } },
+  });
+  const url = await listen(server);
+  t.after(() => close(server));
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { authorization: `Bearer ${ACCESS_TOKEN}`, "content-type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: "limit-test", version: "1" } } }),
+  });
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), { error: "Distributed limit state unavailable" });
 });
 
 test("rejects request bodies over the configured contract limit", async (t) => {

@@ -6,10 +6,12 @@ const OPERATIONS = Object.freeze({
   get_product_reviews: "/api/v1/assistant/get_product_reviews",
   get_recommendations: "/api/v1/assistant/get_recommendations",
   get_my_profile_summary: "/api/v1/assistant/get_my_profile_summary",
+  list_my_notifications: "/api/v1/assistant/list_my_notifications",
 });
 
 const PRIVATE_SCOPES = Object.freeze({
   get_my_profile_summary: Object.freeze(["profile:read"]),
+  list_my_notifications: Object.freeze(["notifications:read"]),
 });
 
 export const createBackendClient = ({ origin, token, exchangeToken, timeoutMs = 10_000, fetchImpl = fetch }) => {
@@ -20,6 +22,20 @@ export const createBackendClient = ({ origin, token, exchangeToken, timeoutMs = 
   }
 
   return Object.freeze({
+    async recordAudit(event, context = {}) {
+      const response = await fetchImpl(new URL("/api/v1/assistant/audit", base), {
+        method: "POST",
+        redirect: "error",
+        signal: AbortSignal.timeout(timeoutMs),
+        headers: {
+          "x-assistant-api-token": token,
+          "content-type": "application/json",
+          ...(context.requestId ? { "x-request-id": context.requestId } : {}),
+        },
+        body: JSON.stringify(event),
+      });
+      if (!response.ok) throw Object.assign(new Error("Durable audit unavailable"), { statusCode: 503 });
+    },
     async resolveAuthorization(context) {
       if (!exchangeToken || !context?.subjectToken || !context?.auth) {
         throw Object.assign(new Error("Delegated authorization is unavailable"), { statusCode: 401 });

@@ -27,6 +27,7 @@ export const createShopSphereMcpServer = ({
     get_capabilities: () =>
       describeCapabilities({ flags, maxRequestBytes, maxResponseBytes, auth: authContext }),
     get_my_profile_summary: (args, requestId) => backendClient.call("get_my_profile_summary", args, requestId),
+    list_my_notifications: (args, requestId) => backendClient.call("list_my_notifications", args, requestId),
     get_store_policy: (args, requestId) => backendClient.call("get_store_policy", args, requestId),
     search_products: (args, requestId) => backendClient.call("search_products", args, requestId),
     compare_products: (args, requestId) => backendClient.call("compare_products", args, requestId),
@@ -54,7 +55,7 @@ export const createShopSphereMcpServer = ({
         try {
           const output = await handle(args, requestId);
           const serialized = JSON.stringify(output);
-          audit({
+          await audit({
             requestId,
             tool: tool.name,
             registryVersion: REGISTRY_VERSION,
@@ -70,7 +71,7 @@ export const createShopSphereMcpServer = ({
             structuredContent: output,
           };
         } catch (error) {
-          audit({
+          await audit({
             requestId,
             tool: tool.name,
             registryVersion: REGISTRY_VERSION,
