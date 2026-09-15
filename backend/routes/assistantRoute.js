@@ -13,6 +13,19 @@ import {
 import { getApprovedPolicy, POLICY_TOPICS } from "../services/assistantPolicy.js";
 import { ASSISTANT_POLICY_VERSION } from "../services/assistantPublicCatalog.js";
 import { listMyNotifications } from "../services/assistantNotifications.js";
+import { getMyCart, previewCheckout, validatePromoCode } from "../services/assistantCart.js";
+import {
+  getMyBillSummary,
+  getMyOrder,
+  getMyPaymentStatus,
+  listMyOrders,
+  trackMyOrder,
+} from "../services/assistantBuyerOrders.js";
+import {
+  getMyInventorySummary,
+  getMyProduct,
+  listMyProducts,
+} from "../services/assistantSellerCatalog.js";
 import { auditContext, recordAssistantAudit } from "../services/assistantAudit.js";
 import { withAssistantActor } from "../database/assistantTransaction.js";
 import {
@@ -25,6 +38,7 @@ import {
 const router = express.Router();
 const decimal = z.string().regex(/^\d{1,10}(\.\d{1,2})?$/);
 const productId = z.string().min(1).max(100);
+const orderId = z.string().min(1).max(100);
 const cursor = z.string().min(1).max(2048).optional();
 const notificationInput = z.object({
   cursor,
@@ -124,7 +138,7 @@ const authenticatedContext = [
   authorizeAssistantOperation(),
 ];
 
-const auditedJson = async (req, res, { operation, tool, input = {}, output, startedAt }) => {
+const auditedJson = async (req, res, { operation, tool, input = {}, output, startedAt, resourceIds, rowCount }) => {
   try {
     await recordAssistantAudit(auditContext(req, {
       policyVersion: ASSISTANT_POLICY_VERSION,
@@ -132,8 +146,8 @@ const auditedJson = async (req, res, { operation, tool, input = {}, output, star
       tool,
       input,
       response: output,
-      rowCount: Array.isArray(output?.notifications) ? output.notifications.length : null,
-      resourceIds: output?.notifications?.map(({ id }) => id) || [],
+      rowCount: rowCount ?? (Array.isArray(output?.notifications) ? output.notifications.length : null),
+      resourceIds: resourceIds ?? output?.notifications?.map(({ id }) => id) ?? [],
       authorizationOutcome: "allowed",
       outcome: "success",
       latencyMs: Date.now() - startedAt,
@@ -156,7 +170,14 @@ const auditedError = async (req, res, { operation, tool, input = {}, status, cod
       failureReason: code,
       latencyMs: Date.now() - startedAt,
     }));
-    return res.status(status).json({ code, message: status === 404 ? "Resource not found" : "Assistant operation is unavailable" });
+    return res.status(status).json({
+      code,
+      message: status === 404
+        ? "Resource not found"
+        : status === 400
+          ? "Invalid operation input"
+          : "Assistant operation is unavailable",
+    });
   } catch {
     return res.status(503).json({ code: "audit_unavailable", message: "Audit service is unavailable" });
   }
@@ -270,6 +291,199 @@ router.post(
     }
   },
 );
+
+// Shared private-operation seam for buyer/seller reads (#12/#13/#14).
+// Every operation crosses the same chain: workload authentication, delegated
+// credential verification (no browser-JWT fallback), distributed limits,
+// and per-call role/scope/rollout authorization. Inputs are strict schemas
+// (unknown fields rejected, no caller totals/identity/owner fields); reads run
+// inside a transaction-local actor context; success and failure both audit.
+const privateOperation = ({ path, tool, operation, roles, scope, rolloutFlag, inputSchema, run, observe }) => {
+  router.post(
+    path,
+    authenticateAssistantWorkload,
+    authenticateAssistantDelegation,
+    enforceAssistantDistributedLimit(),
+    authorizeAssistantOperation({ operation, roles, scope, rolloutFlag }),
+    async (req, res) => {
+      const startedAt = Date.now();
+      const parsed = inputSchema.safeParse(req.body);
+      if (!parsed.success) return auditedError(req, res, {
+        operation,
+        tool,
+        input: {},
+        status: 400,
+        code: "invalid_input",
+        startedAt,
+      });
+      try {
+        const output = await withAssistantActor({
+          actorId: req.delegation.sub,
+          role: req.delegation.role,
+          operation,
+          signal: req.signal,
+        }, (tx) => run(parsed.data, {
+          client: tx,
+          principal: {
+            subject: req.delegation.sub,
+            role: req.delegation.role,
+            clientId: req.delegation.clientId,
+            grantId: req.delegation.grantId,
+          },
+          cursorSecret: process.env.ASSISTANT_CURSOR_SECRET,
+          now: new Date(),
+        }));
+        const { resourceIds = [], rowCount = null } = observe?.(output) ?? {};
+        return auditedJson(req, res, { operation, tool, input: parsed.data, output, startedAt, resourceIds, rowCount });
+      } catch (error) {
+        const status = error?.statusCode === 404 ? 404 : error?.statusCode === 400 ? 400 : error?.statusCode === 503 ? 503 : 500;
+        return auditedError(req, res, {
+          operation,
+          tool,
+          input: parsed.data,
+          status,
+          code: status === 404 ? "not_found" : status === 400 ? "invalid_input" : "operation_unavailable",
+          startedAt,
+        });
+      }
+    },
+  );
+};
+
+const isoDateTime = z.string().min(1).max(100).optional();
+const orderStatus = z.enum(["Pending", "Confirmed", "Processing", "Shipped", "Delivered", "Cancelled", "ReturnRequested", "Returned"]).optional();
+
+privateOperation({
+  path: "/get_my_cart",
+  tool: "get_my_cart",
+  operation: "cart.getMine",
+  roles: ["user"],
+  scope: "cart:read",
+  rolloutFlag: "MCP_TOOL_GET_MY_CART_ENABLED",
+  inputSchema: z.object({}).strict(),
+  run: (input, ctx) => getMyCart(input, ctx),
+  observe: (output) => ({ resourceIds: output.items.map(({ productId }) => productId), rowCount: output.items.length }),
+});
+
+privateOperation({
+  path: "/validate_promo_code",
+  tool: "validate_promo_code",
+  operation: "cart.validatePromo",
+  roles: ["user"],
+  scope: "cart:read",
+  rolloutFlag: "MCP_TOOL_VALIDATE_PROMO_CODE_ENABLED",
+  inputSchema: z.object({ code: z.string().min(1).max(50) }).strict(),
+  run: (input, ctx) => validatePromoCode(input, ctx),
+  observe: (output) => ({ resourceIds: output.code ? [output.code] : [], rowCount: output.valid ? 1 : 0 }),
+});
+
+privateOperation({
+  path: "/preview_checkout",
+  tool: "preview_checkout",
+  operation: "cart.previewCheckout",
+  roles: ["user"],
+  scope: "cart:read",
+  rolloutFlag: "MCP_TOOL_PREVIEW_CHECKOUT_ENABLED",
+  inputSchema: z.object({ promoCode: z.string().min(1).max(50).optional() }).strict(),
+  run: (input, ctx) => previewCheckout(input, ctx),
+  observe: (output) => ({ resourceIds: output.items.map(({ productId }) => productId), rowCount: output.items.length }),
+});
+
+privateOperation({
+  path: "/list_my_orders",
+  tool: "list_my_orders",
+  operation: "orders.listMine",
+  roles: ["user"],
+  scope: "orders:read",
+  rolloutFlag: "MCP_TOOL_LIST_MY_ORDERS_ENABLED",
+  inputSchema: z.object({ status: orderStatus, from: isoDateTime, to: isoDateTime, cursor, limit: z.number().int().min(1).max(50).optional() }).strict(),
+  run: (input, ctx) => listMyOrders(input, ctx),
+  observe: (output) => ({ resourceIds: output.orders.map(({ id }) => id), rowCount: output.orders.length }),
+});
+
+privateOperation({
+  path: "/get_my_order",
+  tool: "get_my_order",
+  operation: "orders.getMine",
+  roles: ["user"],
+  scope: "orders:read",
+  rolloutFlag: "MCP_TOOL_GET_MY_ORDER_ENABLED",
+  inputSchema: z.object({ orderId }).strict(),
+  run: (input, ctx) => getMyOrder(input, ctx),
+  observe: (output) => ({ resourceIds: [output.order.id, ...output.groupOrders.map(({ id }) => id)], rowCount: 1 + output.groupOrders.length }),
+});
+
+privateOperation({
+  path: "/track_my_order",
+  tool: "track_my_order",
+  operation: "orders.trackMine",
+  roles: ["user"],
+  scope: "orders:read",
+  rolloutFlag: "MCP_TOOL_TRACK_MY_ORDER_ENABLED",
+  inputSchema: z.object({ orderId }).strict(),
+  run: (input, ctx) => trackMyOrder(input, ctx),
+  observe: (output) => ({ resourceIds: [output.orderId], rowCount: output.timeline.length }),
+});
+
+privateOperation({
+  path: "/get_my_bill_summary",
+  tool: "get_my_bill_summary",
+  operation: "orders.getMyBillSummary",
+  roles: ["user"],
+  scope: "orders:read",
+  rolloutFlag: "MCP_TOOL_GET_MY_BILL_SUMMARY_ENABLED",
+  inputSchema: z.object({ orderId }).strict(),
+  run: (input, ctx) => getMyBillSummary(input, ctx),
+  observe: (output) => ({ resourceIds: [output.billNumber, output.orderId], rowCount: 1 }),
+});
+
+privateOperation({
+  path: "/get_my_payment_status",
+  tool: "get_my_payment_status",
+  operation: "orders.getMyPaymentStatus",
+  roles: ["user"],
+  scope: "orders:read",
+  rolloutFlag: "MCP_TOOL_GET_MY_PAYMENT_STATUS_ENABLED",
+  inputSchema: z.object({ orderId }).strict(),
+  run: (input, ctx) => getMyPaymentStatus(input, ctx),
+  observe: (output) => ({ resourceIds: [output.orderId], rowCount: output.payments.length + output.refunds.length }),
+});
+
+privateOperation({
+  path: "/list_my_products",
+  tool: "list_my_products",
+  operation: "products.listMine",
+  roles: ["seller"],
+  scope: "catalog:read",
+  rolloutFlag: "MCP_TOOL_LIST_MY_PRODUCTS_ENABLED",
+  inputSchema: z.object({ cursor, limit: z.number().int().min(1).max(50).optional() }).strict(),
+  run: (input, ctx) => listMyProducts(input, ctx),
+  observe: (output) => ({ resourceIds: output.products.map(({ id }) => id), rowCount: output.products.length }),
+});
+
+privateOperation({
+  path: "/get_my_product",
+  tool: "get_my_product",
+  operation: "products.getMine",
+  roles: ["seller"],
+  scope: "catalog:read",
+  rolloutFlag: "MCP_TOOL_GET_MY_PRODUCT_ENABLED",
+  inputSchema: z.object({ productId }).strict(),
+  run: (input, ctx) => getMyProduct(input, ctx),
+  observe: (output) => ({ resourceIds: [output.id], rowCount: 1 }),
+});
+
+privateOperation({
+  path: "/get_my_inventory_summary",
+  tool: "get_my_inventory_summary",
+  operation: "products.getMyInventorySummary",
+  roles: ["seller"],
+  scope: "catalog:read",
+  rolloutFlag: "MCP_TOOL_GET_MY_INVENTORY_SUMMARY_ENABLED",
+  inputSchema: z.object({ threshold: z.number().int().min(1).max(50).optional() }).strict(),
+  run: (input, ctx) => getMyInventorySummary(input, ctx),
+  observe: (output) => ({ resourceIds: output.lowStock.map(({ productId }) => productId), rowCount: output.lowStockCount }),
+});
 
 router.use(authenticatePublicWorkload);
 

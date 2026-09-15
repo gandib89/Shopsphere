@@ -7,11 +7,33 @@ const OPERATIONS = Object.freeze({
   get_recommendations: "/api/v1/assistant/get_recommendations",
   get_my_profile_summary: "/api/v1/assistant/get_my_profile_summary",
   list_my_notifications: "/api/v1/assistant/list_my_notifications",
+  get_my_cart: "/api/v1/assistant/get_my_cart",
+  validate_promo_code: "/api/v1/assistant/validate_promo_code",
+  preview_checkout: "/api/v1/assistant/preview_checkout",
+  list_my_orders: "/api/v1/assistant/list_my_orders",
+  get_my_order: "/api/v1/assistant/get_my_order",
+  track_my_order: "/api/v1/assistant/track_my_order",
+  get_my_bill_summary: "/api/v1/assistant/get_my_bill_summary",
+  get_my_payment_status: "/api/v1/assistant/get_my_payment_status",
+  list_my_products: "/api/v1/assistant/list_my_products",
+  get_my_product: "/api/v1/assistant/get_my_product",
+  get_my_inventory_summary: "/api/v1/assistant/get_my_inventory_summary",
 });
 
 const PRIVATE_SCOPES = Object.freeze({
   get_my_profile_summary: Object.freeze(["profile:read"]),
   list_my_notifications: Object.freeze(["notifications:read"]),
+  get_my_cart: Object.freeze(["cart:read"]),
+  validate_promo_code: Object.freeze(["cart:read"]),
+  preview_checkout: Object.freeze(["cart:read"]),
+  list_my_orders: Object.freeze(["orders:read"]),
+  get_my_order: Object.freeze(["orders:read"]),
+  track_my_order: Object.freeze(["orders:read"]),
+  get_my_bill_summary: Object.freeze(["orders:read"]),
+  get_my_payment_status: Object.freeze(["orders:read"]),
+  list_my_products: Object.freeze(["catalog:read"]),
+  get_my_product: Object.freeze(["catalog:read"]),
+  get_my_inventory_summary: Object.freeze(["catalog:read"]),
 });
 
 export const createBackendClient = ({ origin, token, exchangeToken, timeoutMs = 10_000, fetchImpl = fetch }) => {

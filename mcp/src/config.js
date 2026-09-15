@@ -104,5 +104,49 @@ export const readConfig = (environment = process.env) => ({
       environment.MCP_TOOL_GET_RECOMMENDATIONS_ENABLED,
       false,
     ),
+    MCP_TOOL_GET_MY_CART_ENABLED: parseBoolean(
+      environment.MCP_TOOL_GET_MY_CART_ENABLED,
+      false,
+    ),
+    MCP_TOOL_VALIDATE_PROMO_CODE_ENABLED: parseBoolean(
+      environment.MCP_TOOL_VALIDATE_PROMO_CODE_ENABLED,
+      false,
+    ),
+    MCP_TOOL_PREVIEW_CHECKOUT_ENABLED: parseBoolean(
+      environment.MCP_TOOL_PREVIEW_CHECKOUT_ENABLED,
+      false,
+    ),
+    MCP_TOOL_LIST_MY_ORDERS_ENABLED: parseBoolean(
+      environment.MCP_TOOL_LIST_MY_ORDERS_ENABLED,
+      false,
+    ),
+    MCP_TOOL_GET_MY_ORDER_ENABLED: parseBoolean(
+      environment.MCP_TOOL_GET_MY_ORDER_ENABLED,
+      false,
+    ),
+    MCP_TOOL_TRACK_MY_ORDER_ENABLED: parseBoolean(
+      environment.MCP_TOOL_TRACK_MY_ORDER_ENABLED,
+      false,
+    ),
+    MCP_TOOL_GET_MY_BILL_SUMMARY_ENABLED: parseBoolean(
+      environment.MCP_TOOL_GET_MY_BILL_SUMMARY_ENABLED,
+      false,
+    ),
+    MCP_TOOL_GET_MY_PAYMENT_STATUS_ENABLED: parseBoolean(
+      environment.MCP_TOOL_GET_MY_PAYMENT_STATUS_ENABLED,
+      false,
+    ),
+    MCP_TOOL_LIST_MY_PRODUCTS_ENABLED: parseBoolean(
+      environment.MCP_TOOL_LIST_MY_PRODUCTS_ENABLED,
+      false,
+    ),
+    MCP_TOOL_GET_MY_PRODUCT_ENABLED: parseBoolean(
+      environment.MCP_TOOL_GET_MY_PRODUCT_ENABLED,
+      false,
+    ),
+    MCP_TOOL_GET_MY_INVENTORY_SUMMARY_ENABLED: parseBoolean(
+      environment.MCP_TOOL_GET_MY_INVENTORY_SUMMARY_ENABLED,
+      false,
+    ),
   },
 });

@@ -56,6 +56,33 @@ test("assistant policy accepts only allowlisted topics and returns every source"
   assert.equal(invertedRange.status, 400);
 });
 
+test("buyer and seller private reads mount behind workload authentication", async (t) => {
+  const server = await listen();
+  t.after(() => close(server));
+  const { port } = server.address();
+  const paths = [
+    "get_my_cart",
+    "validate_promo_code",
+    "preview_checkout",
+    "list_my_orders",
+    "get_my_order",
+    "track_my_order",
+    "get_my_bill_summary",
+    "get_my_payment_status",
+    "list_my_products",
+    "get_my_product",
+    "get_my_inventory_summary",
+  ];
+  for (const path of paths) {
+    const response = await fetch(`http://127.0.0.1:${port}/api/v1/assistant/${path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    assert.equal(response.status, 401, path);
+  }
+});
+
 test("profile summary exposes only display name, current role, and verification", () => {
   let output;
   sendProfileSummary({

@@ -248,6 +248,260 @@ const ListMyNotificationsOutputSchema = z.object({
   nextCursor: z.string().min(1).max(2048).nullable(),
 }).strict();
 
+// Buyer cart reads (#12): own items and server-computed totals only. No
+// caller-supplied totals, identity, or owner fields exist in these inputs.
+const CartItemSchema = z
+  .object({
+    productId: z.string().min(1).max(100),
+    name: z.string().min(1).max(200),
+    quantity: z.number().int().min(1),
+    unitPrice: MoneySchema,
+    lineTotal: MoneySchema,
+    variants: z.record(z.string(), z.string()),
+    images: z.array(z.string().max(500)).max(5),
+    availability: z.enum(["In stock", "Sold out", "Unavailable"]),
+  })
+  .strict();
+
+const CartTotalsSchema = z
+  .object({
+    items: z.array(CartItemSchema).max(50),
+    subtotal: MoneySchema,
+    discountTotal: MoneySchema,
+    total: MoneySchema,
+  })
+  .strict();
+
+const ValidatePromoCodeInputSchema = z
+  .object({
+    code: z.string().min(1).max(50),
+  })
+  .strict();
+
+const ValidatePromoCodeOutputSchema = z
+  .object({
+    code: z.string().min(1).max(50).nullable(),
+    valid: z.boolean(),
+    reason: z.string().min(1).max(50).nullable(),
+    discountType: z.enum(["percentage", "fixed"]).nullable(),
+    discountValue: z.string().min(1).max(50).nullable(),
+    discountAmount: MoneySchema,
+    finalAmount: MoneySchema.nullable(),
+  })
+  .strict();
+
+const ValidPromoSchema = z
+  .object({
+    code: z.string().min(1).max(50),
+    discountType: z.enum(["percentage", "fixed"]),
+    discountValue: z.string().min(1).max(50),
+    discountAmount: MoneySchema,
+  })
+  .strict();
+
+const InvalidPromoSchema = z
+  .object({
+    code: z.string().min(1).max(50).nullable(),
+    valid: z.literal(false),
+    reason: z.string().min(1).max(50),
+  })
+  .strict();
+
+const PreviewCheckoutInputSchema = z
+  .object({
+    promoCode: z.string().min(1).max(50).optional(),
+  })
+  .strict();
+
+const PreviewCheckoutOutputSchema = CartTotalsSchema.extend({
+  promo: z.union([ValidPromoSchema, InvalidPromoSchema]).nullable(),
+  promoDiscount: MoneySchema,
+}).strict();
+
+// Buyer order reads (#13): immutable buyer identity, bounded filters, opaque
+// cursors, minimized projections. No address, contact, gateway, or credential
+// fields exist in these outputs.
+const OrderStatusSchema = z.enum([
+  "Pending",
+  "Confirmed",
+  "Processing",
+  "Shipped",
+  "Delivered",
+  "Cancelled",
+  "ReturnRequested",
+  "Returned",
+]);
+
+const BuyerOrderSchema = z
+  .object({
+    id: z.string().min(1).max(100),
+    status: z.string().min(1).max(50),
+    quantity: z.number().int().min(1),
+    totalPrice: MoneySchema,
+    createdAt: z.iso.datetime().max(100),
+    orderGroupId: z.string().min(1).max(100).nullable(),
+    productName: z.string().min(1).max(200).nullable(),
+  })
+  .strict();
+
+const ListMyOrdersInputSchema = z
+  .object({
+    status: OrderStatusSchema.optional(),
+    from: z.string().min(1).max(100).optional(),
+    to: z.string().min(1).max(100).optional(),
+    cursor: z.string().min(1).max(2048).optional(),
+    limit: z.number().int().min(1).max(50).optional(),
+  })
+  .strict();
+
+const ListMyOrdersOutputSchema = z
+  .object({
+    orders: z.array(BuyerOrderSchema).max(50),
+    nextCursor: z.string().min(1).max(2048).nullable(),
+  })
+  .strict();
+
+const OrderIdInputSchema = z
+  .object({
+    orderId: z.string().min(1).max(100),
+  })
+  .strict();
+
+const BuyerOrderDetailSchema = BuyerOrderSchema.extend({
+  variants: z
+    .object({
+      storage: z.string().max(100).nullable(),
+      color: z.string().max(100).nullable(),
+      ram: z.string().max(100).nullable(),
+      screenSize: z.string().max(100).nullable(),
+      processor: z.string().max(100).nullable(),
+    })
+    .strict(),
+  confirmedAt: z.iso.datetime().max(100).nullable(),
+  processingAt: z.iso.datetime().max(100).nullable(),
+  shippedAt: z.iso.datetime().max(100).nullable(),
+  deliveredAt: z.iso.datetime().max(100).nullable(),
+  cancelledAt: z.iso.datetime().max(100).nullable(),
+}).strict();
+
+const GetMyOrderOutputSchema = z
+  .object({
+    order: BuyerOrderDetailSchema,
+    groupOrders: z.array(BuyerOrderSchema).max(50),
+  })
+  .strict();
+
+const TrackMyOrderOutputSchema = z
+  .object({
+    orderId: z.string().min(1).max(100),
+    status: z.string().min(1).max(50),
+    timeline: z
+      .array(
+        z
+          .object({
+            step: z.string().min(1).max(100),
+            status: z.string().min(1).max(50),
+            time: z.iso.datetime().max(100).nullable(),
+            done: z.boolean(),
+          })
+          .strict(),
+      )
+      .max(10),
+  })
+  .strict();
+
+const GetMyBillSummaryOutputSchema = z
+  .object({
+    billNumber: z.string().min(1).max(100),
+    orderId: z.string().min(1).max(100),
+    productName: z.string().min(1).max(200).nullable(),
+    quantity: z.number().int().min(1).nullable(),
+    unitPrice: MoneySchema,
+    totalPrice: MoneySchema,
+    status: z.string().min(1).max(50),
+    orderDate: z.iso.datetime().max(100).nullable(),
+  })
+  .strict();
+
+const StatusAmountSchema = z
+  .object({
+    status: z.string().min(1).max(50),
+    amount: MoneySchema,
+  })
+  .strict();
+
+const GetMyPaymentStatusOutputSchema = z
+  .object({
+    orderId: z.string().min(1).max(100),
+    status: z.string().min(1).max(50),
+    payments: z.array(StatusAmountSchema).max(20),
+    refunds: z.array(StatusAmountSchema).max(20),
+  })
+  .strict();
+
+// Seller catalog reads (#14): present-day Product.sellerId scoping, exact
+// private stock, archived products included for their owner. No customer,
+// order, revenue, or competitor fields exist in these outputs.
+const SellerProductSchema = z
+  .object({
+    id: z.string().min(1).max(100),
+    name: z.string().min(1).max(200),
+    price: MoneySchema,
+    quantity: z.number().int().nonnegative(),
+    category: z.string().min(1).max(100),
+    isArchived: z.boolean(),
+  })
+  .strict();
+
+const ListMyProductsInputSchema = z.object({
+  cursor: z.string().min(1).max(2048).optional(),
+  limit: z.number().int().min(1).max(50).optional(),
+}).strict();
+
+const ListMyProductsOutputSchema = z.object({
+  products: z.array(SellerProductSchema).max(50),
+  nextCursor: z.string().min(1).max(2048).nullable(),
+}).strict();
+
+const SellerOptionSchema = z
+  .object({
+    kind: z.string().min(1).max(50),
+    value: z.string().min(1).max(100),
+    priceDelta: SignedMoneySchema,
+    stock: z.number().int().nonnegative().nullable(),
+  })
+  .strict();
+
+const GetMyProductOutputSchema = SellerProductSchema.extend({
+  description: z.string().min(1).max(2000),
+  images: z.array(z.string().max(500)).max(20),
+  discount: z.string().regex(/^\d{1,10}(\.\d{1,2})?$/),
+  createdAt: z.iso.datetime().max(100).nullable(),
+  options: z.array(SellerOptionSchema).max(50),
+}).strict();
+
+const GetMyInventorySummaryInputSchema = z.object({
+  threshold: z.number().int().min(1).max(50).optional(),
+}).strict();
+
+const GetMyInventorySummaryOutputSchema = z.object({
+  threshold: z.number().int().min(1).max(50),
+  totalProducts: z.number().int().nonnegative(),
+  totalUnits: z.number().int().nonnegative(),
+  lowStockCount: z.number().int().nonnegative(),
+  lowStock: z
+    .array(
+      z
+        .object({
+          productId: z.string().min(1).max(100),
+          name: z.string().min(1).max(200),
+          quantity: z.number().int().nonnegative(),
+        })
+        .strict(),
+    )
+    .max(50),
+}).strict();
+
 const definitions = [
   {
     name: "get_capabilities",
@@ -437,6 +691,237 @@ const definitions = [
       operationId: "catalog.getRecommendations",
       method: "POST",
       path: "/api/v1/assistant/get_recommendations",
+    },
+  },
+  {
+    name: "get_my_cart",
+    title: "Get my ShopSphere cart",
+    description: "Reads the authenticated buyer's cart items with server-calculated totals.",
+    inputSchema: z.object({}).strict(),
+    outputSchema: CartTotalsSchema,
+    operationClass: "read",
+    roles: ["user"],
+    scopes: ["cart:read"],
+    rateClass: "authenticated-read",
+    rollout: {
+      flag: "MCP_TOOL_GET_MY_CART_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "cart.getMine",
+      method: "POST",
+      path: "/api/v1/assistant/get_my_cart",
+    },
+  },
+  {
+    name: "validate_promo_code",
+    title: "Validate a ShopSphere promo code",
+    description: "Checks a promo code against the buyer's cart without redeeming it.",
+    inputSchema: ValidatePromoCodeInputSchema,
+    outputSchema: ValidatePromoCodeOutputSchema,
+    operationClass: "read",
+    roles: ["user"],
+    scopes: ["cart:read"],
+    rateClass: "authenticated-read",
+    rollout: {
+      flag: "MCP_TOOL_VALIDATE_PROMO_CODE_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "cart.validatePromo",
+      method: "POST",
+      path: "/api/v1/assistant/validate_promo_code",
+    },
+  },
+  {
+    name: "preview_checkout",
+    title: "Preview ShopSphere checkout totals",
+    description: "Previews exact server-calculated checkout totals without creating an order.",
+    inputSchema: PreviewCheckoutInputSchema,
+    outputSchema: PreviewCheckoutOutputSchema,
+    operationClass: "read",
+    roles: ["user"],
+    scopes: ["cart:read"],
+    rateClass: "authenticated-read",
+    rollout: {
+      flag: "MCP_TOOL_PREVIEW_CHECKOUT_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "cart.previewCheckout",
+      method: "POST",
+      path: "/api/v1/assistant/preview_checkout",
+    },
+  },
+  {
+    name: "list_my_orders",
+    title: "List my ShopSphere orders",
+    description: "Lists the authenticated buyer's orders over a bounded date range.",
+    inputSchema: ListMyOrdersInputSchema,
+    outputSchema: ListMyOrdersOutputSchema,
+    operationClass: "read",
+    roles: ["user"],
+    scopes: ["orders:read"],
+    rateClass: "authenticated-read",
+    rollout: {
+      flag: "MCP_TOOL_LIST_MY_ORDERS_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "orders.listMine",
+      method: "POST",
+      path: "/api/v1/assistant/list_my_orders",
+    },
+  },
+  {
+    name: "get_my_order",
+    title: "Get my ShopSphere order",
+    description: "Inspects one order owned by the authenticated buyer.",
+    inputSchema: OrderIdInputSchema,
+    outputSchema: GetMyOrderOutputSchema,
+    operationClass: "read",
+    roles: ["user"],
+    scopes: ["orders:read"],
+    rateClass: "authenticated-read",
+    rollout: {
+      flag: "MCP_TOOL_GET_MY_ORDER_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "orders.getMine",
+      method: "POST",
+      path: "/api/v1/assistant/get_my_order",
+    },
+  },
+  {
+    name: "track_my_order",
+    title: "Track my ShopSphere order",
+    description: "Reads the stored delivery timeline of one buyer-owned order.",
+    inputSchema: OrderIdInputSchema,
+    outputSchema: TrackMyOrderOutputSchema,
+    operationClass: "read",
+    roles: ["user"],
+    scopes: ["orders:read"],
+    rateClass: "authenticated-read",
+    rollout: {
+      flag: "MCP_TOOL_TRACK_MY_ORDER_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "orders.trackMine",
+      method: "POST",
+      path: "/api/v1/assistant/track_my_order",
+    },
+  },
+  {
+    name: "get_my_bill_summary",
+    title: "Get my ShopSphere bill summary",
+    description: "Reads an existing bill summary without generating or updating a bill.",
+    inputSchema: OrderIdInputSchema,
+    outputSchema: GetMyBillSummaryOutputSchema,
+    operationClass: "read",
+    roles: ["user"],
+    scopes: ["orders:read"],
+    rateClass: "authenticated-read",
+    rollout: {
+      flag: "MCP_TOOL_GET_MY_BILL_SUMMARY_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "orders.getMyBillSummary",
+      method: "POST",
+      path: "/api/v1/assistant/get_my_bill_summary",
+    },
+  },
+  {
+    name: "get_my_payment_status",
+    title: "Get my ShopSphere payment status",
+    description: "Reads minimized payment and refund status without gateway details.",
+    inputSchema: OrderIdInputSchema,
+    outputSchema: GetMyPaymentStatusOutputSchema,
+    operationClass: "read",
+    roles: ["user"],
+    scopes: ["orders:read"],
+    rateClass: "authenticated-read",
+    rollout: {
+      flag: "MCP_TOOL_GET_MY_PAYMENT_STATUS_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "orders.getMyPaymentStatus",
+      method: "POST",
+      path: "/api/v1/assistant/get_my_payment_status",
+    },
+  },
+  {
+    name: "list_my_products",
+    title: "List my ShopSphere products",
+    description: "Lists products owned by the authenticated seller, including archived ones.",
+    inputSchema: ListMyProductsInputSchema,
+    outputSchema: ListMyProductsOutputSchema,
+    operationClass: "read",
+    roles: ["seller"],
+    scopes: ["catalog:read"],
+    rateClass: "authenticated-read",
+    rollout: {
+      flag: "MCP_TOOL_LIST_MY_PRODUCTS_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "products.listMine",
+      method: "POST",
+      path: "/api/v1/assistant/list_my_products",
+    },
+  },
+  {
+    name: "get_my_product",
+    title: "Get my ShopSphere product",
+    description: "Inspects one seller-owned product with exact option stock.",
+    inputSchema: GetProductInputSchema,
+    outputSchema: GetMyProductOutputSchema,
+    operationClass: "read",
+    roles: ["seller"],
+    scopes: ["catalog:read"],
+    rateClass: "authenticated-read",
+    rollout: {
+      flag: "MCP_TOOL_GET_MY_PRODUCT_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "products.getMine",
+      method: "POST",
+      path: "/api/v1/assistant/get_my_product",
+    },
+  },
+  {
+    name: "get_my_inventory_summary",
+    title: "Get my ShopSphere inventory summary",
+    description: "Summarizes low-stock counts for the authenticated seller's products.",
+    inputSchema: GetMyInventorySummaryInputSchema,
+    outputSchema: GetMyInventorySummaryOutputSchema,
+    operationClass: "read",
+    roles: ["seller"],
+    scopes: ["catalog:read"],
+    rateClass: "authenticated-read",
+    rollout: {
+      flag: "MCP_TOOL_GET_MY_INVENTORY_SUMMARY_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "products.getMyInventorySummary",
+      method: "POST",
+      path: "/api/v1/assistant/get_my_inventory_summary",
     },
   },
 ];
