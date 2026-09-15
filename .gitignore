@@ -11,3 +11,6 @@ backend/recommendation/output/
 **/.DS_Store
 .impeccable/
 backend/config/config.env
+AGENTS.md
+.claude
+docs/agents
