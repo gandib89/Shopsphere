@@ -30,7 +30,7 @@ const corsHeaders = (origin) => ({
   "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
   "access-control-allow-headers":
     "Authorization, Content-Type, Last-Event-ID, Mcp-Protocol-Version, Mcp-Session-Id",
-  "access-control-expose-headers": "Mcp-Session-Id",
+  "access-control-expose-headers": "Mcp-Session-Id, X-Request-Id",
   vary: "Origin",
 });
 
@@ -40,6 +40,16 @@ const withCors = (response, origin) => {
   for (const [name, value] of Object.entries(corsHeaders(origin))) {
     headers.set(name, value);
   }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+};
+
+const withRequestId = (response, requestId) => {
+  const headers = new Headers(response.headers);
+  headers.set("x-request-id", requestId);
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -166,11 +176,17 @@ export const createMcpHttpServer = ({
   backendClient,
   requestsPerMinute = 60,
   maxConcurrency = 4,
+  audit = (event) => console.log(JSON.stringify(event)),
 } = {}) => {
   if (enabled && !tokenVerifier && (!accessToken || accessToken.length < 32)) {
     throw new Error("OAuth verification or a 32-character test access token is required when MCP is enabled");
   }
   const requestScope = new AsyncLocalStorage();
+  const recordAudit = (event) => audit({
+    type: "mcp_audit",
+    time: new Date().toISOString(),
+    ...event,
+  });
   const scopedBackendClient = {
     call: (name, input) => backendClient.call(name, input, requestScope.getStore()),
   };
@@ -182,15 +198,10 @@ export const createMcpHttpServer = ({
         maxResponseBytes,
         backendClient: scopedBackendClient,
         authContext: requestScope.getStore()?.auth,
-        audit: (event) =>
-          console.log(
-            JSON.stringify({
-              type: "mcp_audit",
-              time: new Date().toISOString(),
-              ...event,
-              requestId: event.requestId ?? requestScope.getStore()?.requestId,
-            }),
-          ),
+        audit: (event) => recordAudit({
+          ...event,
+          requestId: event.requestId ?? requestScope.getStore()?.requestId,
+        }),
       }),
     { legacy: "stateless" },
   );
@@ -211,13 +222,16 @@ export const createMcpHttpServer = ({
       if (url.pathname !== "/mcp") {
         return jsonResponse(404, { error: "Not found" });
       }
+      const requestId = requestIdFor(request);
       if (!enabled) {
-        return jsonResponse(503, { error: "MCP is disabled" });
+        recordAudit({ requestId, operation: "transport.request", outcome: "denied", reason: "kill_switch" });
+        return withRequestId(jsonResponse(503, { error: "MCP is disabled" }), requestId);
       }
 
       const origin = request.headers.get("origin");
       if (origin && !allowedOrigins.includes(origin)) {
-        return jsonResponse(403, { error: "Origin is not allowed" });
+        recordAudit({ requestId, operation: "transport.request", outcome: "denied", reason: "origin_not_allowed" });
+        return withRequestId(jsonResponse(403, { error: "Origin is not allowed" }), requestId);
       }
       if (request.method === "OPTIONS") {
         return origin
@@ -237,7 +251,19 @@ export const createMcpHttpServer = ({
         }
       } catch (error) {
         const status = error?.statusCode === 503 ? 503 : error?.statusCode === 403 ? 403 : 401;
-        return jsonResponse(status, { error: status === 503 ? "OAuth issuer unavailable" : "Unauthorized" });
+        recordAudit({
+          requestId,
+          operation: "transport.authenticate",
+          outcome: status === 503 ? "dependency_error" : "denied",
+          reason: status === 503 ? "issuer_unavailable" : "unauthorized",
+        });
+        return withCors(
+          withRequestId(
+            jsonResponse(status, { error: status === 503 ? "OAuth issuer unavailable" : "Unauthorized" }),
+            requestId,
+          ),
+          origin,
+        );
       }
 
       const now = Date.now();
@@ -252,19 +278,20 @@ export const createMcpHttpServer = ({
       current.count += 1;
       rateBuckets.set(rateKey, current);
       if (current.count > requestsPerMinute) {
-        return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
+        recordAudit({ requestId, operation: "transport.limit", outcome: "denied", reason: "rate_limit" });
+        return withCors(withRequestId(new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
           status: 429,
           headers: { "content-type": "application/json", "retry-after": "60" },
-        });
+        }), requestId), origin);
       }
       if (activeRequests >= maxConcurrency) {
-        return new Response(JSON.stringify({ error: "Server is busy" }), {
+        recordAudit({ requestId, operation: "transport.limit", outcome: "denied", reason: "concurrency_limit" });
+        return withCors(withRequestId(new Response(JSON.stringify({ error: "Server is busy" }), {
           status: 503,
           headers: { "content-type": "application/json", "retry-after": "1" },
-        });
+        }), requestId), origin);
       }
       activeRequests += 1;
-      const requestId = requestIdFor(request);
 
       try {
 

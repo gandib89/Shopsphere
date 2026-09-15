@@ -348,6 +348,8 @@ npm start
 
 Configuration is read from the environment; [`mcp/.env.example`](mcp/.env.example) documents every setting for a process manager, container platform, or shell. The default endpoint is `http://127.0.0.1:4100/mcp`, pinned to MCP protocol `2025-11-25`. Terminate public HTTPS at the deployment ingress and forward only to this private listener. Set `MCP_ALLOWED_ORIGINS` to the comma-separated exact browser origins allowed to connect. `MCP_ENABLED=false` disables the MCP endpoint while keeping its liveness endpoint—and the independently deployed storefront—available.
 
+The public tools remain fail-closed until the [public pilot release gate](docs/mcp-public-pilot-runbook.md) is completed for the target staging environment and approved client cohort. Use the linked [evidence template](docs/mcp-public-pilot-evidence-template.md); repository tests do not stand in for staging execution or release approval.
+
 ### Environment Variables
 
 Backend (`backend/config/config.env`, copy from `config.env.example`):

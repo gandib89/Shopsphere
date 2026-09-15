@@ -70,15 +70,20 @@ export const createShopSphereMcpServer = ({
             structuredContent: output,
           };
         } catch (error) {
+          const reason = error?.statusCode === 404 ? "not_found" : "backend_error";
           audit({
             requestId,
             tool: tool.name,
             registryVersion: REGISTRY_VERSION,
             operation: tool.backendOperation.operationId,
             outcome: "error",
+            reason,
             durationMs: Date.now() - startedAt,
           });
-          throw error;
+          throw Object.assign(
+            new Error(reason === "not_found" ? "Resource not found" : "ShopSphere operation unavailable"),
+            { statusCode: error?.statusCode },
+          );
         }
       },
     );

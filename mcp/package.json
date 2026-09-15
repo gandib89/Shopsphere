@@ -8,6 +8,7 @@
   },
   "scripts": {
     "check": "node -e \"import('fs').then(async (fs) => { const { execFileSync } = await import('child_process'); for (const f of fs.readdirSync('src')) { if (f.endsWith('.js')) execFileSync(process.execPath, ['--check', 'src/' + f], { stdio: 'inherit' }); } })\"",
+    "pilot:validate": "node scripts/validate-public-pilot.js",
     "start": "node src/server.js",
     "test": "node --test"
   },
