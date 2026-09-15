@@ -365,6 +365,36 @@ model Notification {
   @@map("notifications")
 }
 
+model AssistantAuditEvent {
+  id                   String   @id @db.Uuid
+  traceId              String   @db.VarChar(100)
+  layer                String   @db.VarChar(20)
+  subjectId            String?  @db.VarChar(24)
+  role                 String?  @db.VarChar(20)
+  clientId             String?  @db.VarChar(200)
+  workloadId           String?  @db.VarChar(200)
+  grantId              String?  @db.VarChar(200)
+  policyVersion        String   @db.VarChar(50)
+  tool                 String?  @db.VarChar(100)
+  operation            String   @db.VarChar(100)
+  authorizationOutcome String   @db.VarChar(30)
+  outcome              String   @db.VarChar(50)
+  redactedInput        Json
+  returnedFields       String[]
+  resourceIds          String[]
+  responseDigest       String?  @db.VarChar(100)
+  responseBytes        Int?
+  rowCount             Int?
+  latencyMs            Int
+  failureReason        String?  @db.VarChar(100)
+  createdAt            DateTime @default(now())
+
+  @@index([traceId])
+  @@index([subjectId, createdAt])
+  @@index([operation, outcome, createdAt])
+  @@map("assistant_audit_events")
+}
+
 model PromoCode {
   id            String   @id @db.VarChar(24)
   code          String   @unique

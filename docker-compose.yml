@@ -52,12 +52,23 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    command: redis-server --save 60 1 --appendonly yes
+    expose:
+      - "6379"
+    volumes:
+      - redis_data:/data
+
   backend:
     build: ./backend
     restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_started
     # backend/config/config.env is gitignored — copy it from config.env.example first
     # (see README's Local Development section). DATABASE_URL below intentionally overrides
     # whatever's in that file: containers reach Postgres by service name, not localhost.
@@ -69,6 +80,7 @@ services:
       ASSISTANT_DB_PASSWORD: ${ASSISTANT_DB_PASSWORD:?set ASSISTANT_DB_PASSWORD}
       ASSISTANT_API_TOKEN: ${ASSISTANT_API_TOKEN:?set ASSISTANT_API_TOKEN}
       ASSISTANT_CURSOR_SECRET: ${ASSISTANT_CURSOR_SECRET:?set ASSISTANT_CURSOR_SECRET}
+      REDIS_URL: redis://redis:6379
       MCP_OAUTH_ISSUER: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}/realms/shopsphere
       MCP_OAUTH_JWKS_URI: http://keycloak:8080/realms/shopsphere/protocol/openid-connect/certs
       MCP_OAUTH_INTROSPECTION_ENDPOINT: http://keycloak:8080/realms/shopsphere/protocol/openid-connect/token/introspect
@@ -94,6 +106,7 @@ services:
     restart: unless-stopped
     depends_on:
       - backend
+      - redis
     environment:
       MCP_HOST: 0.0.0.0
       MCP_PORT: 4100
@@ -110,8 +123,10 @@ services:
       MCP_WORKLOAD_CLIENT_ID: shopsphere-mcp-workload
       MCP_WORKLOAD_CLIENT_SECRET: ${MCP_WORKLOAD_CLIENT_SECRET:?set MCP_WORKLOAD_CLIENT_SECRET}
       ASSISTANT_AUDIENCE: shopsphere-assistant-api
+      REDIS_URL: redis://redis:6379
       MCP_TOOL_GET_CAPABILITIES_ENABLED: ${MCP_TOOL_GET_CAPABILITIES_ENABLED:-false}
       MCP_TOOL_GET_MY_PROFILE_SUMMARY_ENABLED: ${MCP_TOOL_GET_MY_PROFILE_SUMMARY_ENABLED:-false}
+      MCP_TOOL_LIST_MY_NOTIFICATIONS_ENABLED: ${MCP_TOOL_LIST_MY_NOTIFICATIONS_ENABLED:-false}
       MCP_TOOL_GET_STORE_POLICY_ENABLED: ${MCP_TOOL_GET_STORE_POLICY_ENABLED:-false}
       MCP_TOOL_SEARCH_PRODUCTS_ENABLED: ${MCP_TOOL_SEARCH_PRODUCTS_ENABLED:-false}
       MCP_TOOL_COMPARE_PRODUCTS_ENABLED: ${MCP_TOOL_COMPARE_PRODUCTS_ENABLED:-false}
@@ -142,3 +157,4 @@ volumes:
   postgres_data:
   keycloak_postgres_data:
   backend_uploads:
+  redis_data:

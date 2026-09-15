@@ -16,6 +16,7 @@
     "@modelcontextprotocol/node": "2.0.0",
     "@modelcontextprotocol/server": "2.0.0",
     "jose": "^6.2.12",
+    "redis": "^5.12.1",
     "zod": "4.6.5"
   },
   "devDependencies": {

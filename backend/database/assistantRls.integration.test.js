@@ -32,6 +32,19 @@ test("restricted PostgreSQL role and transaction-local RLS isolate assistant rea
       has_table_privilege(current_user, 'orders', 'SELECT') AS orders_read
   `);
   assert.deepEqual(privileges, { profile_read: true, email_read: false, orders_read: false });
+  const [newPrivileges] = await assistantPrisma.$queryRawUnsafe(`
+    SELECT
+      has_column_privilege(current_user, 'notifications', 'title', 'SELECT') AS notification_read,
+      has_column_privilege(current_user, 'notifications', 'productImage', 'SELECT') AS notification_image_read,
+      has_table_privilege(current_user, 'assistant_audit_events', 'INSERT') AS audit_insert,
+      has_table_privilege(current_user, 'assistant_audit_events', 'UPDATE') AS audit_update
+  `);
+  assert.deepEqual(newPrivileges, {
+    notification_read: true,
+    notification_image_read: false,
+    audit_insert: true,
+    audit_update: false,
+  });
   const [rls] = await assistantPrisma.$queryRawUnsafe(`
     SELECT relrowsecurity, relforcerowsecurity FROM pg_class WHERE oid = 'users'::regclass
   `);
@@ -39,6 +52,7 @@ test("restricted PostgreSQL role and transaction-local RLS isolate assistant rea
   assert.deepEqual(await assistantPrisma.product.count({ select: { id: true } }), { id: 0 });
 
   assert.deepEqual(await assistantPrisma.user.findMany({ select: projection }), []);
+  assert.deepEqual(await assistantPrisma.notification.findMany({ select: { id: true } }), []);
   const rowsA = await withAssistantActor(actorA, async (tx) => {
     const [context] = await tx.$queryRawUnsafe(`
       SELECT current_setting('shopsphere.actor_id', true) AS actor,
@@ -58,6 +72,13 @@ test("restricted PostgreSQL role and transaction-local RLS isolate assistant rea
     throw new Error("force rollback");
   }), /force rollback/);
   assert.deepEqual(await assistantPrisma.user.findMany({ select: projection }), []);
+
+  const notificationsA = await withAssistantActor(
+    { ...actorA, operation: "notifications.listMine" },
+    (tx) => tx.notification.findMany({ select: { id: true, title: true } }),
+  );
+  assert.deepEqual(notificationsA, [{ id: "111111111111111111111111", title: "Ada notice" }]);
+  assert.deepEqual(await assistantPrisma.notification.findMany({ select: { id: true } }), []);
 
   const rowsB = await withAssistantActor(actorB, (tx) => tx.user.findMany({ select: projection }));
   assert.deepEqual(rowsB.map(({ id }) => id), [actorB.actorId]);

@@ -2,6 +2,11 @@ import { readConfig } from "./config.js";
 import { createMcpHttpServer } from "./httpServer.js";
 import { createBackendClient } from "./backendClient.js";
 import { createKeycloakMcpAuth } from "./keycloakAuth.js";
+import {
+  connectAssistantRedis,
+  createDistributedControls,
+  createPrincipalSessionStore,
+} from "./redisControls.js";
 
 const config = readConfig();
 if (config.enabled && (!config.backendToken || config.backendToken.length < 32)) {
@@ -26,9 +31,16 @@ const backendClient = createBackendClient({
   exchangeToken: oauth?.exchange,
   timeoutMs: config.backendTimeoutMs,
 });
+const redis = config.enabled ? await connectAssistantRedis(config.redisUrl) : null;
 const server = createMcpHttpServer({
   ...config,
   backendClient,
+  distributedControls: redis ? createDistributedControls({
+    redis,
+    limit: config.requestsPerMinute,
+    concurrency: config.maxConcurrency,
+  }) : undefined,
+  sessionStore: redis ? createPrincipalSessionStore({ redis }) : undefined,
   tokenVerifier: oauth?.verify,
   authContextResolver: oauth ? (context) => backendClient.resolveAuthorization(context) : undefined,
   protectedResourceMetadata: oauth?.protectedResourceMetadata,
@@ -40,7 +52,8 @@ server.listen(config.port, config.host, () => {
 
 const shutdown = (signal) => {
   console.log(`${signal} received. Shutting down ShopSphere MCP.`);
-  server.close((error) => {
+  server.close(async (error) => {
+    if (redis?.isOpen) await redis.close();
     if (error) {
       console.error(error);
       process.exitCode = 1;

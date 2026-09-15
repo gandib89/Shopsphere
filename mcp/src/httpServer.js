@@ -176,19 +176,52 @@ export const createMcpHttpServer = ({
   backendClient,
   requestsPerMinute = 60,
   maxConcurrency = 4,
-  audit = (event) => console.log(JSON.stringify(event)),
+  distributedControls,
+  sessionStore,
+  audit,
 } = {}) => {
   if (enabled && !tokenVerifier && (!accessToken || accessToken.length < 32)) {
     throw new Error("OAuth verification or a 32-character test access token is required when MCP is enabled");
   }
   const requestScope = new AsyncLocalStorage();
-  const recordAudit = (event) => audit({
-    type: "mcp_audit",
-    time: new Date().toISOString(),
-    ...event,
-  });
   const scopedBackendClient = {
     call: (name, input) => backendClient.call(name, input, requestScope.getStore()),
+  };
+  const recordObserverAudit = async (event) => {
+    if (typeof audit !== "function") return;
+    await audit({
+      type: "mcp_audit",
+      time: new Date().toISOString(),
+      ...event,
+    });
+  };
+  const persistAudit = async (event, explicitContext) => {
+    const context = explicitContext || requestScope.getStore() || {};
+    const auth = context.auth || {};
+    await recordObserverAudit({
+      ...event,
+      requestId: event.requestId ?? context.requestId,
+    });
+    const { requestId, durationMs, fields, registryVersion, ...safeEvent } = event;
+    const enriched = {
+      ...safeEvent,
+      traceId: event.traceId || requestId || context.requestId,
+      subjectId: auth.sub || null,
+      role: auth.role || null,
+      clientId: auth.clientId || null,
+      workloadId: auth.workload || "shopsphere-mcp",
+      grantId: auth.grantId || null,
+      authorizationOutcome: event.authorizationOutcome || "allowed",
+      policyVersion: event.policyVersion || registryVersion || "1.0.0",
+      returnedFields: event.returnedFields || fields || [],
+      latencyMs: durationMs ?? event.latencyMs ?? 0,
+    };
+    if (typeof backendClient?.recordAudit === "function") {
+      return backendClient.recordAudit(enriched, context);
+    }
+    if (typeof audit !== "function") {
+      console.log(JSON.stringify({ type: "mcp_audit", time: new Date().toISOString(), ...enriched }));
+    }
   };
   const handler = createMcpHandler(
     () =>
@@ -198,10 +231,7 @@ export const createMcpHttpServer = ({
         maxResponseBytes,
         backendClient: scopedBackendClient,
         authContext: requestScope.getStore()?.auth,
-        audit: (event) => recordAudit({
-          ...event,
-          requestId: event.requestId ?? requestScope.getStore()?.requestId,
-        }),
+        audit: persistAudit,
       }),
     { legacy: "stateless" },
   );
@@ -223,14 +253,59 @@ export const createMcpHttpServer = ({
         return jsonResponse(404, { error: "Not found" });
       }
       const requestId = requestIdFor(request);
+      let authContext;
+      const auditIngress = async ({
+        operation,
+        outcome,
+        authorizationOutcome = "denied",
+        failureReason,
+        observerOutcome = outcome,
+        observerReason = failureReason,
+      }) => {
+        await recordObserverAudit({
+          requestId,
+          operation,
+          outcome: observerOutcome,
+          reason: observerReason,
+        });
+        if (typeof backendClient?.recordAudit !== "function") return;
+        await backendClient.recordAudit({
+          traceId: requestId,
+          subjectId: authContext?.sub || null,
+          role: authContext?.role || null,
+          clientId: authContext?.clientId || null,
+          workloadId: "shopsphere-mcp",
+          grantId: authContext?.grantId || null,
+          policyVersion: "1.2.0",
+          tool: null,
+          operation,
+          authorizationOutcome,
+          outcome,
+          returnedFields: [],
+          resourceIds: [],
+          responseDigest: null,
+          responseBytes: null,
+          rowCount: null,
+          latencyMs: 0,
+          failureReason,
+        }, { requestId });
+      };
       if (!enabled) {
-        recordAudit({ requestId, operation: "transport.request", outcome: "denied", reason: "kill_switch" });
+        try {
+          await auditIngress({
+            operation: "transport.request",
+            outcome: "denied",
+            failureReason: "kill_switch",
+          });
+        } catch {
+          return withRequestId(jsonResponse(503, { error: "Audit service unavailable" }), requestId);
+        }
         return withRequestId(jsonResponse(503, { error: "MCP is disabled" }), requestId);
       }
 
       const origin = request.headers.get("origin");
       if (origin && !allowedOrigins.includes(origin)) {
-        recordAudit({ requestId, operation: "transport.request", outcome: "denied", reason: "origin_not_allowed" });
+        try { await auditIngress({ operation: "transport.request", outcome: "origin_denied", failureReason: "origin_not_allowed", observerOutcome: "denied" }); } catch { return withRequestId(jsonResponse(503, { error: "Audit service unavailable" }), requestId); }
         return withRequestId(jsonResponse(403, { error: "Origin is not allowed" }), requestId);
       }
       if (request.method === "OPTIONS") {
@@ -241,7 +316,6 @@ export const createMcpHttpServer = ({
 
       const authorization = request.headers.get("authorization") || "";
       const suppliedToken = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
-      let authContext;
       try {
         if (tokenVerifier) authContext = await tokenVerifier(suppliedToken);
         else if (!safeEqual(suppliedToken, accessToken)) throw Object.assign(new Error("Unauthorized"), { statusCode: 401 });
@@ -251,19 +325,8 @@ export const createMcpHttpServer = ({
         }
       } catch (error) {
         const status = error?.statusCode === 503 ? 503 : error?.statusCode === 403 ? 403 : 401;
-        recordAudit({
-          requestId,
-          operation: "transport.authenticate",
-          outcome: status === 503 ? "dependency_error" : "denied",
-          reason: status === 503 ? "issuer_unavailable" : "unauthorized",
-        });
-        return withCors(
-          withRequestId(
-            jsonResponse(status, { error: status === 503 ? "OAuth issuer unavailable" : "Unauthorized" }),
-            requestId,
-          ),
-          origin,
-        );
+        try { await auditIngress({ operation: "authorization.resolve", outcome: status === 503 ? "dependency_unavailable" : "denied", failureReason: status === 503 ? "issuer_or_grant_unavailable" : "invalid_credential" }); } catch { return withCors(withRequestId(jsonResponse(503, { error: "Audit service unavailable" }), requestId), origin); }
+        return withCors(withRequestId(jsonResponse(status, { error: status === 503 ? "OAuth issuer unavailable" : "Unauthorized" }), requestId), origin);
       }
 
       const now = Date.now();
@@ -278,28 +341,53 @@ export const createMcpHttpServer = ({
       current.count += 1;
       rateBuckets.set(rateKey, current);
       if (current.count > requestsPerMinute) {
-        recordAudit({ requestId, operation: "transport.limit", outcome: "denied", reason: "rate_limit" });
+        try { await auditIngress({ operation: "transport.request", outcome: "rate_limited", failureReason: "rate_limited", observerOutcome: "denied", observerReason: "rate_limit" }); } catch { return withCors(withRequestId(jsonResponse(503, { error: "Audit service unavailable" }), requestId), origin); }
         return withCors(withRequestId(new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
           status: 429,
           headers: { "content-type": "application/json", "retry-after": "60" },
         }), requestId), origin);
       }
-      if (activeRequests >= maxConcurrency) {
-        recordAudit({ requestId, operation: "transport.limit", outcome: "denied", reason: "concurrency_limit" });
+      let distributedLease;
+      if (distributedControls) {
+        try {
+          distributedLease = await distributedControls.enter({
+            auth: authContext,
+            ip: request.headers.get("x-shopsphere-peer-ip") || "unknown",
+          });
+        } catch {
+          try { await auditIngress({ operation: "transport.request", outcome: "dependency_unavailable", failureReason: "limit_unavailable" }); } catch {}
+          return withCors(withRequestId(jsonResponse(503, { error: "Distributed limit state unavailable" }), requestId), origin);
+        }
+        if (!distributedLease.allowed) {
+          try { await auditIngress({ operation: "transport.request", outcome: distributedLease.busy ? "busy" : "rate_limited", failureReason: distributedLease.busy ? "concurrency_limited" : "rate_limited" }); } catch { return jsonResponse(503, { error: "Audit service unavailable" }); }
+          return withCors(withRequestId(new Response(JSON.stringify({ error: distributedLease.busy ? "Server is busy" : "Rate limit exceeded" }), {
+            status: distributedLease.busy ? 503 : 429,
+            headers: { "content-type": "application/json", "retry-after": String(Math.max(1, Math.ceil(distributedLease.retryAfterMs / 1000))) },
+          }), requestId), origin);
+        }
+      } else if (activeRequests >= maxConcurrency) {
+        try { await auditIngress({ operation: "transport.request", outcome: "busy", failureReason: "concurrency_limited", observerOutcome: "denied", observerReason: "concurrency_limit" }); } catch { return withCors(withRequestId(jsonResponse(503, { error: "Audit service unavailable" }), requestId), origin); }
         return withCors(withRequestId(new Response(JSON.stringify({ error: "Server is busy" }), {
           status: 503,
           headers: { "content-type": "application/json", "retry-after": "1" },
         }), requestId), origin);
       }
       activeRequests += 1;
-
       try {
 
         let body;
         if (request.method === "POST") {
           const parsed = await parseBody(request, maxRequestBytes);
-          if (parsed.error) return parsed.error;
+          if (parsed.error) return withCors(withRequestId(parsed.error, requestId), origin);
           body = parsed.body;
+        }
+
+        const messages = Array.isArray(body) ? body : [body];
+        const isInitialize = messages.some((message) => message?.method === "initialize");
+        const suppliedSession = request.headers.get("mcp-session-id");
+        if (sessionStore && !isInitialize && !(await sessionStore.validate(suppliedSession, authContext))) {
+          try { await auditIngress({ operation: "transport.session", outcome: "not_found", failureReason: "invalid_session" }); } catch { return jsonResponse(503, { error: "Audit service unavailable" }); }
+          return withCors(withRequestId(jsonResponse(404, { error: "Session not found" }), requestId), origin);
         }
 
         const versionError = validatePinnedProtocol(request, body);
@@ -315,6 +403,12 @@ export const createMcpHttpServer = ({
         ));
         const response = await enforceResponseLimit(mcpResponse, maxResponseBytes, body);
         const headers = new Headers(response.headers);
+        if (sessionStore && isInitialize && response.status >= 200 && response.status < 300) {
+          headers.set("mcp-session-id", await sessionStore.create(authContext));
+        }
+        if (sessionStore && request.method === "DELETE" && suppliedSession) {
+          await sessionStore.destroy(suppliedSession);
+        }
         headers.set("x-request-id", requestId);
         return withCors(
           new Response(response.body, { status: response.status, statusText: response.statusText, headers }),
@@ -322,12 +416,16 @@ export const createMcpHttpServer = ({
         );
       } finally {
         activeRequests -= 1;
+        await distributedLease?.release?.().catch(() => {});
       }
     },
   };
 
   const nodeHandler = toNodeHandler(guardedHandler);
   const server = http.createServer((request, response) => {
+    // Never trust a caller-supplied forwarding header for the IP quota. The
+    // ingress peer is injected from the socket and overwrites any request value.
+    request.headers["x-shopsphere-peer-ip"] = request.socket.remoteAddress || "unknown";
     void nodeHandler(request, response);
   });
   server.on("close", () => {

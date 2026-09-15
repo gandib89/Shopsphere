@@ -49,3 +49,20 @@ test("authorization context is resolved through a fresh exchanged token", async 
   assert.equal(exchanges, 1);
   assert.equal(resolved.auth.role, "seller");
 });
+
+test("MCP audit events are sent only to the fixed workload-authenticated audit operation", async () => {
+  let request;
+  const client = createBackendClient({
+    origin: "http://backend:4000",
+    token: "workload-secret",
+    fetchImpl: async (url, init) => {
+      request = { url: String(url), init };
+      return new Response(null, { status: 204 });
+    },
+  });
+  await client.recordAudit({ operation: "notifications.listMine", authorizationOutcome: "allowed", outcome: "success", latencyMs: 4 }, { requestId: "trace-1" });
+  assert.match(request.url, /\/api\/v1\/assistant\/audit$/);
+  assert.equal(request.init.headers["x-assistant-api-token"], "workload-secret");
+  assert.equal(request.init.headers["x-request-id"], "trace-1");
+  assert.equal(request.init.headers.authorization, undefined);
+});

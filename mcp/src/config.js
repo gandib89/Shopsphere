@@ -36,6 +36,7 @@ export const readConfig = (environment = process.env) => ({
     .map((client) => client.trim())
     .filter(Boolean),
   backendOrigin: environment.MCP_BACKEND_ORIGIN ?? "http://127.0.0.1:4000",
+  redisUrl: environment.REDIS_URL,
   backendToken: environment.ASSISTANT_API_TOKEN,
   backendTimeoutMs: parsePositiveInteger(
     environment.MCP_BACKEND_TIMEOUT_MS,
@@ -73,6 +74,10 @@ export const readConfig = (environment = process.env) => ({
     ),
     MCP_TOOL_GET_MY_PROFILE_SUMMARY_ENABLED: parseBoolean(
       environment.MCP_TOOL_GET_MY_PROFILE_SUMMARY_ENABLED,
+      false,
+    ),
+    MCP_TOOL_LIST_MY_NOTIFICATIONS_ENABLED: parseBoolean(
+      environment.MCP_TOOL_LIST_MY_NOTIFICATIONS_ENABLED,
       false,
     ),
     MCP_TOOL_GET_STORE_POLICY_ENABLED: parseBoolean(

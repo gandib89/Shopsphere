@@ -4,7 +4,7 @@ import test from "node:test";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 
 import { createMcpHttpServer as createRawMcpHttpServer } from "../src/httpServer.js";
-import { PROTOCOL_VERSION } from "../src/toolRegistry.js";
+import { PROTOCOL_VERSION, REGISTRY_VERSION } from "../src/toolRegistry.js";
 import { ACCESS_TOKEN, ALL_FLAGS, fakeBackendClient } from "./support/fakeBackend.js";
 import { close, listen } from "./support/httpServer.js";
 
@@ -61,7 +61,7 @@ test("a public call records bounded audit metadata without request or response c
   const event = events.find(({ tool, outcome }) => tool === "search_products" && outcome === "success");
   assert.ok(event);
   assert.equal(event.operation, "catalog.searchProducts");
-  assert.equal(event.registryVersion, "1.1.0");
+  assert.equal(event.registryVersion, REGISTRY_VERSION);
   assert.match(event.requestId, /^[A-Za-z0-9_-]{1,100}$/);
   assert.equal(typeof event.responseDigest, "string");
   assert.ok(event.responseBytes > 0 && event.responseBytes <= 64 * 1024);

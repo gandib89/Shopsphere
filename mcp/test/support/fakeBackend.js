@@ -58,6 +58,7 @@ export const ACCESS_TOKEN = "mcp-test-token-123456789012345678";
 export const ALL_FLAGS = Object.freeze({
   MCP_TOOL_GET_CAPABILITIES_ENABLED: true,
   MCP_TOOL_GET_MY_PROFILE_SUMMARY_ENABLED: true,
+  MCP_TOOL_LIST_MY_NOTIFICATIONS_ENABLED: true,
   MCP_TOOL_GET_STORE_POLICY_ENABLED: true,
   MCP_TOOL_SEARCH_PRODUCTS_ENABLED: true,
   MCP_TOOL_COMPARE_PRODUCTS_ENABLED: true,
@@ -69,6 +70,19 @@ export const ALL_FLAGS = Object.freeze({
 export const fakeBackendClient = Object.freeze({
   async call(name, input) {
     if (name === "get_my_profile_summary") return { displayName: "Ada Buyer", role: "user", verified: true };
+    if (name === "list_my_notifications") return {
+      notifications: [{
+        id: "notification-1",
+        type: "order",
+        title: "Order update",
+        message: "Your order is ready.",
+        read: false,
+        productId: null,
+        productName: null,
+        createdAt: "2026-09-15T00:00:00.000Z",
+      }],
+      nextCursor: null,
+    };
     if (name === "search_products") return search(input);
     if (name === "compare_products") {
       const byId = new Map(rows.map((row) => [row.id, row]));
