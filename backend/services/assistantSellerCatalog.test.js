@@ -89,7 +89,7 @@ test("inventory summary aggregates only owned products under a bounded threshold
   const calls = [];
   const client = {
     product: {
-      count: async (args) => { calls.push(["count", args.where]); return 2; },
+      count: async (args) => { calls.push(["count", args.where]); return args.where.quantity ? 1 : 2; },
       aggregate: async (args) => { calls.push(["aggregate", args.where]); return { _sum: { quantity: 15 } }; },
       findMany: async (args) => {
         calls.push(["findMany", args.where]);
@@ -104,9 +104,27 @@ test("inventory summary aggregates only owned products under a bounded threshold
     totalProducts: 2,
     totalUnits: 15,
     lowStockCount: 1,
+    truncated: false,
     lowStock: [{ productId: "prod-9", name: "Cable", quantity: 2 }],
   });
   for (const [, where] of calls) assert.equal(where.sellerId, SELLER);
+});
+
+test("low-stock count stays exact when the sample list is capped", async () => {
+  const client = {
+    product: {
+      count: async (args) => (args.where.quantity ? 73 : 80),
+      aggregate: async () => ({ _sum: { quantity: 400 } }),
+      findMany: async (args) => {
+        assert.equal(args.take, 50);
+        return Array.from({ length: 50 }, (_, index) => productRow({ id: `prod-${index}`, quantity: 1 }));
+      },
+    },
+  };
+  const output = await getMyInventorySummary({ threshold: 5 }, { client, principal: principal() });
+  assert.equal(output.lowStockCount, 73);
+  assert.equal(output.truncated, true);
+  assert.equal(output.lowStock.length, 50);
 });
 
 test("inventory threshold is server-bounded and competitor stock never leaks", async () => {

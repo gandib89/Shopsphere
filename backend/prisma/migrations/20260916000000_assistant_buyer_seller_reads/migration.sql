@@ -1,9 +1,8 @@
 -- Assistant buyer/seller reads for #12/#13/#14 (PostgreSQL 16).
 -- Restricted SELECT grants for the reviewed assistant projections plus
 -- command-specific row-level security. Missing transaction-local actor context
--- resolves to no rows. The products table intentionally carries no RLS: the
--- public catalog shares this database role without actor context, so seller
--- scoping on products is enforced by the application predicate and audit trail.
+-- resolves to no rows, except on the shared catalog tables where the public
+-- catalog reads without actor context and keeps its current behavior.
 
 -- Extend the public-catalog grants with the seller-private columns read only
 -- under a sellerId = subject predicate.
@@ -148,6 +147,85 @@ CREATE POLICY shopsphere_assistant_promo_usage_self ON promo_code_usages
     AND current_setting('shopsphere.operation', true) IN ('cart.validatePromo', 'cart.previewCheckout')
   );
 
+-- Shared catalog tables: the public catalog reads through this same role
+-- without actor context, so the first branch preserves its current behavior
+-- bit-identically while every actor-context branch narrows to the rows one
+-- fixed operation needs. In particular the seller-private columns granted
+-- above (sellerId, discount, option stock) are reachable under actor context
+-- only on owned, cart-contained, or self-ordered rows — never as a shared
+-- pool any authenticated operation can enumerate.
+ALTER TABLE products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE products FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS shopsphere_assistant_product_public ON products;
+CREATE POLICY shopsphere_assistant_product_public ON products
+  FOR SELECT TO shopsphere_assistant_runtime
+  USING (current_setting('shopsphere.actor_id', true) IS NULL);
+DROP POLICY IF EXISTS shopsphere_assistant_product_seller ON products;
+CREATE POLICY shopsphere_assistant_product_seller ON products
+  FOR SELECT TO shopsphere_assistant_runtime
+  USING (
+    "sellerId" = current_setting('shopsphere.actor_id', true)
+    AND current_setting('shopsphere.actor_role', true) = 'seller'
+    AND current_setting('shopsphere.operation', true) IN ('products.listMine', 'products.getMine', 'products.getMyInventorySummary')
+  );
+DROP POLICY IF EXISTS shopsphere_assistant_product_cart ON products;
+CREATE POLICY shopsphere_assistant_product_cart ON products
+  FOR SELECT TO shopsphere_assistant_runtime
+  USING (
+    EXISTS (
+      SELECT 1 FROM cart_items JOIN carts ON carts.id = cart_items."cartId"
+      WHERE cart_items."productId" = products.id
+        AND carts."userId" = current_setting('shopsphere.actor_id', true)
+    )
+    AND current_setting('shopsphere.actor_role', true) = 'user'
+    AND current_setting('shopsphere.operation', true) IN ('cart.getMine', 'cart.validatePromo', 'cart.previewCheckout')
+  );
+DROP POLICY IF EXISTS shopsphere_assistant_product_order ON products;
+CREATE POLICY shopsphere_assistant_product_order ON products
+  FOR SELECT TO shopsphere_assistant_runtime
+  USING (
+    EXISTS (
+      SELECT 1 FROM orders
+      WHERE orders."productId" = products.id
+        AND orders."userId" = current_setting('shopsphere.actor_id', true)
+    )
+    AND current_setting('shopsphere.actor_role', true) = 'user'
+    AND current_setting('shopsphere.operation', true) IN ('orders.listMine', 'orders.getMine', 'orders.trackMine', 'orders.getMyBillSummary', 'orders.getMyPaymentStatus')
+  );
+
+ALTER TABLE product_options ENABLE ROW LEVEL SECURITY;
+ALTER TABLE product_options FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS shopsphere_assistant_option_public ON product_options;
+CREATE POLICY shopsphere_assistant_option_public ON product_options
+  FOR SELECT TO shopsphere_assistant_runtime
+  USING (current_setting('shopsphere.actor_id', true) IS NULL);
+DROP POLICY IF EXISTS shopsphere_assistant_option_seller ON product_options;
+CREATE POLICY shopsphere_assistant_option_seller ON product_options
+  FOR SELECT TO shopsphere_assistant_runtime
+  USING (
+    EXISTS (
+      SELECT 1 FROM products
+      WHERE products.id = product_options."productId"
+        AND products."sellerId" = current_setting('shopsphere.actor_id', true)
+    )
+    AND current_setting('shopsphere.actor_role', true) = 'seller'
+    AND current_setting('shopsphere.operation', true) IN ('products.listMine', 'products.getMine', 'products.getMyInventorySummary')
+  );
+DROP POLICY IF EXISTS shopsphere_assistant_option_cart ON product_options;
+CREATE POLICY shopsphere_assistant_option_cart ON product_options
+  FOR SELECT TO shopsphere_assistant_runtime
+  USING (
+    EXISTS (
+      SELECT 1 FROM products
+      JOIN cart_items ON cart_items."productId" = products.id
+      JOIN carts ON carts.id = cart_items."cartId"
+      WHERE products.id = product_options."productId"
+        AND carts."userId" = current_setting('shopsphere.actor_id', true)
+    )
+    AND current_setting('shopsphere.actor_role', true) = 'user'
+    AND current_setting('shopsphere.operation', true) IN ('cart.getMine', 'cart.validatePromo', 'cart.previewCheckout')
+  );
+
 -- FORCE RLS also applies to the table owner. Preserve the existing
 -- application path explicitly while keeping the restricted runtime subject to
 -- its policies.
@@ -156,7 +234,7 @@ DECLARE
   owner_name text;
   table_name text;
 BEGIN
-  FOREACH table_name IN ARRAY ARRAY['carts', 'cart_items', 'orders', 'bills', 'payments', 'refunds', 'promo_codes', 'promo_code_usages']
+  FOREACH table_name IN ARRAY ARRAY['carts', 'cart_items', 'orders', 'bills', 'payments', 'refunds', 'promo_codes', 'promo_code_usages', 'products', 'product_options']
   LOOP
     SELECT tableowner INTO owner_name
     FROM pg_tables

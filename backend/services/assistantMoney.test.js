@@ -55,3 +55,10 @@ test("percentage discounts round half-up on exact cents", () => {
   assert.equal(percentOffCents(1000, 150), 0);
   assert.equal(percentOffCents(1000, -5), 1000);
 });
+
+test("fractional percentages use integer basis points, never float", () => {
+  assert.equal(percentOffCents(10000, "12.5"), 8750);
+  assert.equal(percentOffCents(10000, { toString: () => "12.5" }), 8750);
+  assert.equal(percentOffCents(10000, 12.5), 8750);
+  assert.throws(() => percentOffCents(10000, "12.555"), /invalid money/i);
+});

@@ -45,6 +45,21 @@ test("private read inputs reject caller-supplied totals, identity, and owner fie
   assert.ok(byName.preview_checkout.inputSchema.safeParse({}).success);
 });
 
+test("inventory summary output requires the truncation flag", () => {
+  const tool = toolRegistry.find((candidate) => candidate.name === "get_my_inventory_summary");
+  const valid = {
+    threshold: 5,
+    totalProducts: 80,
+    totalUnits: 400,
+    lowStockCount: 73,
+    truncated: true,
+    lowStock: [],
+  };
+  assert.ok(tool.outputSchema.safeParse(valid).success);
+  const { truncated: _dropped, ...withoutFlag } = valid;
+  assert.ok(!tool.outputSchema.safeParse(withoutFlag).success);
+});
+
 test("private reads are undiscoverable across roles, scopes, and disabled flags", () => {
   const byName = Object.fromEntries(toolRegistry.map((tool) => [tool.name, tool]));
   const enabled = Object.fromEntries(toolRegistry.map((tool) => [tool.rollout.flag, true]));

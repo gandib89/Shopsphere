@@ -108,11 +108,15 @@ export const getMyProduct = async ({ productId }, { client, principal }) => {
 export const getMyInventorySummary = async ({ threshold = DEFAULT_THRESHOLD } = {}, { client, principal }) => {
   const boundedThreshold = Math.min(Math.max(1, threshold ?? DEFAULT_THRESHOLD), MAX_THRESHOLD);
   const scope = { sellerId: principal.subject };
-  const [totalProducts, aggregate, lowStock] = await Promise.all([
+  const lowStockScope = { ...scope, quantity: { lte: boundedThreshold } };
+  // The sample list is capped, but the count is exact: lowStockCount must
+  // never silently report the cap when more products sit under the threshold.
+  const [totalProducts, aggregate, lowStockCount, lowStock] = await Promise.all([
     client.product.count({ where: scope }),
     client.product.aggregate({ where: scope, _sum: { quantity: true } }),
+    client.product.count({ where: lowStockScope }),
     client.product.findMany({
-      where: { ...scope, quantity: { lte: boundedThreshold } },
+      where: lowStockScope,
       select: { id: true, name: true, quantity: true },
       orderBy: [{ quantity: "asc" }, { id: "asc" }],
       take: MAX_LIMIT,
@@ -122,7 +126,8 @@ export const getMyInventorySummary = async ({ threshold = DEFAULT_THRESHOLD } = 
     threshold: boundedThreshold,
     totalProducts,
     totalUnits: aggregate?._sum?.quantity ?? 0,
-    lowStockCount: lowStock.length,
+    lowStockCount,
+    truncated: lowStock.length < lowStockCount,
     lowStock: lowStock.map((row) => ({
       productId: row.id,
       name: String(row.name).slice(0, 200),

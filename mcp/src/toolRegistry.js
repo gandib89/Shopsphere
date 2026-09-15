@@ -489,6 +489,7 @@ const GetMyInventorySummaryOutputSchema = z.object({
   totalProducts: z.number().int().nonnegative(),
   totalUnits: z.number().int().nonnegative(),
   lowStockCount: z.number().int().nonnegative(),
+  truncated: z.boolean(),
   lowStock: z
     .array(
       z

@@ -28,7 +28,8 @@ try {
   // reads. Additive only: existing Ada/Ben rows are untouched.
   await pool.query(`
     INSERT INTO users (id, "firstName", "lastName", email, role, "isVerified") VALUES
-      ('cccccccccccccccccccccccc', 'Cid', 'Buyer', 'rls-c@example.test', 'user', true)
+      ('cccccccccccccccccccccccc', 'Cid', 'Buyer', 'rls-c@example.test', 'user', true),
+      ('dddddddddddddddddddddddd', 'Eve', 'Buyer', 'rls-e@example.test', 'user', true)
     ON CONFLICT (id) DO NOTHING
   `);
   await pool.query(`
@@ -71,7 +72,8 @@ try {
   `);
   await pool.query(`
     INSERT INTO promo_codes (id, code, description, "discountType", "discountValue", "createdById", "validFrom", "validUntil", "isActive") VALUES
-      ('f9f9f9f9f9f9f9f9f9f9f9f9', 'RLS10', 'RLS fixture promo', 'percentage', 10, 'aaaaaaaaaaaaaaaaaaaaaaaa', now() - interval '1 day', now() + interval '30 days', true)
+      ('f9f9f9f9f9f9f9f9f9f9f9f9', 'RLS10', 'RLS fixture promo', 'percentage', 10, 'aaaaaaaaaaaaaaaaaaaaaaaa', now() - interval '1 day', now() + interval '30 days', true),
+      ('a1a1a1a1a1a1a1a1a1a1a1a1', 'RLS11', 'RLS unused fixture promo', 'percentage', 15, 'aaaaaaaaaaaaaaaaaaaaaaaa', now() - interval '1 day', now() + interval '30 days', true)
     ON CONFLICT (id) DO NOTHING
   `);
   await pool.query(`

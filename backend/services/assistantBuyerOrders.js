@@ -91,6 +91,7 @@ export const listMyOrders = async (
   { client, principal, cursorSecret, now = new Date() },
 ) => {
   if (status !== undefined && !STATUSES.includes(status)) throw badInput(`Unknown order status: ${status}`);
+  const defaultTo = to == null;
   const toDate = parseBound(to, "to") ?? now;
   const fromDate = parseBound(from, "from") ?? new Date(toDate.getTime() - MAX_INTERVAL_MS);
   if (fromDate > toDate) throw badInput("Invalid order date range");
@@ -98,7 +99,15 @@ export const listMyOrders = async (
     throw badInput("Order date range must not exceed 90 days");
   }
   const boundedLimit = Math.min(Math.max(1, limit ?? DEFAULT_LIMIT), MAX_LIMIT);
-  const query = { status: status ?? null, from: fromDate.toISOString(), to: toDate.toISOString(), limit: boundedLimit };
+  // A defaulted upper bound is "now", a different instant on every request. If
+  // the fingerprint hashed it, a cursor minted on page one would 404 on page
+  // two. Defaulted windows therefore fingerprint on a stable marker (plus any
+  // explicit lower bound) instead of the request instant. This only affects
+  // which of the buyer's own rows are paged — the principal binding still
+  // prevents any cross-buyer use — and explicit windows stay exactly bound.
+  const query = defaultTo
+    ? { status: status ?? null, from: from ?? null, defaultTo: true, limit: boundedLimit }
+    : { status: status ?? null, from: fromDate.toISOString(), to: toDate.toISOString(), limit: boundedLimit };
   const position = decodeCursor(cursor, principal, query, cursorSecret);
   const rows = await client.order.findMany({
     where: buildBuyerOrderWhere(principal.subject, {
@@ -145,10 +154,16 @@ export const getMyOrder = async ({ orderId }, { client, principal }) => {
   return { order: minimizeDetail(row), groupOrders: groupRows.map(minimizeOrder) };
 };
 
+const FULFILMENT_STAGES = Object.freeze(["Pending", "Confirmed", "Processing", "Shipped", "Delivered"]);
+
 export const trackMyOrder = async ({ orderId }, { client, principal }) => {
   const row = await loadOwnedOrder(client, principal, orderId);
-  const reached = (name) => ["Confirmed", "Processing", "Shipped", "Delivered"].includes(row.status) && name !== "Delivered"
-    || row.status === name;
+  // Stage-ordered completion: a Confirmed order must not mark Processing,
+  // Shipped, or Delivered done. Stored timestamps are ground truth (they also
+  // cover terminal states like Cancelled, which sit outside the forward
+  // chain); the status comparison only fills gaps where timestamps are missing.
+  const stageIndex = FULFILMENT_STAGES.indexOf(row.status);
+  const reached = (name) => stageIndex >= 0 && FULFILMENT_STAGES.indexOf(name) <= stageIndex;
   return {
     orderId: row.id,
     status: row.status,
@@ -157,7 +172,7 @@ export const trackMyOrder = async ({ orderId }, { client, principal }) => {
       { step: "Confirmed", status: "Confirmed", time: row.confirmedAt?.toISOString?.() ?? null, done: Boolean(row.confirmedAt) || reached("Confirmed") },
       { step: "Processing", status: "Processing", time: row.processingAt?.toISOString?.() ?? null, done: Boolean(row.processingAt) || reached("Processing") },
       { step: "Shipped", status: "Shipped", time: row.shippedAt?.toISOString?.() ?? null, done: Boolean(row.shippedAt) || reached("Shipped") },
-      { step: "Delivered", status: "Delivered", time: row.deliveredAt?.toISOString?.() ?? null, done: Boolean(row.deliveredAt) || row.status === "Delivered" },
+      { step: "Delivered", status: "Delivered", time: row.deliveredAt?.toISOString?.() ?? null, done: Boolean(row.deliveredAt) || reached("Delivered") },
     ],
   };
 };

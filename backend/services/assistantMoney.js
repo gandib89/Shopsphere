@@ -64,11 +64,18 @@ export const signedMoney = (cents, currency = ASSISTANT_CURRENCY) => ({
   currency,
 });
 
-// Discounted unit price in cents, rounded half-up. Out-of-range percentages
-// clamp instead of throwing so a corrupt discount column fails closed to a
-// deterministic price rather than a 500.
+// Discounted unit price in cents, rounded half-up, using integer basis-point
+// arithmetic only. The percentage is parsed as an exact decimal (100.00% max
+// resolution) so binary float never touches money: Prisma Decimal and string
+// columns parse exactly, while a raw JS number is first rounded to two places
+// to quarantine float noise. Out-of-range percentages clamp instead of
+// throwing so a corrupt discount column fails closed to a deterministic price
+// rather than a 500.
 export const percentOffCents = (listCents, discountPct) => {
   if (!Number.isSafeInteger(listCents) || listCents < 0) throw invalid();
-  const pct = Math.min(100, Math.max(0, Number(discountPct) || 0));
-  return Math.round((listCents * (100 - pct)) / 100);
+  const normalized = typeof discountPct === "number"
+    ? String(Math.round(discountPct * 100) / 100)
+    : discountPct?.toString?.() ?? "0";
+  const basisPoints = Math.min(Math.max(0, toSignedCents(normalized)), 10_000);
+  return Math.floor((listCents * (10_000 - basisPoints) + 5_000) / 10_000);
 };

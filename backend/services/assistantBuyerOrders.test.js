@@ -92,6 +92,22 @@ test("order cursors are bound to the principal and reveal nothing cross-buyer", 
   );
 });
 
+test("default-window pagination stays valid across requests", async () => {
+  const rows = [
+    orderRow({ id: "ord-2", createdAt: new Date("2026-09-02T10:00:00Z") }),
+    orderRow({ id: "ord-1", createdAt: new Date("2026-09-01T10:00:00Z") }),
+  ];
+  const client = readOnlyClient({ "order.findMany": () => rows });
+  const ctx = { client, principal: principal(), cursorSecret: SECRET };
+  const first = await listMyOrders({ limit: 1 }, ctx);
+  assert.ok(first.nextCursor);
+  // A later request mints a different default "now": the cursor must still
+  // validate because the fingerprint binds the marker, not the instant.
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  const second = await listMyOrders({ cursor: first.nextCursor, limit: 1 }, ctx);
+  assert.equal(second.orders.length, 1);
+});
+
 test("order detail uses generic not-found for missing or foreign ids", async () => {
   const foreign = readOnlyClient({ "order.findFirst": () => null });
   await assert.rejects(getMyOrder({ orderId: "ord-9" }, { client: foreign, principal: principal() }), { statusCode: 404 });
@@ -145,6 +161,26 @@ test("tracking reuses stored timestamps and performs no carrier lookup", async (
     ["Delivered", false],
   ]);
   assert.ok(calls.every((call) => call.includes("find")));
+});
+
+test("tracking never marks fulfilment stages past the current status done", async () => {
+  const client = readOnlyClient({
+    "order.findFirst": () => orderRow({
+      status: "Confirmed",
+      confirmedAt: new Date("2026-09-01T11:00:00Z"),
+      processingAt: null,
+      shippedAt: null,
+      deliveredAt: null,
+    }),
+  });
+  const output = await trackMyOrder({ orderId: "ord-1" }, { client, principal: principal() });
+  assert.deepEqual(output.timeline.map((step) => [step.step, step.done]), [
+    ["Order Placed", true],
+    ["Confirmed", true],
+    ["Processing", false],
+    ["Shipped", false],
+    ["Delivered", false],
+  ]);
 });
 
 test("bill reads never generate or update bills and omit address PII", async () => {

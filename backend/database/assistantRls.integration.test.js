@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { assistantPrisma } from "./assistantPrisma.js";
 import { withAssistantActor } from "./assistantTransaction.js";
+import { previewCheckout, validatePromoCode } from "../services/assistantCart.js";
 
 const enabled = process.env.RUN_POSTGRES_INTEGRATION === "true";
 const actorA = { actorId: "aaaaaaaaaaaaaaaaaaaaaaaa", role: "user", operation: "profile.getMySummary" };
@@ -89,9 +90,10 @@ test("restricted PostgreSQL role and transaction-local RLS isolate assistant rea
     SELECT relname AS table_name, relrowsecurity AS rls, relforcerowsecurity AS force
     FROM pg_class
     WHERE oid IN ('carts'::regclass, 'cart_items'::regclass, 'orders'::regclass, 'bills'::regclass,
-                  'payments'::regclass, 'refunds'::regclass, 'promo_codes'::regclass, 'promo_code_usages'::regclass)
+                  'payments'::regclass, 'refunds'::regclass, 'promo_codes'::regclass, 'promo_code_usages'::regclass,
+                  'products'::regclass, 'product_options'::regclass)
   `);
-  assert.equal(rlsTables.length, 8);
+  assert.equal(rlsTables.length, 10);
   for (const table of rlsTables) assert.deepEqual(table, { ...table, rls: true, force: true });
   // The RLS seed owns one seller product; the catalog shares this role without
   // actor context, so the count stays visible while private rows stay scoped.
@@ -180,4 +182,58 @@ test("restricted PostgreSQL role and transaction-local RLS isolate assistant rea
   assert.deepEqual(adaUsage.map(({ promoCodeId }) => promoCodeId), ["f9f9f9f9f9f9f9f9f9f9f9f9"]);
   const cidUsage = await withAssistantActor({ ...buyerB, operation: "cart.validatePromo" }, (tx) => tx.promoCodeUsage.findMany({ select: { promoCodeId: true } }));
   assert.deepEqual(cidUsage, []);
+
+  // Shared catalog tables (#12/#13/#14 RLS): the public no-actor path is
+  // unchanged, while actor-context reads narrow to owned, cart-contained, or
+  // self-ordered rows — the seller-private columns are never enumerable.
+  const sellerCatalogOp = { ...actorB, operation: "products.getMine" };
+  const benProducts = await withAssistantActor(sellerCatalogOp, (tx) => tx.product.findMany({ select: { id: true } }));
+  assert.deepEqual(benProducts.map(({ id }) => id), ["d1d1d1d1d1d1d1d1d1d1d1d1"]);
+  const benOptions = await withAssistantActor(sellerCatalogOp, (tx) => tx.productOption.findMany({ select: { value: true, stock: true } }));
+  assert.deepEqual(benOptions, [{ value: "Red", stock: 4 }]);
+  const adaProductView = await withAssistantActor(
+    { ...actorA, operation: "cart.getMine" },
+    (tx) => tx.product.findMany({ select: { id: true } }),
+  );
+  assert.deepEqual(adaProductView.map(({ id }) => id), ["d1d1d1d1d1d1d1d1d1d1d1d1"]);
+  const eveActor = { actorId: "dddddddddddddddddddddddd", role: "user", operation: "cart.getMine" };
+  assert.deepEqual(await withAssistantActor(eveActor, (tx) => tx.product.findMany({ select: { id: true } })), []);
+  assert.deepEqual(await withAssistantActor(eveActor, (tx) => tx.productOption.findMany({ select: { value: true } })), []);
+
+  // Repeated-call purity on a real database (#12): validating a promo and
+  // previewing checkout twice changes no promo counter, usage row, order,
+  // bill, or payment — only audit and rate-limit metadata may move.
+  const buyerPrincipal = { subject: actorA.actorId, role: "user", clientId: "client-1", grantId: "grant-1" };
+  const promoRow = (operation) => withAssistantActor(
+    { ...actorA, operation },
+    (tx) => tx.promoCode.findFirst({ where: { code: "RLS11" }, select: { usedCount: true } }),
+  );
+  const usageRows = (operation) => withAssistantActor(
+    { ...actorA, operation },
+    (tx) => tx.promoCodeUsage.count({ where: { promoCodeId: "a1a1a1a1a1a1a1a1a1a1a1a1", userId: actorA.actorId } }),
+  );
+  const commerceSnapshot = async () => {
+    const [orders, bills, payments] = await Promise.all([
+      withAssistantActor(buyerOrders, (tx) => tx.order.count({ where: { userId: actorA.actorId } })),
+      withAssistantActor(billOp, (tx) => tx.bill.count({ where: { userId: actorA.actorId } })),
+      withAssistantActor(paymentOp, (tx) => tx.payment.count()),
+    ]);
+    return { orders, bills, payments };
+  };
+  const promoBefore = await promoRow("cart.validatePromo");
+  const usageBefore = await usageRows("cart.validatePromo");
+  const commerceBefore = await commerceSnapshot();
+  const callAs = (operation, run) => withAssistantActor({ ...actorA, operation }, run);
+  const first = await callAs("cart.validatePromo", (tx) =>
+    validatePromoCode({ code: "rls11" }, { client: tx, principal: buyerPrincipal, now: new Date() }));
+  const second = await callAs("cart.validatePromo", (tx) =>
+    validatePromoCode({ code: "RLS11" }, { client: tx, principal: buyerPrincipal, now: new Date() }));
+  assert.equal(first.valid, true);
+  assert.deepEqual(second, first);
+  const preview = await callAs("cart.previewCheckout", (tx) =>
+    previewCheckout({ promoCode: "RLS11" }, { client: tx, principal: buyerPrincipal, now: new Date() }));
+  assert.equal(preview.promo.code, "RLS11");
+  assert.deepEqual(await promoRow("cart.validatePromo"), promoBefore);
+  assert.equal(await usageRows("cart.validatePromo"), usageBefore);
+  assert.deepEqual(await commerceSnapshot(), commerceBefore);
 });
