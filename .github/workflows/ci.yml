@@ -96,11 +96,22 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
       DATABASE_URL: postgresql://shopsphere:ci-owner-password@localhost:5432/shopsphere?schema=public
       ASSISTANT_DATABASE_URL: postgresql://shopsphere_assistant_runtime:ci-assistant-runtime-password@localhost:5432/shopsphere?schema=public
       ASSISTANT_DB_PASSWORD: ci-assistant-runtime-password
+      REDIS_URL: redis://localhost:6379
       RUN_POSTGRES_INTEGRATION: "true"
+      RUN_REDIS_INTEGRATION: "true"
     defaults:
       run:
         working-directory: backend
@@ -117,6 +128,12 @@ jobs:
       - run: node scripts/provisionAssistantRole.js
       - run: node scripts/seedAssistantRlsTest.js
       - run: node --test database/assistantRls.integration.test.js
+      - run: node --test services/assistantRedis.integration.test.js
+      - name: Verify MCP session isolation against Redis
+        working-directory: mcp
+        run: |
+          npm ci
+          node --test test/redis-controls.integration.test.js
 
   frontend:
     runs-on: ubuntu-latest
