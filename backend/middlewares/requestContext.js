@@ -10,6 +10,8 @@ export const requestContext = (req, res, next) => {
     ? supplied
     : crypto.randomUUID();
   req.requestId = requestId;
+  const abortController = new AbortController();
+  req.assistantSignal = abortController.signal;
   res.setHeader("X-Request-Id", requestId);
 
   const startedAt = Date.now();
@@ -22,6 +24,9 @@ export const requestContext = (req, res, next) => {
       durationMs: Date.now() - startedAt,
       userId: req.user?.id,
     });
+  });
+  res.on("close", () => {
+    if (!res.writableFinished) abortController.abort();
   });
 
   next();

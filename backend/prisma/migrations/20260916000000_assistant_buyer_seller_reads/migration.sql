@@ -4,18 +4,71 @@
 -- resolves to no rows, except on the shared catalog tables where the public
 -- catalog reads without actor context and keeps its current behavior.
 
--- Extend the public-catalog grants with the seller-private columns read only
--- under a sellerId = subject predicate.
-GRANT SELECT ("sellerId", discount)
-  ON TABLE products TO shopsphere_assistant_runtime;
-GRANT SELECT (stock)
-  ON TABLE product_options TO shopsphere_assistant_runtime;
+-- Public catalog and authenticated reads use separate login roles. PostgreSQL
+-- RLS filters rows, not columns, so sharing one role would let the public path
+-- select seller-private columns even when application projections omit them.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'shopsphere_assistant_private_runtime') THEN
+    CREATE ROLE shopsphere_assistant_private_runtime NOLOGIN;
+  END IF;
+END
+$$;
+ALTER ROLE shopsphere_assistant_private_runtime
+  NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS;
+DO $$
+BEGIN
+  EXECUTE format('REVOKE ALL ON DATABASE %I FROM shopsphere_assistant_private_runtime', current_database());
+  EXECUTE format('GRANT CONNECT ON DATABASE %I TO shopsphere_assistant_private_runtime', current_database());
+END
+$$;
+REVOKE ALL ON SCHEMA public FROM shopsphere_assistant_private_runtime;
+GRANT USAGE ON SCHEMA public TO shopsphere_assistant_private_runtime;
+REVOKE ALL ON ALL TABLES IN SCHEMA public FROM shopsphere_assistant_private_runtime;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM shopsphere_assistant_private_runtime;
+
+-- Move all pre-existing authenticated capabilities off the public role too.
+REVOKE SELECT (id, "firstName", "lastName", role, "isVerified")
+  ON users FROM shopsphere_assistant_runtime;
+REVOKE SELECT (id, "userId", type, title, message, read, "productId", "productName", "createdAt")
+  ON notifications FROM shopsphere_assistant_runtime;
+REVOKE INSERT ON assistant_audit_events FROM shopsphere_assistant_runtime;
+GRANT SELECT (id, "firstName", "lastName", role, "isVerified")
+  ON TABLE users TO shopsphere_assistant_private_runtime;
+GRANT SELECT (id, "userId", type, title, message, read, "productId", "productName", "createdAt")
+  ON TABLE notifications TO shopsphere_assistant_private_runtime;
+GRANT INSERT ON assistant_audit_events TO shopsphere_assistant_private_runtime;
+DROP POLICY IF EXISTS shopsphere_assistant_user_self ON users;
+CREATE POLICY shopsphere_assistant_user_self ON users
+  FOR SELECT TO shopsphere_assistant_private_runtime
+  USING (
+    id = current_setting('shopsphere.actor_id', true)
+    AND current_setting('shopsphere.actor_role', true) IN ('user', 'seller', 'admin')
+    AND NULLIF(current_setting('shopsphere.operation', true), '') IS NOT NULL
+  );
+DROP POLICY IF EXISTS shopsphere_assistant_notification_self ON notifications;
+CREATE POLICY shopsphere_assistant_notification_self ON notifications
+  FOR SELECT TO shopsphere_assistant_private_runtime
+  USING (
+    "userId" = current_setting('shopsphere.actor_id', true)
+    AND current_setting('shopsphere.actor_role', true) IN ('user', 'seller', 'admin')
+    AND current_setting('shopsphere.operation', true) = 'notifications.listMine'
+  );
+
+-- Authenticated projections receive their complete catalog column set directly;
+-- the private role inherits nothing from the public role.
+GRANT SELECT (id, name, price, images, category, quantity, description,
+              "variantColor", "variantStorage", "isArchived", "createdAt",
+              "sellerId", discount)
+  ON TABLE products TO shopsphere_assistant_private_runtime;
+GRANT SELECT (id, "productId", kind, value, "priceDelta", stock)
+  ON TABLE product_options TO shopsphere_assistant_private_runtime;
 
 -- Buyer cart projection: ownership and totals only, never the cart email.
 GRANT SELECT (id, "userId", "totalPrice", "createdAt", "updatedAt")
-  ON TABLE carts TO shopsphere_assistant_runtime;
+  ON TABLE carts TO shopsphere_assistant_private_runtime;
 GRANT SELECT (id, "cartId", "productId", quantity, price, variants, "addedAt")
-  ON TABLE cart_items TO shopsphere_assistant_runtime;
+  ON TABLE cart_items TO shopsphere_assistant_private_runtime;
 
 -- Buyer order projection: immutable identity, status, money, timestamps, and
 -- variants only. Names, emails, addresses, commissions, and promo linkage are
@@ -25,34 +78,34 @@ GRANT SELECT (id, "userId", "sellerIdAtPurchase", "orderGroupId", "productId",
               quantity, "totalPrice", status, "createdAt",
               "confirmedAt", "processingAt", "shippedAt", "deliveredAt", "cancelledAt",
               "variantStorage", "variantColor", "variantRam", "variantScreenSize", "variantProcessor")
-  ON TABLE orders TO shopsphere_assistant_runtime;
+  ON TABLE orders TO shopsphere_assistant_private_runtime;
 
 -- Existing-bill projection: financial summary only, no names, contacts, or
 -- delivery addresses.
 GRANT SELECT (id, "orderId", "userId", "billNumber", "productName", quantity,
               "unitPrice", "totalPrice", status, "orderDate")
-  ON TABLE bills TO shopsphere_assistant_runtime;
+  ON TABLE bills TO shopsphere_assistant_private_runtime;
 
 -- Payment/refund status projection: status and amount only, no gateway
 -- references, payloads, provider ids, or idempotency keys.
 GRANT SELECT (id, "orderId", "orderGroupId", amount, status, "createdAt", "updatedAt")
-  ON TABLE payments TO shopsphere_assistant_runtime;
+  ON TABLE payments TO shopsphere_assistant_private_runtime;
 GRANT SELECT (id, "paymentId", "orderId", amount, status, "createdAt", "updatedAt")
-  ON TABLE refunds TO shopsphere_assistant_runtime;
+  ON TABLE refunds TO shopsphere_assistant_private_runtime;
 
 -- Promo validation projection: rules and counters for pure evaluation, never
 -- the creator identity. Usage checks read the caller's own row only.
 GRANT SELECT (id, code, description, "discountType", "discountValue", "minPurchase",
               "maxDiscount", "usageLimit", "usedCount", "validFrom", "validUntil", "isActive")
-  ON TABLE promo_codes TO shopsphere_assistant_runtime;
+  ON TABLE promo_codes TO shopsphere_assistant_private_runtime;
 GRANT SELECT ("promoCodeId", "userId")
-  ON TABLE promo_code_usages TO shopsphere_assistant_runtime;
+  ON TABLE promo_code_usages TO shopsphere_assistant_private_runtime;
 
 ALTER TABLE carts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE carts FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS shopsphere_assistant_cart_self ON carts;
 CREATE POLICY shopsphere_assistant_cart_self ON carts
-  FOR SELECT TO shopsphere_assistant_runtime
+  FOR SELECT TO shopsphere_assistant_private_runtime
   USING (
     "userId" = current_setting('shopsphere.actor_id', true)
     AND current_setting('shopsphere.actor_role', true) = 'user'
@@ -63,7 +116,7 @@ ALTER TABLE cart_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cart_items FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS shopsphere_assistant_cart_item_self ON cart_items;
 CREATE POLICY shopsphere_assistant_cart_item_self ON cart_items
-  FOR SELECT TO shopsphere_assistant_runtime
+  FOR SELECT TO shopsphere_assistant_private_runtime
   USING (
     EXISTS (
       SELECT 1 FROM carts
@@ -78,7 +131,7 @@ ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE orders FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS shopsphere_assistant_order_buyer ON orders;
 CREATE POLICY shopsphere_assistant_order_buyer ON orders
-  FOR SELECT TO shopsphere_assistant_runtime
+  FOR SELECT TO shopsphere_assistant_private_runtime
   USING (
     "userId" = current_setting('shopsphere.actor_id', true)
     AND current_setting('shopsphere.actor_role', true) = 'user'
@@ -89,7 +142,7 @@ ALTER TABLE bills ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bills FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS shopsphere_assistant_bill_self ON bills;
 CREATE POLICY shopsphere_assistant_bill_self ON bills
-  FOR SELECT TO shopsphere_assistant_runtime
+  FOR SELECT TO shopsphere_assistant_private_runtime
   USING (
     "userId" = current_setting('shopsphere.actor_id', true)
     AND current_setting('shopsphere.actor_role', true) = 'user'
@@ -100,7 +153,7 @@ ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE payments FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS shopsphere_assistant_payment_buyer ON payments;
 CREATE POLICY shopsphere_assistant_payment_buyer ON payments
-  FOR SELECT TO shopsphere_assistant_runtime
+  FOR SELECT TO shopsphere_assistant_private_runtime
   USING (
     EXISTS (
       SELECT 1 FROM orders
@@ -115,7 +168,7 @@ ALTER TABLE refunds ENABLE ROW LEVEL SECURITY;
 ALTER TABLE refunds FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS shopsphere_assistant_refund_buyer ON refunds;
 CREATE POLICY shopsphere_assistant_refund_buyer ON refunds
-  FOR SELECT TO shopsphere_assistant_runtime
+  FOR SELECT TO shopsphere_assistant_private_runtime
   USING (
     EXISTS (
       SELECT 1 FROM orders
@@ -130,7 +183,7 @@ ALTER TABLE promo_codes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE promo_codes FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS shopsphere_assistant_promo_validate ON promo_codes;
 CREATE POLICY shopsphere_assistant_promo_validate ON promo_codes
-  FOR SELECT TO shopsphere_assistant_runtime
+  FOR SELECT TO shopsphere_assistant_private_runtime
   USING (
     current_setting('shopsphere.actor_role', true) = 'user'
     AND current_setting('shopsphere.operation', true) IN ('cart.validatePromo', 'cart.previewCheckout')
@@ -140,7 +193,7 @@ ALTER TABLE promo_code_usages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE promo_code_usages FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS shopsphere_assistant_promo_usage_self ON promo_code_usages;
 CREATE POLICY shopsphere_assistant_promo_usage_self ON promo_code_usages
-  FOR SELECT TO shopsphere_assistant_runtime
+  FOR SELECT TO shopsphere_assistant_private_runtime
   USING (
     "userId" = current_setting('shopsphere.actor_id', true)
     AND current_setting('shopsphere.actor_role', true) = 'user'
@@ -159,10 +212,10 @@ ALTER TABLE products FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS shopsphere_assistant_product_public ON products;
 CREATE POLICY shopsphere_assistant_product_public ON products
   FOR SELECT TO shopsphere_assistant_runtime
-  USING (current_setting('shopsphere.actor_id', true) IS NULL);
+  USING (NULLIF(current_setting('shopsphere.actor_id', true), '') IS NULL);
 DROP POLICY IF EXISTS shopsphere_assistant_product_seller ON products;
 CREATE POLICY shopsphere_assistant_product_seller ON products
-  FOR SELECT TO shopsphere_assistant_runtime
+  FOR SELECT TO shopsphere_assistant_private_runtime
   USING (
     "sellerId" = current_setting('shopsphere.actor_id', true)
     AND current_setting('shopsphere.actor_role', true) = 'seller'
@@ -170,7 +223,7 @@ CREATE POLICY shopsphere_assistant_product_seller ON products
   );
 DROP POLICY IF EXISTS shopsphere_assistant_product_cart ON products;
 CREATE POLICY shopsphere_assistant_product_cart ON products
-  FOR SELECT TO shopsphere_assistant_runtime
+  FOR SELECT TO shopsphere_assistant_private_runtime
   USING (
     EXISTS (
       SELECT 1 FROM cart_items JOIN carts ON carts.id = cart_items."cartId"
@@ -182,7 +235,7 @@ CREATE POLICY shopsphere_assistant_product_cart ON products
   );
 DROP POLICY IF EXISTS shopsphere_assistant_product_order ON products;
 CREATE POLICY shopsphere_assistant_product_order ON products
-  FOR SELECT TO shopsphere_assistant_runtime
+  FOR SELECT TO shopsphere_assistant_private_runtime
   USING (
     EXISTS (
       SELECT 1 FROM orders
@@ -198,10 +251,10 @@ ALTER TABLE product_options FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS shopsphere_assistant_option_public ON product_options;
 CREATE POLICY shopsphere_assistant_option_public ON product_options
   FOR SELECT TO shopsphere_assistant_runtime
-  USING (current_setting('shopsphere.actor_id', true) IS NULL);
+  USING (NULLIF(current_setting('shopsphere.actor_id', true), '') IS NULL);
 DROP POLICY IF EXISTS shopsphere_assistant_option_seller ON product_options;
 CREATE POLICY shopsphere_assistant_option_seller ON product_options
-  FOR SELECT TO shopsphere_assistant_runtime
+  FOR SELECT TO shopsphere_assistant_private_runtime
   USING (
     EXISTS (
       SELECT 1 FROM products
@@ -213,7 +266,7 @@ CREATE POLICY shopsphere_assistant_option_seller ON product_options
   );
 DROP POLICY IF EXISTS shopsphere_assistant_option_cart ON product_options;
 CREATE POLICY shopsphere_assistant_option_cart ON product_options
-  FOR SELECT TO shopsphere_assistant_runtime
+  FOR SELECT TO shopsphere_assistant_private_runtime
   USING (
     EXISTS (
       SELECT 1 FROM products

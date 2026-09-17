@@ -108,7 +108,9 @@ jobs:
     env:
       DATABASE_URL: postgresql://shopsphere:ci-owner-password@localhost:5432/shopsphere?schema=public
       ASSISTANT_DATABASE_URL: postgresql://shopsphere_assistant_runtime:ci-assistant-runtime-password@localhost:5432/shopsphere?schema=public
+      ASSISTANT_PRIVATE_DATABASE_URL: postgresql://shopsphere_assistant_private_runtime:ci-assistant-private-runtime-password@localhost:5432/shopsphere?schema=public
       ASSISTANT_DB_PASSWORD: ci-assistant-runtime-password
+      ASSISTANT_PRIVATE_DB_PASSWORD: ci-assistant-private-runtime-password
       REDIS_URL: redis://localhost:6379
       RUN_POSTGRES_INTEGRATION: "true"
       RUN_REDIS_INTEGRATION: "true"

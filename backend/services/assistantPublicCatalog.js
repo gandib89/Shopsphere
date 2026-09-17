@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 
-import { assistantPrisma } from "../database/assistantPrisma.js";
+import { assistantPublicPrisma } from "../database/assistantPrisma.js";
 
 export const ASSISTANT_POLICY_VERSION = "1.0.0";
 export const ASSISTANT_CURRENCY = "NPR";
@@ -90,7 +90,7 @@ const sortOrder = {
   "name-asc": [{ name: "asc" }, { id: "asc" }],
 };
 
-export const searchPublicProducts = async (input, { client = assistantPrisma, cursorSecret }) => {
+export const searchPublicProducts = async (input, { client = assistantPublicPrisma, cursorSecret }) => {
   const { cursor, limit = DEFAULT_LIMIT, ...filters } = input;
   const query = { ...filters, limit };
   const offset = readCursor(cursor, query, cursorSecret);
@@ -127,7 +127,7 @@ export const searchPublicProducts = async (input, { client = assistantPrisma, cu
   };
 };
 
-export const comparePublicProducts = async ({ productIds }, { client = assistantPrisma } = {}) => {
+export const comparePublicProducts = async ({ productIds }, { client = assistantPublicPrisma } = {}) => {
   const rows = await client.product.findMany({
     where: { id: { in: productIds }, isArchived: false },
     select: productSelect,
@@ -136,7 +136,7 @@ export const comparePublicProducts = async ({ productIds }, { client = assistant
   return { products: productIds.flatMap((id) => (byId.has(id) ? [publicProduct(byId.get(id))] : [])) };
 };
 
-export const getPublicProduct = async ({ productId }, { client = assistantPrisma } = {}) => {
+export const getPublicProduct = async ({ productId }, { client = assistantPublicPrisma } = {}) => {
   const product = await client.product.findFirst({
     where: { id: productId, isArchived: false },
     select: {
@@ -163,7 +163,7 @@ export const getPublicProduct = async ({ productId }, { client = assistantPrisma
   };
 };
 
-export const getPublicProductReviews = async (input, { client = assistantPrisma, cursorSecret }) => {
+export const getPublicProductReviews = async (input, { client = assistantPublicPrisma, cursorSecret }) => {
   const { productId, cursor, limit = DEFAULT_LIMIT } = input;
   const product = await client.product.findFirst({
     where: { id: productId, isArchived: false },
@@ -199,7 +199,7 @@ export const getPublicProductReviews = async (input, { client = assistantPrisma,
   };
 };
 
-export const getPublicRecommendations = async ({ productId, limit = 5 }, { client = assistantPrisma } = {}) => {
+export const getPublicRecommendations = async ({ productId, limit = 5 }, { client = assistantPublicPrisma } = {}) => {
   const product = await client.product.findFirst({
     where: { id: productId, isArchived: false },
     select: { id: true, category: true },

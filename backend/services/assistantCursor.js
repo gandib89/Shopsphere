@@ -48,13 +48,14 @@ export const createCursorCodec = ({ operation }) => {
     }
   };
 
-  const encode = (row, principal, query, secret) => {
+  const encode = (row, principal, query, secret, state = null) => {
     if (!secret || secret.length < 32) throw Object.assign(new Error("Cursor service unavailable"), { statusCode: 503 });
     const encoded = Buffer.from(JSON.stringify({
       version: CURSOR_VERSION,
       principal: fingerprint(principal, query),
       createdAt: row.createdAt.toISOString(),
       id: row.id,
+      state,
     })).toString("base64url");
     return `${encoded}.${crypto.createHmac("sha256", secret).update(encoded).digest("base64url")}`;
   };

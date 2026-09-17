@@ -5,7 +5,7 @@
 // input field for caller-supplied totals. All three operations are reads:
 // they never create or change orders, bills, reservations, payments, gateway
 // forms, notifications, emails, or promo usage counters.
-import { money, percentOffCents, toCents, toSignedCents } from "./assistantMoney.js";
+import { money, percentageOfCents, percentOffCents, toCents, toSignedCents } from "./assistantMoney.js";
 
 const notFound = () => Object.assign(new Error("Resource not found"), { statusCode: 404, code: "not_found" });
 
@@ -78,7 +78,7 @@ const buildItems = (rows) => {
       };
     }
     const listUnit = listUnitCents(product, variants);
-    const unit = percentOffCents(listUnit, product.discount ?? 0);
+    const unit = percentOffCents(listUnit, product.discount ?? "0");
     const line = unit * row.quantity;
     subtotalCents += listUnit * row.quantity;
     totalCents += line;
@@ -137,8 +137,7 @@ const evaluatePromo = ({ code, promo, used, purchaseCents, now }) => {
   if (promo.discountType === "percentage") {
     // Integer basis-point arithmetic: "10" -> 1000bps, half-up rounding, no
     // binary float. Corrupt >100% rows clamp to the purchase (fail closed).
-    const basisPoints = Math.min(toCents(String(promo.discountValue)), 10_000);
-    discountCents = Math.floor((purchaseCents * basisPoints + 5_000) / 10_000);
+    discountCents = percentageOfCents(purchaseCents, promo.discountValue);
     const cap = promo.maxDiscount != null ? toCents(promo.maxDiscount) : null;
     if (cap != null) discountCents = Math.min(discountCents, cap);
   } else {

@@ -151,7 +151,7 @@ export const authorizeAssistantOperation = (policy = {}, client = assistantPrism
       actorId: req.delegation.sub,
       role: req.delegation.role,
       operation: policy.operation ?? "authorization.resolve",
-      signal: req.signal,
+      signal: req.assistantSignal,
     }, (tx) => validateAssistantAccess(req, policy, tx), client);
     if (!result.account) {
       return auditedDenial(req, res, result.status, result.code, "Assistant operation is not available", policy.operation);

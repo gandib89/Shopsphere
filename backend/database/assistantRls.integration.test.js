@@ -1,9 +1,15 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
+import http from "node:http";
 import test from "node:test";
+import express from "express";
+import { exportJWK, generateKeyPair, SignJWT } from "jose";
 
-import { assistantPrisma } from "./assistantPrisma.js";
+import { assistantPrisma, assistantPublicPrisma } from "./assistantPrisma.js";
 import { withAssistantActor } from "./assistantTransaction.js";
-import { previewCheckout, validatePromoCode } from "../services/assistantCart.js";
+import { prisma } from "./prismaClient.js";
+import { requestContext } from "../middlewares/requestContext.js";
+import { getAssistantRedis } from "../services/assistantRedis.js";
 
 const enabled = process.env.RUN_POSTGRES_INTEGRATION === "true";
 const actorA = { actorId: "aaaaaaaaaaaaaaaaaaaaaaaa", role: "user", operation: "profile.getMySummary" };
@@ -11,7 +17,11 @@ const actorB = { actorId: "bbbbbbbbbbbbbbbbbbbbbbbb", role: "seller", operation:
 const projection = { id: true, firstName: true, lastName: true, role: true, isVerified: true };
 
 test("restricted PostgreSQL role and transaction-local RLS isolate assistant reads", { skip: !enabled }, async (t) => {
-  t.after(() => assistantPrisma.$disconnect());
+  t.after(async () => {
+    await assistantPrisma.$disconnect();
+    await assistantPublicPrisma.$disconnect();
+    await prisma.$disconnect();
+  });
 
   const [attributes] = await assistantPrisma.$queryRawUnsafe(`
     SELECT r.rolsuper, r.rolcreatedb, r.rolcreaterole, r.rolinherit, r.rolbypassrls,
@@ -19,6 +29,19 @@ test("restricted PostgreSQL role and transaction-local RLS isolate assistant rea
     FROM pg_roles r WHERE r.rolname = current_user
   `);
   assert.deepEqual(attributes, {
+    rolsuper: false,
+    rolcreatedb: false,
+    rolcreaterole: false,
+    rolinherit: false,
+    rolbypassrls: false,
+    current_user: "shopsphere_assistant_private_runtime",
+  });
+  const [publicAttributes] = await assistantPublicPrisma.$queryRawUnsafe(`
+    SELECT r.rolsuper, r.rolcreatedb, r.rolcreaterole, r.rolinherit, r.rolbypassrls,
+           current_user AS current_user
+    FROM pg_roles r WHERE r.rolname = current_user
+  `);
+  assert.deepEqual(publicAttributes, {
     rolsuper: false,
     rolcreatedb: false,
     rolcreaterole: false,
@@ -51,7 +74,7 @@ test("restricted PostgreSQL role and transaction-local RLS isolate assistant rea
   assert.deepEqual(privileges, {
     profile_read: true,
     email_read: false,
-    orders_read: true,
+    orders_read: false,
     order_email_read: false,
     order_status_read: true,
     cart_email_read: false,
@@ -67,7 +90,28 @@ test("restricted PostgreSQL role and transaction-local RLS isolate assistant rea
     product_discount_read: true,
     product_seller_read: true,
     option_stock_read: true,
-    option_id_read: false,
+    option_id_read: true,
+  });
+  const [publicPrivileges] = await assistantPublicPrisma.$queryRawUnsafe(`
+    SELECT
+      has_column_privilege(current_user, 'products', 'name', 'SELECT') AS product_name_read,
+      has_column_privilege(current_user, 'products', 'sellerId', 'SELECT') AS product_seller_read,
+      has_column_privilege(current_user, 'products', 'discount', 'SELECT') AS product_discount_read,
+      has_column_privilege(current_user, 'product_options', 'value', 'SELECT') AS option_value_read,
+      has_column_privilege(current_user, 'product_options', 'stock', 'SELECT') AS option_stock_read,
+      has_column_privilege(current_user, 'users', 'firstName', 'SELECT') AS profile_read,
+      has_column_privilege(current_user, 'notifications', 'title', 'SELECT') AS notification_read,
+      has_table_privilege(current_user, 'assistant_audit_events', 'INSERT') AS audit_insert
+  `);
+  assert.deepEqual(publicPrivileges, {
+    product_name_read: true,
+    product_seller_read: false,
+    product_discount_read: false,
+    option_value_read: true,
+    option_stock_read: false,
+    profile_read: false,
+    notification_read: false,
+    audit_insert: false,
   });
   const [newPrivileges] = await assistantPrisma.$queryRawUnsafe(`
     SELECT
@@ -97,7 +141,20 @@ test("restricted PostgreSQL role and transaction-local RLS isolate assistant rea
   for (const table of rlsTables) assert.deepEqual(table, { ...table, rls: true, force: true });
   // The RLS seed owns one seller product; the catalog shares this role without
   // actor context, so the count stays visible while private rows stay scoped.
-  assert.deepEqual(await assistantPrisma.product.count({ select: { id: true } }), { id: 1 });
+  assert.deepEqual(await assistantPublicPrisma.product.count({ select: { id: true } }), { id: 1 });
+  await assert.rejects(
+    assistantPublicPrisma.product.findMany({ select: { sellerId: true } }),
+    /permission denied|database query/i,
+  );
+  await assert.rejects(
+    assistantPublicPrisma.productOption.findMany({ select: { stock: true } }),
+    /permission denied|database query/i,
+  );
+  // A transaction-local custom GUC can reset to an empty string on a reused
+  // connection; the public policy normalizes that state back to no actor.
+  await assistantPublicPrisma.$transaction((tx) =>
+    tx.$executeRawUnsafe("SELECT set_config('shopsphere.actor_id', 'temporary', true)"));
+  assert.deepEqual(await assistantPublicPrisma.product.count({ select: { id: true } }), { id: 1 });
 
   assert.deepEqual(await assistantPrisma.user.findMany({ select: projection }), []);
   assert.deepEqual(await assistantPrisma.notification.findMany({ select: { id: true } }), []);
@@ -203,7 +260,6 @@ test("restricted PostgreSQL role and transaction-local RLS isolate assistant rea
   // Repeated-call purity on a real database (#12): validating a promo and
   // previewing checkout twice changes no promo counter, usage row, order,
   // bill, or payment — only audit and rate-limit metadata may move.
-  const buyerPrincipal = { subject: actorA.actorId, role: "user", clientId: "client-1", grantId: "grant-1" };
   const promoRow = (operation) => withAssistantActor(
     { ...actorA, operation },
     (tx) => tx.promoCode.findFirst({ where: { code: "RLS11" }, select: { usedCount: true } }),
@@ -223,17 +279,83 @@ test("restricted PostgreSQL role and transaction-local RLS isolate assistant rea
   const promoBefore = await promoRow("cart.validatePromo");
   const usageBefore = await usageRows("cart.validatePromo");
   const commerceBefore = await commerceSnapshot();
-  const callAs = (operation, run) => withAssistantActor({ ...actorA, operation }, run);
-  const first = await callAs("cart.validatePromo", (tx) =>
-    validatePromoCode({ code: "rls11" }, { client: tx, principal: buyerPrincipal, now: new Date() }));
-  const second = await callAs("cart.validatePromo", (tx) =>
-    validatePromoCode({ code: "RLS11" }, { client: tx, principal: buyerPrincipal, now: new Date() }));
+
+  const { publicKey, privateKey } = await generateKeyPair("RS256");
+  const jwk = { ...await exportJWK(publicKey), kid: "assistant-rls-test", alg: "RS256", use: "sig" };
+  const issuerServer = http.createServer((request, response) => {
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify(request.url?.endsWith("/certs") ? { keys: [jwk] } : { active: true }));
+  });
+  await new Promise((resolve) => issuerServer.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve, reject) => issuerServer.close((error) => error ? reject(error) : resolve())));
+  const issuer = `http://127.0.0.1:${issuerServer.address().port}/realms/shopsphere`;
+  process.env.ASSISTANT_API_TOKEN = "assistant-integration-workload-token";
+  process.env.MCP_OAUTH_ISSUER = issuer;
+  process.env.MCP_OAUTH_JWKS_URI = `${issuer}/protocol/openid-connect/certs`;
+  process.env.MCP_OAUTH_INTROSPECTION_ENDPOINT = `${issuer}/protocol/openid-connect/token/introspect`;
+  process.env.MCP_OAUTH_INTROSPECTION_CLIENT_ID = "assistant-integration";
+  process.env.MCP_OAUTH_INTROSPECTION_CLIENT_SECRET = "assistant-integration-secret";
+  process.env.MCP_WORKLOAD_CLIENT_ID = "shopsphere-mcp-workload";
+  process.env.MCP_TOOL_VALIDATE_PROMO_CODE_ENABLED = "true";
+  process.env.MCP_TOOL_PREVIEW_CHECKOUT_ENABLED = "true";
+  const delegatedToken = await new SignJWT({
+    sid: "assistant-rls-grant",
+    azp: "shopsphere-mcp-workload",
+    client_id: "assistant-rls-client",
+    scope: "cart:read",
+    shopsphere_user_id: actorA.actorId,
+    shopsphere_role: "user",
+    shopsphere_verified: true,
+  })
+    .setProtectedHeader({ alg: "RS256", kid: jwk.kid })
+    .setIssuer(issuer)
+    .setAudience("shopsphere-assistant-api")
+    .setSubject(actorA.actorId)
+    .setIssuedAt()
+    .setExpirationTime("5m")
+    .sign(privateKey);
+
+  const { default: assistantRouter } = await import("../routes/assistantRoute.js");
+  const app = express();
+  app.use(express.json());
+  app.use(requestContext);
+  app.use("/api/v1/assistant", assistantRouter);
+  const apiServer = app.listen(0, "127.0.0.1");
+  await new Promise((resolve) => apiServer.once("listening", resolve));
+  t.after(() => new Promise((resolve, reject) => apiServer.close((error) => error ? reject(error) : resolve())));
+
+  const redis = await getAssistantRedis();
+  t.after(async () => { if (redis.isOpen) await redis.quit(); });
+  const keyPart = (value) => crypto.createHash("sha256").update(value).digest("base64url");
+  const rateKey = `shopsphere:assistant:rate:subject-client:${keyPart(`${actorA.actorId}:assistant-rls-client`)}`;
+  await redis.del(rateKey);
+  const auditBefore = await prisma.assistantAuditEvent.count({ where: { subjectId: actorA.actorId } });
+  const call = async (path, body) => {
+    const response = await fetch(`http://127.0.0.1:${apiServer.address().port}/api/v1/assistant/${path}`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${delegatedToken}`,
+        "content-type": "application/json",
+        "x-assistant-api-token": process.env.ASSISTANT_API_TOKEN,
+      },
+      body: JSON.stringify(body),
+    });
+    if (response.status !== 200) {
+      assert.fail(`${path}: ${response.status} ${await response.text()}`);
+    }
+    return response.json();
+  };
+  const first = await call("validate_promo_code", { code: "rls11" });
+  const second = await call("validate_promo_code", { code: "RLS11" });
+  const firstPreview = await call("preview_checkout", { promoCode: "RLS11" });
+  const secondPreview = await call("preview_checkout", { promoCode: "rls11" });
   assert.equal(first.valid, true);
   assert.deepEqual(second, first);
-  const preview = await callAs("cart.previewCheckout", (tx) =>
-    previewCheckout({ promoCode: "RLS11" }, { client: tx, principal: buyerPrincipal, now: new Date() }));
-  assert.equal(preview.promo.code, "RLS11");
+  assert.equal(firstPreview.promo.code, "RLS11");
+  assert.deepEqual(secondPreview, firstPreview);
   assert.deepEqual(await promoRow("cart.validatePromo"), promoBefore);
   assert.equal(await usageRows("cart.validatePromo"), usageBefore);
   assert.deepEqual(await commerceSnapshot(), commerceBefore);
+  assert.equal(await prisma.assistantAuditEvent.count({ where: { subjectId: actorA.actorId } }), auditBefore + 4);
+  assert.equal(await redis.get(rateKey), "4");
 });

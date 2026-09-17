@@ -77,7 +77,9 @@ services:
     environment:
       DATABASE_URL: postgresql://shopsphere:shopsphere@postgres:5432/shopsphere?schema=public
       ASSISTANT_DATABASE_URL: postgresql://shopsphere_assistant_runtime:${ASSISTANT_DB_PASSWORD:?set ASSISTANT_DB_PASSWORD}@postgres:5432/shopsphere?schema=public
+      ASSISTANT_PRIVATE_DATABASE_URL: postgresql://shopsphere_assistant_private_runtime:${ASSISTANT_PRIVATE_DB_PASSWORD:?set ASSISTANT_PRIVATE_DB_PASSWORD}@postgres:5432/shopsphere?schema=public
       ASSISTANT_DB_PASSWORD: ${ASSISTANT_DB_PASSWORD:?set ASSISTANT_DB_PASSWORD}
+      ASSISTANT_PRIVATE_DB_PASSWORD: ${ASSISTANT_PRIVATE_DB_PASSWORD:?set ASSISTANT_PRIVATE_DB_PASSWORD}
       ASSISTANT_API_TOKEN: ${ASSISTANT_API_TOKEN:?set ASSISTANT_API_TOKEN}
       ASSISTANT_CURSOR_SECRET: ${ASSISTANT_CURSOR_SECRET:?set ASSISTANT_CURSOR_SECRET}
       REDIS_URL: redis://redis:6379

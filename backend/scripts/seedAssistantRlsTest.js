@@ -66,8 +66,8 @@ try {
     ON CONFLICT (id) DO NOTHING
   `);
   await pool.query(`
-    INSERT INTO payments (id, "orderId", "transactionUuid", "productCode", amount, status) VALUES
-      ('e8e8e8e8e8e8e8e8e8e8e8e8', 'f3f3f3f3f3f3f3f3f3f3f3f3', 'rls-txn-1', 'EPAY', 54.99, 'Succeeded')
+    INSERT INTO payments (id, "orderId", "transactionUuid", "productCode", amount, status, "updatedAt") VALUES
+      ('e8e8e8e8e8e8e8e8e8e8e8e8', 'f3f3f3f3f3f3f3f3f3f3f3f3', 'rls-txn-1', 'EPAY', 54.99, 'Succeeded', now())
     ON CONFLICT (id) DO NOTHING
   `);
   await pool.query(`

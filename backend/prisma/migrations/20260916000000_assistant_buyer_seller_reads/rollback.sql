@@ -44,12 +44,33 @@ ALTER TABLE products NO FORCE ROW LEVEL SECURITY;
 ALTER TABLE products DISABLE ROW LEVEL SECURITY;
 ALTER TABLE product_options NO FORCE ROW LEVEL SECURITY;
 ALTER TABLE product_options DISABLE ROW LEVEL SECURITY;
-REVOKE ALL ON TABLE carts, cart_items, orders, bills, payments, refunds, promo_codes, promo_code_usages
-  FROM shopsphere_assistant_runtime;
--- Restore the pre-#12 column grants on the shared catalog tables.
-REVOKE ALL ON TABLE products, product_options FROM shopsphere_assistant_runtime;
-GRANT SELECT (id, name, price, images, category, quantity, description,
-              "variantColor", "variantStorage", "isArchived", "createdAt")
-  ON TABLE products TO shopsphere_assistant_runtime;
-GRANT SELECT ("productId", kind, value, "priceDelta")
-  ON TABLE product_options TO shopsphere_assistant_runtime;
+REVOKE ALL ON TABLE carts, cart_items, orders, bills, payments, refunds, promo_codes,
+  promo_code_usages, products, product_options FROM shopsphere_assistant_private_runtime;
+REVOKE SELECT (id, "firstName", "lastName", role, "isVerified")
+  ON users FROM shopsphere_assistant_private_runtime;
+REVOKE SELECT (id, "userId", type, title, message, read, "productId", "productName", "createdAt")
+  ON notifications FROM shopsphere_assistant_private_runtime;
+REVOKE INSERT ON assistant_audit_events FROM shopsphere_assistant_private_runtime;
+GRANT SELECT (id, "firstName", "lastName", role, "isVerified")
+  ON TABLE users TO shopsphere_assistant_runtime;
+GRANT SELECT (id, "userId", type, title, message, read, "productId", "productName", "createdAt")
+  ON TABLE notifications TO shopsphere_assistant_runtime;
+GRANT INSERT ON assistant_audit_events TO shopsphere_assistant_runtime;
+DROP POLICY IF EXISTS shopsphere_assistant_user_self ON users;
+CREATE POLICY shopsphere_assistant_user_self ON users
+  FOR SELECT TO shopsphere_assistant_runtime
+  USING (
+    id = current_setting('shopsphere.actor_id', true)
+    AND current_setting('shopsphere.actor_role', true) IN ('user', 'seller', 'admin')
+    AND NULLIF(current_setting('shopsphere.operation', true), '') IS NOT NULL
+  );
+DROP POLICY IF EXISTS shopsphere_assistant_notification_self ON notifications;
+CREATE POLICY shopsphere_assistant_notification_self ON notifications
+  FOR SELECT TO shopsphere_assistant_runtime
+  USING (
+    "userId" = current_setting('shopsphere.actor_id', true)
+    AND current_setting('shopsphere.actor_role', true) IN ('user', 'seller', 'admin')
+    AND current_setting('shopsphere.operation', true) = 'notifications.listMine'
+  );
+DROP OWNED BY shopsphere_assistant_private_runtime;
+DROP ROLE IF EXISTS shopsphere_assistant_private_runtime;

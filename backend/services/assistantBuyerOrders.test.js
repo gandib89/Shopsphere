@@ -97,15 +97,17 @@ test("default-window pagination stays valid across requests", async () => {
     orderRow({ id: "ord-2", createdAt: new Date("2026-09-02T10:00:00Z") }),
     orderRow({ id: "ord-1", createdAt: new Date("2026-09-01T10:00:00Z") }),
   ];
-  const client = readOnlyClient({ "order.findMany": () => rows });
-  const ctx = { client, principal: principal(), cursorSecret: SECRET };
-  const first = await listMyOrders({ limit: 1 }, ctx);
+  const windows = [];
+  const client = readOnlyClient({ "order.findMany": (args) => { windows.push(args.where.createdAt); return rows; } });
+  const baseCtx = { client, principal: principal(), cursorSecret: SECRET };
+  const first = await listMyOrders({ limit: 1 }, { ...baseCtx, now: new Date("2026-09-10T00:00:00Z") });
   assert.ok(first.nextCursor);
-  // A later request mints a different default "now": the cursor must still
-  // validate because the fingerprint binds the marker, not the instant.
-  await new Promise((resolve) => setTimeout(resolve, 5));
-  const second = await listMyOrders({ cursor: first.nextCursor, limit: 1 }, ctx);
+  const second = await listMyOrders(
+    { cursor: first.nextCursor, limit: 1 },
+    { ...baseCtx, now: new Date("2026-09-20T00:00:00Z") },
+  );
   assert.equal(second.orders.length, 1);
+  assert.deepEqual(windows[1], windows[0]);
 });
 
 test("order detail uses generic not-found for missing or foreign ids", async () => {

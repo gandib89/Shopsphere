@@ -260,7 +260,7 @@ router.post(
         actorId: req.delegation.sub,
         role: req.delegation.role,
         operation: "notifications.listMine",
-        signal: req.signal,
+        signal: req.assistantSignal,
       }, (tx) => listMyNotifications(parsed.data, {
         client: tx,
         principal: {
@@ -321,7 +321,7 @@ const privateOperation = ({ path, tool, operation, roles, scope, rolloutFlag, in
           actorId: req.delegation.sub,
           role: req.delegation.role,
           operation,
-          signal: req.signal,
+          signal: req.assistantSignal,
         }, (tx) => run(parsed.data, {
           client: tx,
           principal: {

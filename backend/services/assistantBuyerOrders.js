@@ -92,23 +92,24 @@ export const listMyOrders = async (
 ) => {
   if (status !== undefined && !STATUSES.includes(status)) throw badInput(`Unknown order status: ${status}`);
   const defaultTo = to == null;
-  const toDate = parseBound(to, "to") ?? now;
-  const fromDate = parseBound(from, "from") ?? new Date(toDate.getTime() - MAX_INTERVAL_MS);
+  const boundedLimit = Math.min(Math.max(1, limit ?? DEFAULT_LIMIT), MAX_LIMIT);
+  const query = defaultTo
+    ? { status: status ?? null, from: from ?? null, defaultTo: true, limit: boundedLimit }
+    : { status: status ?? null, from: parseBound(from, "from")?.toISOString() ?? null, to: parseBound(to, "to").toISOString(), limit: boundedLimit };
+  const position = decodeCursor(cursor, principal, query, cursorSecret);
+  const cursorWindow = defaultTo && position?.state;
+  if (cursor && defaultTo && (
+    typeof cursorWindow?.from !== "string"
+    || typeof cursorWindow?.to !== "string"
+    || Number.isNaN(Date.parse(cursorWindow.from))
+    || Number.isNaN(Date.parse(cursorWindow.to))
+  )) throw notFound();
+  const toDate = cursorWindow ? new Date(cursorWindow.to) : parseBound(to, "to") ?? now;
+  const fromDate = cursorWindow ? new Date(cursorWindow.from) : parseBound(from, "from") ?? new Date(toDate.getTime() - MAX_INTERVAL_MS);
   if (fromDate > toDate) throw badInput("Invalid order date range");
   if (toDate.getTime() - fromDate.getTime() > MAX_INTERVAL_MS) {
     throw badInput("Order date range must not exceed 90 days");
   }
-  const boundedLimit = Math.min(Math.max(1, limit ?? DEFAULT_LIMIT), MAX_LIMIT);
-  // A defaulted upper bound is "now", a different instant on every request. If
-  // the fingerprint hashed it, a cursor minted on page one would 404 on page
-  // two. Defaulted windows therefore fingerprint on a stable marker (plus any
-  // explicit lower bound) instead of the request instant. This only affects
-  // which of the buyer's own rows are paged — the principal binding still
-  // prevents any cross-buyer use — and explicit windows stay exactly bound.
-  const query = defaultTo
-    ? { status: status ?? null, from: from ?? null, defaultTo: true, limit: boundedLimit }
-    : { status: status ?? null, from: fromDate.toISOString(), to: toDate.toISOString(), limit: boundedLimit };
-  const position = decodeCursor(cursor, principal, query, cursorSecret);
   const rows = await client.order.findMany({
     where: buildBuyerOrderWhere(principal.subject, {
       ...(status ? { status } : {}),
@@ -127,7 +128,11 @@ export const listMyOrders = async (
   const page = rows.slice(0, boundedLimit);
   return {
     orders: page.map(minimizeOrder),
-    nextCursor: rows.length > boundedLimit ? encodeCursor(page.at(-1), principal, query, cursorSecret) : null,
+    nextCursor: rows.length > boundedLimit
+      ? encodeCursor(page.at(-1), principal, query, cursorSecret, defaultTo
+        ? { from: fromDate.toISOString(), to: toDate.toISOString() }
+        : null)
+      : null,
   };
 };
 

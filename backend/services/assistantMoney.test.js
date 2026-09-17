@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   centsToAmount,
   money,
+  percentageOfCents,
   percentOffCents,
   signedMoney,
   toCents,
@@ -49,16 +50,21 @@ test("money wraps cents with the NPR currency", () => {
 });
 
 test("percentage discounts round half-up on exact cents", () => {
-  assert.equal(percentOffCents(1000, 0), 1000);
-  assert.equal(percentOffCents(1000, 100), 0);
-  assert.equal(percentOffCents(199, 10), 179);
-  assert.equal(percentOffCents(1000, 150), 0);
-  assert.equal(percentOffCents(1000, -5), 1000);
+  assert.equal(percentOffCents(1000, "0"), 1000);
+  assert.equal(percentOffCents(1000, "100"), 0);
+  assert.equal(percentOffCents(199, "10"), 179);
+  assert.equal(percentOffCents(1000, "150"), 0);
+  assert.equal(percentOffCents(1000, "-5"), 1000);
 });
 
 test("fractional percentages use integer basis points, never float", () => {
   assert.equal(percentOffCents(10000, "12.5"), 8750);
   assert.equal(percentOffCents(10000, { toString: () => "12.5" }), 8750);
-  assert.equal(percentOffCents(10000, 12.5), 8750);
+  assert.throws(() => percentOffCents(10000, 12.5), /invalid money/i);
   assert.throws(() => percentOffCents(10000, "12.555"), /invalid money/i);
+});
+
+test("percentage arithmetic stays exact at the largest accepted money value", () => {
+  assert.equal(percentOffCents(999_999_996_949, "5.49"), 945_099_997_116);
+  assert.equal(percentageOfCents(999_999_996_949, "5.49"), 54_899_999_833);
 });

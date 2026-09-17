@@ -64,18 +64,24 @@ export const signedMoney = (cents, currency = ASSISTANT_CURRENCY) => ({
   currency,
 });
 
-// Discounted unit price in cents, rounded half-up, using integer basis-point
-// arithmetic only. The percentage is parsed as an exact decimal (100.00% max
-// resolution) so binary float never touches money: Prisma Decimal and string
-// columns parse exactly, while a raw JS number is first rounded to two places
-// to quarantine float noise. Out-of-range percentages clamp instead of
-// throwing so a corrupt discount column fails closed to a deterministic price
-// rather than a 500.
+const clampedBasisPoints = (percentage) => Math.min(Math.max(0, toSignedCents(percentage)), 10_000);
+
+// Applies an exact decimal percentage to integer cents with half-up rounding.
+// BigInt is required for the intermediate product: a valid Decimal(12,2)
+// amount multiplied by 10,000 is larger than Number.MAX_SAFE_INTEGER.
+export const percentageOfCents = (cents, percentage) => {
+  if (!Number.isSafeInteger(cents) || cents < 0) throw invalid();
+  const basisPoints = clampedBasisPoints(percentage);
+  const result = (BigInt(cents) * BigInt(basisPoints) + 5_000n) / 10_000n;
+  const asNumber = Number(result);
+  if (!Number.isSafeInteger(asNumber)) throw invalid();
+  return asNumber;
+};
+
+// Discounted unit price in cents. Percentages must remain exact decimal text
+// (or a Prisma Decimal-like object); raw JavaScript numbers are refused for the
+// same reason they are refused by toCents.
 export const percentOffCents = (listCents, discountPct) => {
-  if (!Number.isSafeInteger(listCents) || listCents < 0) throw invalid();
-  const normalized = typeof discountPct === "number"
-    ? String(Math.round(discountPct * 100) / 100)
-    : discountPct?.toString?.() ?? "0";
-  const basisPoints = Math.min(Math.max(0, toSignedCents(normalized)), 10_000);
-  return Math.floor((listCents * (10_000 - basisPoints) + 5_000) / 10_000);
+  const discountCents = percentageOfCents(listCents, discountPct);
+  return listCents - discountCents;
 };
