@@ -1,6 +1,6 @@
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 
-import { PROTOCOL_VERSION } from "../src/toolRegistry.js";
+import { PROTOCOL_VERSION, REGISTRY_VERSION } from "../src/toolRegistry.js";
 
 const endpoint = process.env.MCP_PILOT_URL;
 const token = process.env.MCP_PILOT_ACCESS_TOKEN;
@@ -22,6 +22,7 @@ const expectedTools = [
   "get_product_reviews",
   "get_recommendations",
 ];
+const MAX_RESPONSE_BYTES = 64 * 1024;
 
 const client = new Client(
   { name: clientName, version: clientVersion },
@@ -46,10 +47,19 @@ const check = async (name, run) => {
     evidence.checks.push({ name, outcome: "pass", durationMs: Date.now() - startedAt, ...result });
     return result;
   } catch (error) {
-    const sanitizedError = String(error.message).split(token).join("[REDACTED]");
-    evidence.checks.push({ name, outcome: "fail", durationMs: Date.now() - startedAt, error: sanitizedError });
+    // SDK errors may contain a remote response body. Keep the evidence safe to share.
+    evidence.checks.push({ name, outcome: "fail", durationMs: Date.now() - startedAt, error: "validation_failed" });
     throw error;
   }
+};
+
+const callPublicTool = async (name, args) => {
+  const result = await client.callTool({ name, arguments: args });
+  const responseBytes = Buffer.byteLength(JSON.stringify(result), "utf8");
+  if (result.isError || !result.structuredContent || responseBytes > MAX_RESPONSE_BYTES) {
+    throw new Error(`Public tool validation failed: ${name}`);
+  }
+  return { result, responseBytes };
 };
 
 try {
@@ -64,34 +74,40 @@ try {
 
   await check("discovery", async () => {
     const listed = (await client.listTools()).tools.map(({ name }) => name);
-    const missing = expectedTools.filter((name) => !listed.includes(name));
-    if (missing.length) throw new Error(`Missing public tools: ${missing.join(", ")}`);
+    if (listed.length !== expectedTools.length || expectedTools.some((name) => !listed.includes(name))) {
+      throw new Error("Public tool discovery mismatch");
+    }
     return { tools: listed };
   });
 
   await check("get_capabilities", async () => {
-    const result = await client.callTool({ name: "get_capabilities", arguments: {} });
-    return { responseBytes: Buffer.byteLength(JSON.stringify(result), "utf8") };
+    const { result, responseBytes } = await callPublicTool("get_capabilities", {});
+    if (result.structuredContent.registryVersion !== REGISTRY_VERSION
+      || result.structuredContent.protocolVersion !== PROTOCOL_VERSION) {
+      throw new Error("Pilot contract version mismatch");
+    }
+    return { responseBytes, registryVersion: REGISTRY_VERSION };
   });
   await check("get_store_policy", async () => {
-    const result = await client.callTool({ name: "get_store_policy", arguments: { topic: "returns" } });
-    return { responseBytes: Buffer.byteLength(JSON.stringify(result), "utf8") };
+    const { responseBytes } = await callPublicTool("get_store_policy", { topic: "returns" });
+    return { responseBytes };
   });
-  const search = await check("search_products", async () => {
-    const result = await client.callTool({ name: "search_products", arguments: { limit: 2 } });
-    const productIds = result.structuredContent?.items?.map(({ id }) => id) ?? [];
+  let productIds;
+  await check("search_products", async () => {
+    const { result, responseBytes } = await callPublicTool("search_products", { limit: 2 });
+    productIds = result.structuredContent.items?.map(({ id }) => id) ?? [];
     if (!productIds.length) throw new Error("The staging fixture must include at least one published product");
-    return { responseBytes: Buffer.byteLength(JSON.stringify(result), "utf8"), productIds };
+    return { responseBytes, productCount: productIds.length };
   });
-  const productId = search.productIds[0];
+  const productId = productIds[0];
   await check("compare_products", async () => {
-    const result = await client.callTool({ name: "compare_products", arguments: { productIds: search.productIds } });
-    return { responseBytes: Buffer.byteLength(JSON.stringify(result), "utf8") };
+    const { responseBytes } = await callPublicTool("compare_products", { productIds });
+    return { responseBytes };
   });
   for (const name of ["get_product", "get_product_reviews", "get_recommendations"]) {
     await check(name, async () => {
-      const result = await client.callTool({ name, arguments: { productId } });
-      return { responseBytes: Buffer.byteLength(JSON.stringify(result), "utf8") };
+      const { responseBytes } = await callPublicTool(name, { productId });
+      return { responseBytes };
     });
   }
 } catch {
