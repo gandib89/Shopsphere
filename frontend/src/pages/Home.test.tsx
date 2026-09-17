@@ -141,7 +141,7 @@ describe('live storefront integration', () => {
     const user = userEvent.setup();
     renderHome();
     await user.click(await screen.findByRole('button', { name: 'Add to cart: Seller MacBook' }));
-    expect(screen.getByTestId('route')).toHaveTextContent('/auth');
+    await waitFor(() => expect(screen.getByTestId('route')).toHaveTextContent('/auth'));
     expect(toast.success).not.toHaveBeenCalled();
   });
 

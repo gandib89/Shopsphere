@@ -43,6 +43,7 @@ const SellerProductDetails = lazy(() => import('./pages/SellerProductDetails'));
 const SellerOrders = lazy(() => import('./pages/SellerOrders'));
 const SellerRevenueDashboard = lazy(() => import('./pages/SellerRevenueDashboard'));
 const Profile = lazy(() => import('./pages/Profile'));
+const AiConnections = lazy(() => import('./pages/AiConnections'));
 const TrackOrder = lazy(() => import('./pages/TrackOrder'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 const ChatWidget = lazy(() => import('./components/ChatWidget'));
@@ -130,6 +131,9 @@ function App() {
           <Route path="/signin" element={<AuthLanding />} />
           <Route path="/signup" element={<AuthLanding />} />
           <Route path="/products/:productId" element={<ProductDetailsPage />} />
+          <Route element={<ProtectedRoute role="any" />}>
+            <Route path="/ai-connections" element={<AiConnections />} />
+          </Route>
           <Route path="/product-details-page" element={<LegacyProductRedirect />} />
           <Route path="/product-details" element={<LegacyProductRedirect />} />
           <Route element={<ProtectedRoute role="customer" />}>

@@ -20,4 +20,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
 USER node
 # Applies committed migrations before every start — fine for this project's scale;
 # a separate migration step/job is the usual upgrade path once deploys need to be decoupled.
-CMD ["sh", "-c", "npx prisma migrate deploy --schema=prisma/schema.prisma && node server.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy --schema=prisma/schema.prisma && node scripts/provisionAssistantRole.js && node server.js"]

@@ -1,0 +1,3348 @@
+{
+  "Apple Magic Keyboard": [
+    {
+      "item": "4K Monitor",
+      "support": 0.007083,
+      "confidence": 0.555556,
+      "lift": 27.322404
+    },
+    {
+      "item": "Mac Mini",
+      "support": 0.007083,
+      "confidence": 0.555556,
+      "lift": 27.322404
+    },
+    {
+      "item": "Accessories",
+      "support": 0.007083,
+      "confidence": 0.555556,
+      "lift": 27.322404
+    },
+    {
+      "item": "Hdmi Cable",
+      "support": 0.007083,
+      "confidence": 0.586207,
+      "lift": 25.395245
+    },
+    {
+      "item": "Apple Magic Mouse",
+      "support": 0.005,
+      "confidence": 0.413793,
+      "lift": 24.952348
+    },
+    {
+      "item": "Mac Mini Pro",
+      "support": 0.011,
+      "confidence": 0.335878,
+      "lift": 19.661143
+    },
+    {
+      "item": "Apple Magic Trackpad",
+      "support": 0.00675,
+      "confidence": 0.232092,
+      "lift": 17.086505
+    },
+    {
+      "item": "Anker 7 In 1 Usb C Hub",
+      "support": 0.007583,
+      "confidence": 0.173996,
+      "lift": 12.654267
+    },
+    {
+      "item": "Adjustable Monitor Stand",
+      "support": 0.00525,
+      "confidence": 0.160305,
+      "lift": 6.870229
+    },
+    {
+      "item": "Usb C Docking Station",
+      "support": 0.005167,
+      "confidence": 0.157761,
+      "lift": 5.273342
+    }
+  ],
+  "Hdmi Cable": [
+    {
+      "item": "4K Monitor",
+      "support": 0.007083,
+      "confidence": 0.555556,
+      "lift": 27.322404
+    },
+    {
+      "item": "Mac Mini",
+      "support": 0.007083,
+      "confidence": 0.555556,
+      "lift": 27.322404
+    },
+    {
+      "item": "Accessories",
+      "support": 0.007083,
+      "confidence": 0.555556,
+      "lift": 27.322404
+    },
+    {
+      "item": "Mac Mini Pro",
+      "support": 0.006333,
+      "confidence": 0.274368,
+      "lift": 26.987039
+    },
+    {
+      "item": "Apple Magic Keyboard",
+      "support": 0.007083,
+      "confidence": 0.306859,
+      "lift": 25.395245
+    },
+    {
+      "item": "Apple Magic Mouse",
+      "support": 0.005,
+      "confidence": 0.392157,
+      "lift": 24.767802
+    },
+    {
+      "item": "Adjustable Monitor Stand",
+      "support": 0.006083,
+      "confidence": 0.263538,
+      "lift": 11.294482
+    },
+    {
+      "item": "Apple Magic Trackpad",
+      "support": 0.005,
+      "confidence": 0.301508,
+      "lift": 10.610236
+    }
+  ],
+  "Accessories": [
+    {
+      "item": "4K Monitor",
+      "support": 0.007083,
+      "confidence": 0.555556,
+      "lift": 27.322404
+    },
+    {
+      "item": "Mac Mini",
+      "support": 0.007083,
+      "confidence": 0.555556,
+      "lift": 27.322404
+    },
+    {
+      "item": "Apple Magic Keyboard",
+      "support": 0.007083,
+      "confidence": 0.348361,
+      "lift": 27.322404
+    },
+    {
+      "item": "Hdmi Cable",
+      "support": 0.007083,
+      "confidence": 0.348361,
+      "lift": 27.322404
+    },
+    {
+      "item": "Mac Mini Pro",
+      "support": 0.006333,
+      "confidence": 0.311475,
+      "lift": 27.084818
+    },
+    {
+      "item": "Speakers",
+      "support": 0.00525,
+      "confidence": 0.572727,
+      "lift": 25.740552
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.00525,
+      "confidence": 0.572727,
+      "lift": 25.740552
+    },
+    {
+      "item": "Apple Magic Mouse",
+      "support": 0.005,
+      "confidence": 0.413793,
+      "lift": 24.952348
+    },
+    {
+      "item": "Apple Magic Trackpad",
+      "support": 0.00675,
+      "confidence": 0.184932,
+      "lift": 20.547945
+    },
+    {
+      "item": "Apple 20W Usb C Power Adapter",
+      "support": 0.006,
+      "confidence": 0.470588,
+      "lift": 19.814241
+    }
+  ],
+  "4K Monitor": [
+    {
+      "item": "Apple Magic Keyboard",
+      "support": 0.007083,
+      "confidence": 0.348361,
+      "lift": 27.322404
+    },
+    {
+      "item": "Hdmi Cable",
+      "support": 0.007083,
+      "confidence": 0.348361,
+      "lift": 27.322404
+    },
+    {
+      "item": "Accessories",
+      "support": 0.007083,
+      "confidence": 0.348361,
+      "lift": 27.322404
+    },
+    {
+      "item": "Mac Mini Pro",
+      "support": 0.006333,
+      "confidence": 0.311475,
+      "lift": 27.084818
+    },
+    {
+      "item": "Mac Mini",
+      "support": 0.006333,
+      "confidence": 0.622951,
+      "lift": 26.987039
+    },
+    {
+      "item": "Apple Magic Mouse",
+      "support": 0.005,
+      "confidence": 0.413793,
+      "lift": 24.952348
+    },
+    {
+      "item": "Adjustable Monitor Stand",
+      "support": 0.006167,
+      "confidence": 0.156448,
+      "lift": 14.441373
+    },
+    {
+      "item": "Apple Magic Trackpad",
+      "support": 0.005667,
+      "confidence": 0.278689,
+      "lift": 9.807221
+    },
+    {
+      "item": "Anker 7 In 1 Usb C Hub",
+      "support": 0.005,
+      "confidence": 0.245902,
+      "lift": 4.736468
+    },
+    {
+      "item": "Macbook",
+      "support": 0.009,
+      "confidence": 0.22833,
+      "lift": 2.943027
+    }
+  ],
+  "Mac Mini": [
+    {
+      "item": "Apple Magic Keyboard",
+      "support": 0.007083,
+      "confidence": 0.348361,
+      "lift": 27.322404
+    },
+    {
+      "item": "Hdmi Cable",
+      "support": 0.007083,
+      "confidence": 0.348361,
+      "lift": 27.322404
+    },
+    {
+      "item": "Accessories",
+      "support": 0.007083,
+      "confidence": 0.348361,
+      "lift": 27.322404
+    },
+    {
+      "item": "Mac Mini Pro",
+      "support": 0.006333,
+      "confidence": 0.311475,
+      "lift": 27.084818
+    },
+    {
+      "item": "4K Monitor",
+      "support": 0.006333,
+      "confidence": 0.274368,
+      "lift": 26.987039
+    },
+    {
+      "item": "Apple Magic Mouse",
+      "support": 0.007667,
+      "confidence": 0.377049,
+      "lift": 22.736634
+    },
+    {
+      "item": "Apple Magic Trackpad",
+      "support": 0.00675,
+      "confidence": 0.184932,
+      "lift": 20.547945
+    },
+    {
+      "item": "Adjustable Monitor Stand",
+      "support": 0.006167,
+      "confidence": 0.303279,
+      "lift": 12.997658
+    },
+    {
+      "item": "1080P Webcam",
+      "support": 0.009333,
+      "confidence": 0.166419,
+      "lift": 8.875681
+    },
+    {
+      "item": "Usb C Docking Station",
+      "support": 0.008917,
+      "confidence": 0.15899,
+      "lift": 5.314416
+    }
+  ],
+  "Mac Mini Pro": [
+    {
+      "item": "4K Monitor",
+      "support": 0.006333,
+      "confidence": 0.550725,
+      "lift": 27.084818
+    },
+    {
+      "item": "Mac Mini",
+      "support": 0.006333,
+      "confidence": 0.550725,
+      "lift": 27.084818
+    },
+    {
+      "item": "Accessories",
+      "support": 0.006333,
+      "confidence": 0.550725,
+      "lift": 27.084818
+    },
+    {
+      "item": "Hdmi Cable",
+      "support": 0.006333,
+      "confidence": 0.622951,
+      "lift": 26.987039
+    },
+    {
+      "item": "Apple Magic Keyboard",
+      "support": 0.011,
+      "confidence": 0.643902,
+      "lift": 19.661143
+    },
+    {
+      "item": "Apple Magic Mouse",
+      "support": 0.011,
+      "confidence": 0.698413,
+      "lift": 19.134594
+    },
+    {
+      "item": "Anker 7 In 1 Usb C Hub",
+      "support": 0.006917,
+      "confidence": 0.256173,
+      "lift": 18.630752
+    },
+    {
+      "item": "Apple Magic Trackpad",
+      "support": 0.00525,
+      "confidence": 0.194444,
+      "lift": 14.314928
+    }
+  ],
+  "Sony Srs Xb100 Speaker": [
+    {
+      "item": "Speakers",
+      "support": 0.00525,
+      "confidence": 0.572727,
+      "lift": 25.740552
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.00525,
+      "confidence": 0.572727,
+      "lift": 25.740552
+    },
+    {
+      "item": "Accessories",
+      "support": 0.00525,
+      "confidence": 1.0,
+      "lift": 23.4375
+    }
+  ],
+  "Speakers": [
+    {
+      "item": "Accessories",
+      "support": 0.00525,
+      "confidence": 0.235955,
+      "lift": 25.740552
+    },
+    {
+      "item": "Sony Srs Xb100 Speaker",
+      "support": 0.00525,
+      "confidence": 0.235955,
+      "lift": 25.740552
+    },
+    {
+      "item": "Bose Soundlink Flex Speaker",
+      "support": 0.00525,
+      "confidence": 0.235955,
+      "lift": 24.409144
+    },
+    {
+      "item": "Jbl Flip 6 Bluetooth Speaker",
+      "support": 0.008167,
+      "confidence": 0.191406,
+      "lift": 14.537184
+    },
+    {
+      "item": "Marshall Middleton Portable Bluetooth Speaker",
+      "support": 0.014833,
+      "confidence": 0.206497,
+      "lift": 13.921114
+    },
+    {
+      "item": "Homepod Mini",
+      "support": 0.01325,
+      "confidence": 0.184455,
+      "lift": 13.921114
+    },
+    {
+      "item": "Speaker Carrying Case",
+      "support": 0.014,
+      "confidence": 0.328125,
+      "lift": 13.913428
+    },
+    {
+      "item": "3.5Mm Aux Cable",
+      "support": 0.00975,
+      "confidence": 0.228516,
+      "lift": 11.521796
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.01,
+      "confidence": 0.670391,
+      "lift": 3.583382
+    },
+    {
+      "item": "Apple 20W Usb C Power Adapter",
+      "support": 0.01,
+      "confidence": 0.449438,
+      "lift": 2.695282
+    }
+  ],
+  "Usb C Charge Cable": [
+    {
+      "item": "Accessories",
+      "support": 0.00525,
+      "confidence": 0.235955,
+      "lift": 25.740552
+    },
+    {
+      "item": "Sony Srs Xb100 Speaker",
+      "support": 0.00525,
+      "confidence": 0.235955,
+      "lift": 25.740552
+    },
+    {
+      "item": "Bose Soundlink Flex Speaker",
+      "support": 0.00525,
+      "confidence": 0.235955,
+      "lift": 24.409144
+    },
+    {
+      "item": "Speakers",
+      "support": 0.00525,
+      "confidence": 1.0,
+      "lift": 23.4375
+    },
+    {
+      "item": "Apple 20W Usb C Power Adapter",
+      "support": 0.006,
+      "confidence": 0.470588,
+      "lift": 19.814241
+    },
+    {
+      "item": "Ipad",
+      "support": 0.006,
+      "confidence": 0.470588,
+      "lift": 19.814241
+    },
+    {
+      "item": "Ipad Screen Protector",
+      "support": 0.006,
+      "confidence": 0.172662,
+      "lift": 18.83584
+    },
+    {
+      "item": "Ipad Smart Folio",
+      "support": 0.005667,
+      "confidence": 0.16307,
+      "lift": 17.015952
+    },
+    {
+      "item": "Apple Pencil Pro",
+      "support": 0.005417,
+      "confidence": 0.424837,
+      "lift": 12.713315
+    },
+    {
+      "item": "Ipad Pro",
+      "support": 0.009167,
+      "confidence": 0.263789,
+      "lift": 11.552802
+    }
+  ],
+  "Apple Magic Mouse": [
+    {
+      "item": "4K Monitor",
+      "support": 0.005,
+      "confidence": 0.301508,
+      "lift": 24.952348
+    },
+    {
+      "item": "Apple Magic Keyboard",
+      "support": 0.005,
+      "confidence": 0.301508,
+      "lift": 24.952348
+    },
+    {
+      "item": "Accessories",
+      "support": 0.005,
+      "confidence": 0.301508,
+      "lift": 24.952348
+    },
+    {
+      "item": "Hdmi Cable",
+      "support": 0.005,
+      "confidence": 0.315789,
+      "lift": 24.767802
+    },
+    {
+      "item": "Mac Mini",
+      "support": 0.007667,
+      "confidence": 0.462312,
+      "lift": 22.736634
+    },
+    {
+      "item": "Apple Magic Trackpad",
+      "support": 0.00675,
+      "confidence": 0.184932,
+      "lift": 20.547945
+    },
+    {
+      "item": "Mac Mini Pro",
+      "support": 0.011,
+      "confidence": 0.30137,
+      "lift": 19.134594
+    },
+    {
+      "item": "Macbook Pro",
+      "support": 0.0125,
+      "confidence": 0.530035,
+      "lift": 14.009745
+    },
+    {
+      "item": "Macbook",
+      "support": 0.0125,
+      "confidence": 1.0,
+      "lift": 12.889366
+    },
+    {
+      "item": "Macbook Air",
+      "support": 0.011083,
+      "confidence": 0.469965,
+      "lift": 11.82301
+    }
+  ],
+  "Bose Soundlink Flex Speaker": [
+    {
+      "item": "Speakers",
+      "support": 0.00525,
+      "confidence": 0.543103,
+      "lift": 24.409144
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.00525,
+      "confidence": 0.543103,
+      "lift": 24.409144
+    },
+    {
+      "item": "Accessories",
+      "support": 0.00525,
+      "confidence": 1.0,
+      "lift": 23.4375
+    }
+  ],
+  "Apple Magic Trackpad": [
+    {
+      "item": "Apple Magic Mouse",
+      "support": 0.00675,
+      "confidence": 0.75,
+      "lift": 20.547945
+    },
+    {
+      "item": "Mac Mini",
+      "support": 0.00675,
+      "confidence": 0.75,
+      "lift": 20.547945
+    },
+    {
+      "item": "Accessories",
+      "support": 0.00675,
+      "confidence": 0.75,
+      "lift": 20.547945
+    },
+    {
+      "item": "Apple Magic Keyboard",
+      "support": 0.00675,
+      "confidence": 0.496933,
+      "lift": 17.086505
+    },
+    {
+      "item": "Mac Mini Pro",
+      "support": 0.00525,
+      "confidence": 0.386503,
+      "lift": 14.314928
+    },
+    {
+      "item": "Hdmi Cable",
+      "support": 0.005,
+      "confidence": 0.175953,
+      "lift": 10.610236
+    },
+    {
+      "item": "4K Monitor",
+      "support": 0.005667,
+      "confidence": 0.417178,
+      "lift": 10.583795
+    }
+  ],
+  "Ipad Screen Protector": [
+    {
+      "item": "Apple 20W Usb C Power Adapter",
+      "support": 0.006,
+      "confidence": 0.470588,
+      "lift": 19.814241
+    },
+    {
+      "item": "Ipad",
+      "support": 0.006,
+      "confidence": 0.470588,
+      "lift": 19.814241
+    },
+    {
+      "item": "Accessories",
+      "support": 0.006,
+      "confidence": 0.470588,
+      "lift": 19.814241
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.006,
+      "confidence": 0.654545,
+      "lift": 18.83584
+    },
+    {
+      "item": "Apple Pencil Pro",
+      "support": 0.005417,
+      "confidence": 0.424837,
+      "lift": 12.713315
+    },
+    {
+      "item": "Ipad Mini 7",
+      "support": 0.009917,
+      "confidence": 0.269841,
+      "lift": 11.732229
+    },
+    {
+      "item": "Ipad Pro",
+      "support": 0.008833,
+      "confidence": 0.240363,
+      "lift": 10.526838
+    },
+    {
+      "item": "Ipad (A16)",
+      "support": 0.008917,
+      "confidence": 0.24263,
+      "lift": 10.398445
+    },
+    {
+      "item": "Ipad Air",
+      "support": 0.009083,
+      "confidence": 0.247166,
+      "lift": 10.370582
+    },
+    {
+      "item": "Ipad Magic Keyboard",
+      "support": 0.010167,
+      "confidence": 0.276644,
+      "lift": 7.904114
+    }
+  ],
+  "Apple 20W Usb C Power Adapter": [
+    {
+      "item": "Ipad Screen Protector",
+      "support": 0.006,
+      "confidence": 0.252632,
+      "lift": 19.814241
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.006,
+      "confidence": 0.252632,
+      "lift": 19.814241
+    },
+    {
+      "item": "Accessories",
+      "support": 0.006,
+      "confidence": 0.252632,
+      "lift": 19.814241
+    },
+    {
+      "item": "Ipad Smart Folio",
+      "support": 0.005667,
+      "confidence": 0.238596,
+      "lift": 19.610671
+    },
+    {
+      "item": "Ipad",
+      "support": 0.006,
+      "confidence": 0.654545,
+      "lift": 18.83584
+    },
+    {
+      "item": "Apple Pencil Pro",
+      "support": 0.005,
+      "confidence": 0.210526,
+      "lift": 17.790956
+    },
+    {
+      "item": "Apple Watch Ultra",
+      "support": 0.006,
+      "confidence": 0.365482,
+      "lift": 15.776212
+    },
+    {
+      "item": "Apple Watch",
+      "support": 0.006,
+      "confidence": 1.0,
+      "lift": 14.925373
+    },
+    {
+      "item": "Ipad (A16)",
+      "support": 0.0065,
+      "confidence": 0.273684,
+      "lift": 11.729323
+    },
+    {
+      "item": "Ipad Pro",
+      "support": 0.00575,
+      "confidence": 0.242105,
+      "lift": 10.60315
+    }
+  ],
+  "Ipad": [
+    {
+      "item": "Ipad Screen Protector",
+      "support": 0.006,
+      "confidence": 0.252632,
+      "lift": 19.814241
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.006,
+      "confidence": 0.252632,
+      "lift": 19.814241
+    },
+    {
+      "item": "Accessories",
+      "support": 0.006,
+      "confidence": 0.252632,
+      "lift": 19.814241
+    },
+    {
+      "item": "Ipad Smart Folio",
+      "support": 0.005667,
+      "confidence": 0.238596,
+      "lift": 19.610671
+    },
+    {
+      "item": "Apple 20W Usb C Power Adapter",
+      "support": 0.006,
+      "confidence": 0.172662,
+      "lift": 18.83584
+    },
+    {
+      "item": "Apple Pencil Pro",
+      "support": 0.005,
+      "confidence": 0.210526,
+      "lift": 17.790956
+    },
+    {
+      "item": "Ipad (A16)",
+      "support": 0.005333,
+      "confidence": 0.299065,
+      "lift": 12.817089
+    },
+    {
+      "item": "Ipad Mini 7",
+      "support": 0.009417,
+      "confidence": 0.281796,
+      "lift": 12.251979
+    },
+    {
+      "item": "Ipad Pro",
+      "support": 0.009167,
+      "confidence": 0.263789,
+      "lift": 11.552802
+    },
+    {
+      "item": "Ipad Air",
+      "support": 0.0095,
+      "confidence": 0.273381,
+      "lift": 11.470544
+    }
+  ],
+  "Ipad Smart Folio": [
+    {
+      "item": "Apple 20W Usb C Power Adapter",
+      "support": 0.005667,
+      "confidence": 0.465753,
+      "lift": 19.610671
+    },
+    {
+      "item": "Ipad",
+      "support": 0.005667,
+      "confidence": 0.465753,
+      "lift": 19.610671
+    },
+    {
+      "item": "Accessories",
+      "support": 0.005667,
+      "confidence": 0.465753,
+      "lift": 19.610671
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.005667,
+      "confidence": 0.591304,
+      "lift": 17.015952
+    },
+    {
+      "item": "Apple Pencil Pro",
+      "support": 0.005167,
+      "confidence": 0.402597,
+      "lift": 12.047803
+    },
+    {
+      "item": "Ipad Screen Protector",
+      "support": 0.005167,
+      "confidence": 0.433566,
+      "lift": 11.797726
+    },
+    {
+      "item": "Ipad (A16)",
+      "support": 0.009833,
+      "confidence": 0.267574,
+      "lift": 11.467444
+    },
+    {
+      "item": "Ipad Pro",
+      "support": 0.0095,
+      "confidence": 0.258503,
+      "lift": 11.321317
+    },
+    {
+      "item": "Ipad Air",
+      "support": 0.009083,
+      "confidence": 0.247166,
+      "lift": 10.370582
+    },
+    {
+      "item": "Ipad Mini 7",
+      "support": 0.008333,
+      "confidence": 0.226757,
+      "lift": 9.859016
+    }
+  ],
+  "Anker 7 In 1 Usb C Hub": [
+    {
+      "item": "Accessories",
+      "support": 0.006917,
+      "confidence": 0.50303,
+      "lift": 18.630752
+    },
+    {
+      "item": "Mac Mini Pro",
+      "support": 0.006917,
+      "confidence": 0.50303,
+      "lift": 18.630752
+    },
+    {
+      "item": "Mac Mini",
+      "support": 0.006917,
+      "confidence": 1.0,
+      "lift": 17.830609
+    },
+    {
+      "item": "Macbook Pro",
+      "support": 0.014,
+      "confidence": 0.495575,
+      "lift": 13.098905
+    },
+    {
+      "item": "Macbook",
+      "support": 0.01425,
+      "confidence": 1.0,
+      "lift": 12.889366
+    },
+    {
+      "item": "Macbook Air",
+      "support": 0.01425,
+      "confidence": 0.504425,
+      "lift": 12.689932
+    },
+    {
+      "item": "Apple Magic Keyboard",
+      "support": 0.007583,
+      "confidence": 0.551515,
+      "lift": 12.654267
+    },
+    {
+      "item": "4K Monitor",
+      "support": 0.005,
+      "confidence": 0.363636,
+      "lift": 9.225447
+    },
+    {
+      "item": "Samsung T7 1Tb Portable Ssd",
+      "support": 0.00825,
+      "confidence": 0.292035,
+      "lift": 9.149934
+    },
+    {
+      "item": "Laptop Sleeve",
+      "support": 0.008333,
+      "confidence": 0.294985,
+      "lift": 7.678575
+    }
+  ],
+  "Apple Pencil Pro": [
+    {
+      "item": "Ipad",
+      "support": 0.005,
+      "confidence": 0.631579,
+      "lift": 18.174934
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.005,
+      "confidence": 0.631579,
+      "lift": 18.174934
+    },
+    {
+      "item": "Accessories",
+      "support": 0.005,
+      "confidence": 0.631579,
+      "lift": 18.174934
+    },
+    {
+      "item": "Apple 20W Usb C Power Adapter",
+      "support": 0.005,
+      "confidence": 0.422535,
+      "lift": 17.790956
+    },
+    {
+      "item": "Ipad Screen Protector",
+      "support": 0.005417,
+      "confidence": 0.162095,
+      "lift": 12.713315
+    },
+    {
+      "item": "Ipad Mini 7",
+      "support": 0.009417,
+      "confidence": 0.281796,
+      "lift": 12.251979
+    },
+    {
+      "item": "Ipad Smart Folio",
+      "support": 0.005167,
+      "confidence": 0.154613,
+      "lift": 12.047803
+    },
+    {
+      "item": "Ipad Air",
+      "support": 0.008667,
+      "confidence": 0.259352,
+      "lift": 10.881886
+    },
+    {
+      "item": "Ipad Pro",
+      "support": 0.007667,
+      "confidence": 0.229426,
+      "lift": 10.047873
+    },
+    {
+      "item": "Ipad (A16)",
+      "support": 0.007667,
+      "confidence": 0.229426,
+      "lift": 9.832561
+    }
+  ],
+  "Adjustable Monitor Stand": [
+    {
+      "item": "4K Monitor",
+      "support": 0.005667,
+      "confidence": 0.708333,
+      "lift": 17.970402
+    },
+    {
+      "item": "Accessories",
+      "support": 0.005667,
+      "confidence": 0.708333,
+      "lift": 17.970402
+    },
+    {
+      "item": "Mac Mini",
+      "support": 0.00525,
+      "confidence": 0.969231,
+      "lift": 17.281975
+    },
+    {
+      "item": "Hdmi Cable",
+      "support": 0.005667,
+      "confidence": 0.596491,
+      "lift": 13.845058
+    },
+    {
+      "item": "Apple Magic Keyboard",
+      "support": 0.00525,
+      "confidence": 0.484615,
+      "lift": 11.119282
+    },
+    {
+      "item": "Apple Magic Mouse",
+      "support": 0.007167,
+      "confidence": 0.661538,
+      "lift": 8.762099
+    }
+  ],
+  "Usb C Docking Station": [
+    {
+      "item": "Accessories",
+      "support": 0.005167,
+      "confidence": 1.0,
+      "lift": 17.830609
+    },
+    {
+      "item": "Mac Mini",
+      "support": 0.005167,
+      "confidence": 1.0,
+      "lift": 17.830609
+    },
+    {
+      "item": "Macbook Pro",
+      "support": 0.006,
+      "confidence": 0.553846,
+      "lift": 14.639105
+    },
+    {
+      "item": "Apple Magic Keyboard",
+      "support": 0.005167,
+      "confidence": 0.579439,
+      "lift": 13.294973
+    },
+    {
+      "item": "Macbook",
+      "support": 0.006,
+      "confidence": 1.0,
+      "lift": 12.889366
+    },
+    {
+      "item": "Apple Magic Mouse",
+      "support": 0.005083,
+      "confidence": 0.570093,
+      "lift": 7.550907
+    },
+    {
+      "item": "Anker 7 In 1 Usb C Hub",
+      "support": 0.005583,
+      "confidence": 0.18663,
+      "lift": 3.59479
+    }
+  ],
+  "1080P Webcam": [
+    {
+      "item": "Accessories",
+      "support": 0.005917,
+      "confidence": 0.922078,
+      "lift": 16.441211
+    },
+    {
+      "item": "Mac Mini",
+      "support": 0.005917,
+      "confidence": 0.922078,
+      "lift": 16.441211
+    },
+    {
+      "item": "Apple Magic Mouse",
+      "support": 0.005917,
+      "confidence": 0.315556,
+      "lift": 8.645358
+    },
+    {
+      "item": "Apple Magic Keyboard",
+      "support": 0.005083,
+      "confidence": 0.271111,
+      "lift": 6.220523
+    }
+  ],
+  "Apple Watch Se": [
+    {
+      "item": "Apple Watch",
+      "support": 0.0065,
+      "confidence": 0.325,
+      "lift": 16.25
+    },
+    {
+      "item": "Apple Watch Charging Dock",
+      "support": 0.0065,
+      "confidence": 0.325,
+      "lift": 16.25
+    },
+    {
+      "item": "Accessories",
+      "support": 0.006833,
+      "confidence": 1.0,
+      "lift": 14.925373
+    },
+    {
+      "item": "Apple Watch Screen Protector",
+      "support": 0.006833,
+      "confidence": 0.341667,
+      "lift": 14.748201
+    }
+  ],
+  "Apple Watch": [
+    {
+      "item": "Accessories",
+      "support": 0.0065,
+      "confidence": 0.325,
+      "lift": 16.25
+    },
+    {
+      "item": "Apple Watch Se",
+      "support": 0.0065,
+      "confidence": 0.325,
+      "lift": 16.25
+    },
+    {
+      "item": "Apple Watch Ultra",
+      "support": 0.006,
+      "confidence": 0.365482,
+      "lift": 15.776212
+    },
+    {
+      "item": "Apple Watch Screen Protector",
+      "support": 0.005167,
+      "confidence": 0.452555,
+      "lift": 11.628816
+    },
+    {
+      "item": "Apple Watch Braided Solo Loop",
+      "support": 0.005333,
+      "confidence": 0.230216,
+      "lift": 10.876338
+    },
+    {
+      "item": "Apple Watch Sport Band",
+      "support": 0.005167,
+      "confidence": 0.223022,
+      "lift": 9.731851
+    },
+    {
+      "item": "Apple Watch Charging Dock",
+      "support": 0.0065,
+      "confidence": 0.325,
+      "lift": 9.39759
+    },
+    {
+      "item": "Apple Watch Milanese Loop",
+      "support": 0.011833,
+      "confidence": 0.176617,
+      "lift": 7.937839
+    },
+    {
+      "item": "Iphone",
+      "support": 0.006,
+      "confidence": 1.0,
+      "lift": 5.073996
+    },
+    {
+      "item": "Apple 20W Usb C Power Adapter",
+      "support": 0.01,
+      "confidence": 0.833333,
+      "lift": 4.997501
+    }
+  ],
+  "Apple Watch Charging Dock": [
+    {
+      "item": "Accessories",
+      "support": 0.0065,
+      "confidence": 0.325,
+      "lift": 16.25
+    },
+    {
+      "item": "Apple Watch Se",
+      "support": 0.0065,
+      "confidence": 0.325,
+      "lift": 16.25
+    },
+    {
+      "item": "Apple Watch Ultra",
+      "support": 0.00725,
+      "confidence": 0.3625,
+      "lift": 15.647482
+    },
+    {
+      "item": "Apple Watch",
+      "support": 0.00725,
+      "confidence": 1.0,
+      "lift": 14.925373
+    },
+    {
+      "item": "Apple Watch Screen Protector",
+      "support": 0.0065,
+      "confidence": 0.325,
+      "lift": 8.351178
+    },
+    {
+      "item": "Belkin Magsafe 3 In 1 Charging Stand",
+      "support": 0.007417,
+      "confidence": 0.214458,
+      "lift": 6.482353
+    }
+  ],
+  "Apple Watch Ultra": [
+    {
+      "item": "Apple 20W Usb C Power Adapter",
+      "support": 0.006,
+      "confidence": 0.258993,
+      "lift": 15.776212
+    },
+    {
+      "item": "Apple Watch",
+      "support": 0.006,
+      "confidence": 0.258993,
+      "lift": 15.776212
+    },
+    {
+      "item": "Apple Watch Charging Dock",
+      "support": 0.00725,
+      "confidence": 0.31295,
+      "lift": 15.647482
+    },
+    {
+      "item": "Accessories",
+      "support": 0.007833,
+      "confidence": 1.0,
+      "lift": 14.925373
+    },
+    {
+      "item": "Apple Watch Screen Protector",
+      "support": 0.007833,
+      "confidence": 0.338129,
+      "lift": 14.595518
+    }
+  ],
+  "Apple Watch Screen Protector": [
+    {
+      "item": "Accessories",
+      "support": 0.007833,
+      "confidence": 1.0,
+      "lift": 14.925373
+    },
+    {
+      "item": "Apple Watch",
+      "support": 0.007833,
+      "confidence": 1.0,
+      "lift": 14.925373
+    },
+    {
+      "item": "Apple Watch Se",
+      "support": 0.006833,
+      "confidence": 0.294964,
+      "lift": 14.748201
+    },
+    {
+      "item": "Apple Watch Ultra",
+      "support": 0.007833,
+      "confidence": 0.338129,
+      "lift": 14.595518
+    },
+    {
+      "item": "Apple Watch Braided Solo Loop",
+      "support": 0.005333,
+      "confidence": 0.230216,
+      "lift": 10.876338
+    },
+    {
+      "item": "Apple Watch Sport Band",
+      "support": 0.005167,
+      "confidence": 0.223022,
+      "lift": 9.731851
+    },
+    {
+      "item": "Apple Watch Charging Dock",
+      "support": 0.0065,
+      "confidence": 0.167024,
+      "lift": 8.351178
+    },
+    {
+      "item": "Apple Watch Milanese Loop",
+      "support": 0.006417,
+      "confidence": 0.164882,
+      "lift": 7.410437
+    }
+  ],
+  "Macbook": [
+    {
+      "item": "Accessories",
+      "support": 0.006,
+      "confidence": 0.553846,
+      "lift": 14.639105
+    },
+    {
+      "item": "Macbook Pro",
+      "support": 0.006,
+      "confidence": 0.553846,
+      "lift": 14.639105
+    },
+    {
+      "item": "Macbook Air",
+      "support": 0.007417,
+      "confidence": 0.581699,
+      "lift": 14.633946
+    },
+    {
+      "item": "Anker 7 In 1 Usb C Hub",
+      "support": 0.01425,
+      "confidence": 0.183673,
+      "lift": 12.889366
+    },
+    {
+      "item": "Laptop Sleeve",
+      "support": 0.013917,
+      "confidence": 0.179377,
+      "lift": 12.889366
+    },
+    {
+      "item": "Apple Magic Mouse",
+      "support": 0.0125,
+      "confidence": 0.161117,
+      "lift": 12.889366
+    },
+    {
+      "item": "Samsung T7 1Tb Portable Ssd",
+      "support": 0.00825,
+      "confidence": 0.292035,
+      "lift": 9.149934
+    },
+    {
+      "item": "Microfiber Cleaning Cloth",
+      "support": 0.005167,
+      "confidence": 0.187879,
+      "lift": 8.080808
+    },
+    {
+      "item": "Laptop Backpack",
+      "support": 0.007417,
+      "confidence": 0.186583,
+      "lift": 7.513402
+    },
+    {
+      "item": "Usb C Docking Station",
+      "support": 0.006,
+      "confidence": 0.15859,
+      "lift": 5.301069
+    }
+  ],
+  "Macbook Pro": [
+    {
+      "item": "Macbook",
+      "support": 0.006,
+      "confidence": 0.15859,
+      "lift": 14.639105
+    },
+    {
+      "item": "Usb C Docking Station",
+      "support": 0.006,
+      "confidence": 0.15859,
+      "lift": 14.639105
+    },
+    {
+      "item": "Apple Magic Mouse",
+      "support": 0.0125,
+      "confidence": 0.330396,
+      "lift": 14.009745
+    },
+    {
+      "item": "Microfiber Cleaning Cloth",
+      "support": 0.00625,
+      "confidence": 0.165198,
+      "lift": 13.577937
+    },
+    {
+      "item": "Laptop Sleeve",
+      "support": 0.013917,
+      "confidence": 0.367841,
+      "lift": 13.376051
+    },
+    {
+      "item": "Anker 7 In 1 Usb C Hub",
+      "support": 0.014,
+      "confidence": 0.370044,
+      "lift": 13.098905
+    },
+    {
+      "item": "Samsung T7 1Tb Portable Ssd",
+      "support": 0.008833,
+      "confidence": 0.23348,
+      "lift": 12.971121
+    },
+    {
+      "item": "Accessories",
+      "support": 0.014,
+      "confidence": 1.0,
+      "lift": 12.889366
+    }
+  ],
+  "Macbook Air": [
+    {
+      "item": "Laptop Backpack",
+      "support": 0.007417,
+      "confidence": 0.186583,
+      "lift": 14.633946
+    },
+    {
+      "item": "Macbook",
+      "support": 0.007417,
+      "confidence": 0.186583,
+      "lift": 14.633946
+    },
+    {
+      "item": "Accessories",
+      "support": 0.007417,
+      "confidence": 0.166667,
+      "lift": 13.071895
+    },
+    {
+      "item": "Samsung T7 1Tb Portable Ssd",
+      "support": 0.009167,
+      "confidence": 0.230608,
+      "lift": 12.811554
+    },
+    {
+      "item": "Anker 7 In 1 Usb C Hub",
+      "support": 0.01425,
+      "confidence": 0.358491,
+      "lift": 12.689932
+    },
+    {
+      "item": "Laptop Sleeve",
+      "support": 0.013583,
+      "confidence": 0.341719,
+      "lift": 12.426148
+    },
+    {
+      "item": "Apple Magic Mouse",
+      "support": 0.011083,
+      "confidence": 0.278826,
+      "lift": 11.82301
+    }
+  ],
+  "Laptop Backpack": [
+    {
+      "item": "Accessories",
+      "support": 0.007417,
+      "confidence": 0.581699,
+      "lift": 14.633946
+    },
+    {
+      "item": "Macbook Air",
+      "support": 0.007417,
+      "confidence": 0.581699,
+      "lift": 14.633946
+    },
+    {
+      "item": "Macbook",
+      "support": 0.007417,
+      "confidence": 1.0,
+      "lift": 12.889366
+    },
+    {
+      "item": "Macbook Pro",
+      "support": 0.005333,
+      "confidence": 0.418301,
+      "lift": 11.056405
+    },
+    {
+      "item": "Anker 7 In 1 Usb C Hub",
+      "support": 0.005,
+      "confidence": 0.201342,
+      "lift": 3.878182
+    }
+  ],
+  "Jbl Flip 6 Bluetooth Speaker": [
+    {
+      "item": "Accessories",
+      "support": 0.008167,
+      "confidence": 0.620253,
+      "lift": 14.537184
+    },
+    {
+      "item": "Speakers",
+      "support": 0.008167,
+      "confidence": 0.620253,
+      "lift": 14.537184
+    }
+  ],
+  "Marshall Middleton Portable Bluetooth Speaker": [
+    {
+      "item": "Speakers",
+      "support": 0.014833,
+      "confidence": 1.0,
+      "lift": 13.921114
+    },
+    {
+      "item": "Accessories",
+      "support": 0.0085,
+      "confidence": 0.573034,
+      "lift": 13.430478
+    }
+  ],
+  "Homepod Mini": [
+    {
+      "item": "Speakers",
+      "support": 0.01325,
+      "confidence": 1.0,
+      "lift": 13.921114
+    },
+    {
+      "item": "Accessories",
+      "support": 0.007167,
+      "confidence": 0.540881,
+      "lift": 12.676887
+    }
+  ],
+  "Speaker Carrying Case": [
+    {
+      "item": "Accessories",
+      "support": 0.014,
+      "confidence": 0.59364,
+      "lift": 13.913428
+    },
+    {
+      "item": "Speakers",
+      "support": 0.014,
+      "confidence": 0.59364,
+      "lift": 13.913428
+    }
+  ],
+  "Thunderbolt 4 Cable": [
+    {
+      "item": "Accessories",
+      "support": 0.005583,
+      "confidence": 0.544715,
+      "lift": 13.703533
+    },
+    {
+      "item": "Macbook Air",
+      "support": 0.005583,
+      "confidence": 0.544715,
+      "lift": 13.703533
+    },
+    {
+      "item": "Macbook",
+      "support": 0.005583,
+      "confidence": 1.0,
+      "lift": 12.889366
+    }
+  ],
+  "Microfiber Cleaning Cloth": [
+    {
+      "item": "Accessories",
+      "support": 0.00625,
+      "confidence": 0.513699,
+      "lift": 13.577937
+    },
+    {
+      "item": "Macbook Pro",
+      "support": 0.00625,
+      "confidence": 0.513699,
+      "lift": 13.577937
+    },
+    {
+      "item": "Macbook",
+      "support": 0.00625,
+      "confidence": 1.0,
+      "lift": 12.889366
+    },
+    {
+      "item": "Macbook Air",
+      "support": 0.005917,
+      "confidence": 0.486301,
+      "lift": 12.233997
+    },
+    {
+      "item": "Laptop Sleeve",
+      "support": 0.005167,
+      "confidence": 0.424658,
+      "lift": 11.053992
+    }
+  ],
+  "Laptop Sleeve": [
+    {
+      "item": "Accessories",
+      "support": 0.013917,
+      "confidence": 0.506061,
+      "lift": 13.376051
+    },
+    {
+      "item": "Macbook Pro",
+      "support": 0.013917,
+      "confidence": 0.506061,
+      "lift": 13.376051
+    },
+    {
+      "item": "Macbook",
+      "support": 0.013917,
+      "confidence": 1.0,
+      "lift": 12.889366
+    },
+    {
+      "item": "Macbook Air",
+      "support": 0.013583,
+      "confidence": 0.493939,
+      "lift": 12.426148
+    },
+    {
+      "item": "Samsung T7 1Tb Portable Ssd",
+      "support": 0.00625,
+      "confidence": 0.16269,
+      "lift": 9.038322
+    },
+    {
+      "item": "Apple Magic Mouse",
+      "support": 0.007833,
+      "confidence": 0.203905,
+      "lift": 8.64613
+    },
+    {
+      "item": "Microfiber Cleaning Cloth",
+      "support": 0.005167,
+      "confidence": 0.187879,
+      "lift": 8.080808
+    },
+    {
+      "item": "Anker 7 In 1 Usb C Hub",
+      "support": 0.008333,
+      "confidence": 0.21692,
+      "lift": 7.678575
+    }
+  ],
+  "Samsung T7 1Tb Portable Ssd": [
+    {
+      "item": "Accessories",
+      "support": 0.008833,
+      "confidence": 0.490741,
+      "lift": 12.971121
+    },
+    {
+      "item": "Macbook Pro",
+      "support": 0.008833,
+      "confidence": 0.490741,
+      "lift": 12.971121
+    },
+    {
+      "item": "Macbook",
+      "support": 0.009167,
+      "confidence": 1.0,
+      "lift": 12.889366
+    },
+    {
+      "item": "Macbook Air",
+      "support": 0.009167,
+      "confidence": 0.509259,
+      "lift": 12.811554
+    },
+    {
+      "item": "Anker 7 In 1 Usb C Hub",
+      "support": 0.00825,
+      "confidence": 0.258486,
+      "lift": 9.149934
+    },
+    {
+      "item": "Laptop Sleeve",
+      "support": 0.00625,
+      "confidence": 0.347222,
+      "lift": 9.038322
+    },
+    {
+      "item": "Apple Magic Mouse",
+      "support": 0.005083,
+      "confidence": 0.159269,
+      "lift": 6.753453
+    }
+  ],
+  "Apple Pencil (Usb C)": [
+    {
+      "item": "Accessories",
+      "support": 0.005333,
+      "confidence": 0.299065,
+      "lift": 12.817089
+    },
+    {
+      "item": "Ipad (A16)",
+      "support": 0.005333,
+      "confidence": 0.299065,
+      "lift": 12.817089
+    },
+    {
+      "item": "Ipad",
+      "support": 0.005333,
+      "confidence": 1.0,
+      "lift": 10.752688
+    },
+    {
+      "item": "Ipad Smart Folio",
+      "support": 0.006833,
+      "confidence": 0.383178,
+      "lift": 8.329947
+    },
+    {
+      "item": "Ipad Magic Keyboard",
+      "support": 0.005167,
+      "confidence": 0.28972,
+      "lift": 8.277704
+    },
+    {
+      "item": "Ipad Screen Protector",
+      "support": 0.007833,
+      "confidence": 0.439252,
+      "lift": 8.274769
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.006917,
+      "confidence": 0.235795,
+      "lift": 6.785481
+    },
+    {
+      "item": "Apple Pencil Pro",
+      "support": 0.005083,
+      "confidence": 0.285047,
+      "lift": 6.264763
+    }
+  ],
+  "Ipad (A16)": [
+    {
+      "item": "Apple Pencil (Usb C)",
+      "support": 0.005333,
+      "confidence": 0.228571,
+      "lift": 12.817089
+    },
+    {
+      "item": "Ipad",
+      "support": 0.005333,
+      "confidence": 0.228571,
+      "lift": 12.817089
+    },
+    {
+      "item": "Apple 20W Usb C Power Adapter",
+      "support": 0.0065,
+      "confidence": 0.278571,
+      "lift": 11.729323
+    },
+    {
+      "item": "Ipad Magic Keyboard",
+      "support": 0.006667,
+      "confidence": 0.285714,
+      "lift": 11.505273
+    },
+    {
+      "item": "Ipad Smart Folio",
+      "support": 0.009833,
+      "confidence": 0.421429,
+      "lift": 11.467444
+    },
+    {
+      "item": "Accessories",
+      "support": 0.005333,
+      "confidence": 0.2,
+      "lift": 11.214953
+    },
+    {
+      "item": "Ipad Screen Protector",
+      "support": 0.008917,
+      "confidence": 0.382143,
+      "lift": 10.398445
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.008083,
+      "confidence": 0.346429,
+      "lift": 9.969168
+    },
+    {
+      "item": "Apple Pencil Pro",
+      "support": 0.007667,
+      "confidence": 0.328571,
+      "lift": 9.832561
+    }
+  ],
+  "Ipad Mini 7": [
+    {
+      "item": "Apple Pencil Pro",
+      "support": 0.009417,
+      "confidence": 0.40942,
+      "lift": 12.251979
+    },
+    {
+      "item": "Ipad",
+      "support": 0.009417,
+      "confidence": 0.40942,
+      "lift": 12.251979
+    },
+    {
+      "item": "Ipad Magic Keyboard",
+      "support": 0.006833,
+      "confidence": 0.297101,
+      "lift": 11.963817
+    },
+    {
+      "item": "Ipad Screen Protector",
+      "support": 0.009917,
+      "confidence": 0.431159,
+      "lift": 11.732229
+    },
+    {
+      "item": "Accessories",
+      "support": 0.009417,
+      "confidence": 0.368078,
+      "lift": 11.014808
+    },
+    {
+      "item": "Apple 20W Usb C Power Adapter",
+      "support": 0.0055,
+      "confidence": 0.23913,
+      "lift": 10.06865
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.008,
+      "confidence": 0.347826,
+      "lift": 10.009384
+    },
+    {
+      "item": "Ipad Smart Folio",
+      "support": 0.008333,
+      "confidence": 0.362319,
+      "lift": 9.859016
+    }
+  ],
+  "Ipad Magic Keyboard": [
+    {
+      "item": "Accessories",
+      "support": 0.006833,
+      "confidence": 0.275168,
+      "lift": 11.963817
+    },
+    {
+      "item": "Ipad Mini 7",
+      "support": 0.006833,
+      "confidence": 0.275168,
+      "lift": 11.963817
+    },
+    {
+      "item": "Ipad (A16)",
+      "support": 0.006667,
+      "confidence": 0.268456,
+      "lift": 11.505273
+    },
+    {
+      "item": "Ipad",
+      "support": 0.006833,
+      "confidence": 1.0,
+      "lift": 10.752688
+    },
+    {
+      "item": "Ipad Air",
+      "support": 0.005917,
+      "confidence": 0.238255,
+      "lift": 9.996715
+    },
+    {
+      "item": "Ipad Pro",
+      "support": 0.005417,
+      "confidence": 0.218121,
+      "lift": 9.552736
+    },
+    {
+      "item": "Ipad Smart Folio",
+      "support": 0.0095,
+      "confidence": 0.38255,
+      "lift": 8.316312
+    },
+    {
+      "item": "Ipad Screen Protector",
+      "support": 0.010167,
+      "confidence": 0.290476,
+      "lift": 7.904114
+    },
+    {
+      "item": "Apple Pencil (Usb C)",
+      "support": 0.005167,
+      "confidence": 0.208054,
+      "lift": 7.092739
+    },
+    {
+      "item": "Apple Pencil Pro",
+      "support": 0.008,
+      "confidence": 0.322148,
+      "lift": 7.080168
+    }
+  ],
+  "Apple Watch Sport Band": [
+    {
+      "item": "Apple Watch Screen Protector",
+      "support": 0.005167,
+      "confidence": 0.452555,
+      "lift": 11.628816
+    },
+    {
+      "item": "Accessories",
+      "support": 0.005167,
+      "confidence": 0.452555,
+      "lift": 11.628816
+    },
+    {
+      "item": "Apple Watch",
+      "support": 0.005167,
+      "confidence": 0.652632,
+      "lift": 9.74077
+    }
+  ],
+  "Ipad Pro": [
+    {
+      "item": "Ipad",
+      "support": 0.009167,
+      "confidence": 0.40146,
+      "lift": 11.552802
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.009167,
+      "confidence": 0.40146,
+      "lift": 11.552802
+    },
+    {
+      "item": "Ipad Smart Folio",
+      "support": 0.0095,
+      "confidence": 0.416058,
+      "lift": 11.321317
+    },
+    {
+      "item": "Accessories",
+      "support": 0.0095,
+      "confidence": 1.0,
+      "lift": 10.752688
+    },
+    {
+      "item": "Apple 20W Usb C Power Adapter",
+      "support": 0.00575,
+      "confidence": 0.251825,
+      "lift": 10.60315
+    },
+    {
+      "item": "Ipad Screen Protector",
+      "support": 0.008833,
+      "confidence": 0.386861,
+      "lift": 10.526838
+    },
+    {
+      "item": "Apple Pencil Pro",
+      "support": 0.007667,
+      "confidence": 0.335766,
+      "lift": 10.047873
+    },
+    {
+      "item": "Ipad Magic Keyboard",
+      "support": 0.005417,
+      "confidence": 0.237226,
+      "lift": 9.552736
+    }
+  ],
+  "3.5Mm Aux Cable": [
+    {
+      "item": "Accessories",
+      "support": 0.00975,
+      "confidence": 0.491597,
+      "lift": 11.521796
+    },
+    {
+      "item": "Speakers",
+      "support": 0.00975,
+      "confidence": 0.491597,
+      "lift": 11.521796
+    }
+  ],
+  "Ipad Air": [
+    {
+      "item": "Ipad",
+      "support": 0.0095,
+      "confidence": 0.398601,
+      "lift": 11.470544
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.0095,
+      "confidence": 0.398601,
+      "lift": 11.470544
+    },
+    {
+      "item": "Apple Pencil Pro",
+      "support": 0.008667,
+      "confidence": 0.363636,
+      "lift": 10.881886
+    },
+    {
+      "item": "Accessories",
+      "support": 0.0095,
+      "confidence": 1.0,
+      "lift": 10.752688
+    },
+    {
+      "item": "Apple 20W Usb C Power Adapter",
+      "support": 0.006,
+      "confidence": 0.251748,
+      "lift": 10.599926
+    },
+    {
+      "item": "Ipad Screen Protector",
+      "support": 0.009083,
+      "confidence": 0.381119,
+      "lift": 10.370582
+    },
+    {
+      "item": "Ipad Smart Folio",
+      "support": 0.009083,
+      "confidence": 0.381119,
+      "lift": 10.370582
+    },
+    {
+      "item": "Ipad Magic Keyboard",
+      "support": 0.005917,
+      "confidence": 0.248252,
+      "lift": 9.996715
+    }
+  ],
+  "Apple Watch Braided Solo Loop": [
+    {
+      "item": "Apple Watch Screen Protector",
+      "support": 0.005333,
+      "confidence": 0.435374,
+      "lift": 11.187344
+    },
+    {
+      "item": "Accessories",
+      "support": 0.005333,
+      "confidence": 0.435374,
+      "lift": 11.187344
+    },
+    {
+      "item": "Apple Watch",
+      "support": 0.005333,
+      "confidence": 0.251969,
+      "lift": 10.876338
+    }
+  ],
+  "Iphone": [
+    {
+      "item": "Apple 20W Usb C Power Adapter",
+      "support": 0.012083,
+      "confidence": 0.551331,
+      "lift": 8.625775
+    },
+    {
+      "item": "Iphone Tempered Glass Screen Protector",
+      "support": 0.012083,
+      "confidence": 0.551331,
+      "lift": 8.625775
+    },
+    {
+      "item": "Accessories",
+      "support": 0.012083,
+      "confidence": 0.551331,
+      "lift": 8.625775
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.008583,
+      "confidence": 0.502439,
+      "lift": 7.985786
+    },
+    {
+      "item": "Usb C To Lightning Cable",
+      "support": 0.0185,
+      "confidence": 0.184539,
+      "lift": 7.506657
+    },
+    {
+      "item": "Iphone 16",
+      "support": 0.0065,
+      "confidence": 0.204188,
+      "lift": 7.14362
+    },
+    {
+      "item": "Magsafe Charger",
+      "support": 0.015583,
+      "confidence": 0.155445,
+      "lift": 6.758466
+    },
+    {
+      "item": "Iphone Se",
+      "support": 0.005167,
+      "confidence": 0.168022,
+      "lift": 6.203877
+    },
+    {
+      "item": "Iphone 17 Pro",
+      "support": 0.005083,
+      "confidence": 0.165761,
+      "lift": 6.177424
+    },
+    {
+      "item": "Iphone 17 Pro Max",
+      "support": 0.005667,
+      "confidence": 0.17942,
+      "lift": 6.134001
+    }
+  ],
+  "Usb C To Lightning Cable": [
+    {
+      "item": "Apple 20W Usb C Power Adapter",
+      "support": 0.012083,
+      "confidence": 0.551331,
+      "lift": 8.625775
+    },
+    {
+      "item": "Iphone Tempered Glass Screen Protector",
+      "support": 0.012083,
+      "confidence": 0.551331,
+      "lift": 8.625775
+    },
+    {
+      "item": "Accessories",
+      "support": 0.012083,
+      "confidence": 0.551331,
+      "lift": 8.625775
+    },
+    {
+      "item": "Iphone",
+      "support": 0.012083,
+      "confidence": 0.857988,
+      "lift": 8.558485
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.012083,
+      "confidence": 0.314534,
+      "lift": 7.609684
+    },
+    {
+      "item": "Iphone 17",
+      "support": 0.005917,
+      "confidence": 0.154013,
+      "lift": 5.516884
+    },
+    {
+      "item": "Iphone 15",
+      "support": 0.006083,
+      "confidence": 0.158351,
+      "lift": 5.429191
+    },
+    {
+      "item": "Magsafe Charger",
+      "support": 0.005667,
+      "confidence": 0.199413,
+      "lift": 3.955309
+    },
+    {
+      "item": "Spigen Rugged Armor Phone Case",
+      "support": 0.006083,
+      "confidence": 0.158351,
+      "lift": 3.815697
+    },
+    {
+      "item": "Iphone Clear Case",
+      "support": 0.005833,
+      "confidence": 0.151844,
+      "lift": 3.483988
+    }
+  ],
+  "Iphone Tempered Glass Screen Protector": [
+    {
+      "item": "Iphone",
+      "support": 0.012083,
+      "confidence": 0.189048,
+      "lift": 8.625775
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.012083,
+      "confidence": 0.189048,
+      "lift": 8.625775
+    },
+    {
+      "item": "Usb C To Lightning Cable",
+      "support": 0.012083,
+      "confidence": 0.189048,
+      "lift": 8.625775
+    },
+    {
+      "item": "Accessories",
+      "support": 0.012083,
+      "confidence": 0.189048,
+      "lift": 8.625775
+    },
+    {
+      "item": "Apple 20W Usb C Power Adapter",
+      "support": 0.012083,
+      "confidence": 0.857988,
+      "lift": 8.558485
+    },
+    {
+      "item": "Magsafe Charger",
+      "support": 0.015583,
+      "confidence": 0.243807,
+      "lift": 6.756777
+    },
+    {
+      "item": "Iphone Silicone Case With Magsafe",
+      "support": 0.008583,
+      "confidence": 0.207661,
+      "lift": 6.575028
+    },
+    {
+      "item": "Esr Magsafe Phone Case",
+      "support": 0.008083,
+      "confidence": 0.195565,
+      "lift": 6.143388
+    },
+    {
+      "item": "Iphone 17 Pro",
+      "support": 0.01,
+      "confidence": 0.158311,
+      "lift": 5.899802
+    },
+    {
+      "item": "Iphone 15",
+      "support": 0.006833,
+      "confidence": 0.167006,
+      "lift": 5.725924
+    }
+  ],
+  "Iphone Silicone Case With Magsafe": [
+    {
+      "item": "Apple 20W Usb C Power Adapter",
+      "support": 0.008583,
+      "confidence": 0.542105,
+      "lift": 8.481438
+    },
+    {
+      "item": "Iphone Tempered Glass Screen Protector",
+      "support": 0.008583,
+      "confidence": 0.542105,
+      "lift": 8.481438
+    },
+    {
+      "item": "Accessories",
+      "support": 0.008583,
+      "confidence": 0.542105,
+      "lift": 8.481438
+    },
+    {
+      "item": "Iphone",
+      "support": 0.008583,
+      "confidence": 0.522843,
+      "lift": 8.277192
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.008833,
+      "confidence": 0.507177,
+      "lift": 8.061092
+    },
+    {
+      "item": "Iphone 17 Pro Max",
+      "support": 0.005667,
+      "confidence": 0.17942,
+      "lift": 6.134001
+    },
+    {
+      "item": "Adjustable Phone Stand",
+      "support": 0.005417,
+      "confidence": 0.171504,
+      "lift": 4.183023
+    },
+    {
+      "item": "Magsafe Charger",
+      "support": 0.005583,
+      "confidence": 0.176781,
+      "lift": 3.5064
+    },
+    {
+      "item": "Usb C To Lightning Cable",
+      "support": 0.005583,
+      "confidence": 0.176781,
+      "lift": 2.922
+    }
+  ],
+  "Magsafe Charger": [
+    {
+      "item": "Apple 20W Usb C Power Adapter",
+      "support": 0.005667,
+      "confidence": 0.819277,
+      "lift": 8.17234
+    },
+    {
+      "item": "Iphone",
+      "support": 0.005667,
+      "confidence": 0.819277,
+      "lift": 8.17234
+    },
+    {
+      "item": "Accessories",
+      "support": 0.005667,
+      "confidence": 0.819277,
+      "lift": 8.17234
+    },
+    {
+      "item": "Iphone Tempered Glass Screen Protector",
+      "support": 0.008917,
+      "confidence": 0.519417,
+      "lift": 8.126479
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.008917,
+      "confidence": 0.247113,
+      "lift": 5.978544
+    },
+    {
+      "item": "Iphone 17 Pro Max",
+      "support": 0.005583,
+      "confidence": 0.154734,
+      "lift": 5.290065
+    },
+    {
+      "item": "Iphone 15",
+      "support": 0.005417,
+      "confidence": 0.150115,
+      "lift": 5.146816
+    },
+    {
+      "item": "Usb C To Lightning Cable",
+      "support": 0.005667,
+      "confidence": 0.180371,
+      "lift": 4.695133
+    },
+    {
+      "item": "Esr Magsafe Phone Case",
+      "support": 0.00625,
+      "confidence": 0.17321,
+      "lift": 4.075533
+    },
+    {
+      "item": "Spigen Rugged Armor Phone Case",
+      "support": 0.005583,
+      "confidence": 0.154734,
+      "lift": 3.72854
+    }
+  ],
+  "Apple Watch Milanese Loop": [
+    {
+      "item": "Accessories",
+      "support": 0.011833,
+      "confidence": 0.531835,
+      "lift": 7.937839
+    },
+    {
+      "item": "Apple Watch",
+      "support": 0.011833,
+      "confidence": 0.531835,
+      "lift": 7.937839
+    },
+    {
+      "item": "Apple Watch Screen Protector",
+      "support": 0.006417,
+      "confidence": 0.28839,
+      "lift": 7.410437
+    }
+  ],
+  "Esr Magsafe Phone Case": [
+    {
+      "item": "Apple 20W Usb C Power Adapter",
+      "support": 0.008083,
+      "confidence": 0.505208,
+      "lift": 7.904172
+    },
+    {
+      "item": "Iphone Tempered Glass Screen Protector",
+      "support": 0.008083,
+      "confidence": 0.505208,
+      "lift": 7.904172
+    },
+    {
+      "item": "Accessories",
+      "support": 0.008083,
+      "confidence": 0.505208,
+      "lift": 7.904172
+    },
+    {
+      "item": "Iphone",
+      "support": 0.008083,
+      "confidence": 0.487437,
+      "lift": 7.89372
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.008083,
+      "confidence": 0.487437,
+      "lift": 7.89372
+    },
+    {
+      "item": "Iphone 16",
+      "support": 0.0065,
+      "confidence": 0.204188,
+      "lift": 7.14362
+    },
+    {
+      "item": "Magsafe Charger",
+      "support": 0.00625,
+      "confidence": 0.196335,
+      "lift": 3.894249
+    },
+    {
+      "item": "Adjustable Phone Stand",
+      "support": 0.006417,
+      "confidence": 0.15098,
+      "lift": 3.682449
+    },
+    {
+      "item": "Usb C To Lightning Cable",
+      "support": 0.005667,
+      "confidence": 0.17801,
+      "lift": 2.942322
+    }
+  ],
+  "Iphone 15": [
+    {
+      "item": "Apple 20W Usb C Power Adapter",
+      "support": 0.006833,
+      "confidence": 0.482353,
+      "lift": 7.636194
+    },
+    {
+      "item": "Iphone",
+      "support": 0.006833,
+      "confidence": 0.482353,
+      "lift": 7.636194
+    },
+    {
+      "item": "Iphone Tempered Glass Screen Protector",
+      "support": 0.006833,
+      "confidence": 0.482353,
+      "lift": 7.636194
+    },
+    {
+      "item": "Accessories",
+      "support": 0.006833,
+      "confidence": 0.482353,
+      "lift": 7.636194
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.006833,
+      "confidence": 0.448087,
+      "lift": 7.256477
+    },
+    {
+      "item": "Usb C To Lightning Cable",
+      "support": 0.006083,
+      "confidence": 0.208571,
+      "lift": 5.429191
+    },
+    {
+      "item": "Magsafe Charger",
+      "support": 0.005417,
+      "confidence": 0.185714,
+      "lift": 5.146816
+    }
+  ],
+  "Iphone 17 Pro Max": [
+    {
+      "item": "Iphone",
+      "support": 0.006833,
+      "confidence": 0.465909,
+      "lift": 7.545086
+    },
+    {
+      "item": "Iphone Tempered Glass Screen Protector",
+      "support": 0.006833,
+      "confidence": 0.465909,
+      "lift": 7.545086
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.006833,
+      "confidence": 0.465909,
+      "lift": 7.545086
+    },
+    {
+      "item": "Accessories",
+      "support": 0.006833,
+      "confidence": 0.465909,
+      "lift": 7.545086
+    },
+    {
+      "item": "Apple 20W Usb C Power Adapter",
+      "support": 0.006833,
+      "confidence": 0.468571,
+      "lift": 7.418017
+    },
+    {
+      "item": "Iphone Silicone Case With Magsafe",
+      "support": 0.005667,
+      "confidence": 0.193732,
+      "lift": 6.134001
+    },
+    {
+      "item": "Magsafe Charger",
+      "support": 0.005583,
+      "confidence": 0.190883,
+      "lift": 5.290065
+    },
+    {
+      "item": "Usb C To Lightning Cable",
+      "support": 0.00575,
+      "confidence": 0.196581,
+      "lift": 5.117081
+    }
+  ],
+  "Iphone 17 Pro": [
+    {
+      "item": "Apple 20W Usb C Power Adapter",
+      "support": 0.009917,
+      "confidence": 0.730061,
+      "lift": 7.282407
+    },
+    {
+      "item": "Iphone",
+      "support": 0.009917,
+      "confidence": 0.730061,
+      "lift": 7.282407
+    },
+    {
+      "item": "Accessories",
+      "support": 0.009917,
+      "confidence": 0.730061,
+      "lift": 7.282407
+    },
+    {
+      "item": "Iphone Tempered Glass Screen Protector",
+      "support": 0.006083,
+      "confidence": 0.447853,
+      "lift": 7.090017
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.009917,
+      "confidence": 0.657459,
+      "lift": 6.703061
+    },
+    {
+      "item": "Spigen Rugged Armor Phone Case",
+      "support": 0.005083,
+      "confidence": 0.189441,
+      "lift": 6.177424
+    },
+    {
+      "item": "Magsafe Charger",
+      "support": 0.005333,
+      "confidence": 0.198758,
+      "lift": 5.508298
+    }
+  ],
+  "Airpods Silicone Case Cover": [
+    {
+      "item": "Airpods Max",
+      "support": 0.006167,
+      "confidence": 0.33945,
+      "lift": 7.184117
+    },
+    {
+      "item": "Accessories",
+      "support": 0.006167,
+      "confidence": 0.33945,
+      "lift": 7.184117
+    },
+    {
+      "item": "Airpods 4",
+      "support": 0.006,
+      "confidence": 0.330275,
+      "lift": 6.989952
+    },
+    {
+      "item": "Airpods Pro 2",
+      "support": 0.005917,
+      "confidence": 0.325688,
+      "lift": 6.929533
+    },
+    {
+      "item": "Replacement Silicone Ear Tips",
+      "support": 0.005917,
+      "confidence": 0.294606,
+      "lift": 6.10582
+    },
+    {
+      "item": "Iphone",
+      "support": 0.0055,
+      "confidence": 0.88,
+      "lift": 4.465116
+    },
+    {
+      "item": "Iphone Tempered Glass Screen Protector",
+      "support": 0.0055,
+      "confidence": 0.545455,
+      "lift": 3.509627
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.012333,
+      "confidence": 0.168373,
+      "lift": 0.89999
+    }
+  ],
+  "Replacement Silicone Ear Tips": [
+    {
+      "item": "Airpods Max",
+      "support": 0.006167,
+      "confidence": 0.33945,
+      "lift": 7.184117
+    },
+    {
+      "item": "Accessories",
+      "support": 0.006167,
+      "confidence": 0.33945,
+      "lift": 7.184117
+    },
+    {
+      "item": "Airpods 4",
+      "support": 0.006,
+      "confidence": 0.330275,
+      "lift": 6.989952
+    },
+    {
+      "item": "Airpods Pro 2",
+      "support": 0.005917,
+      "confidence": 0.325688,
+      "lift": 6.929533
+    },
+    {
+      "item": "Airpods Silicone Case Cover",
+      "support": 0.006167,
+      "confidence": 0.48366,
+      "lift": 6.602869
+    }
+  ],
+  "Iphone 16": [
+    {
+      "item": "Esr Magsafe Phone Case",
+      "support": 0.0065,
+      "confidence": 0.227405,
+      "lift": 7.14362
+    },
+    {
+      "item": "Iphone",
+      "support": 0.0065,
+      "confidence": 0.227405,
+      "lift": 7.14362
+    },
+    {
+      "item": "Accessories",
+      "support": 0.0065,
+      "confidence": 0.225434,
+      "lift": 7.081681
+    },
+    {
+      "item": "Apple 20W Usb C Power Adapter",
+      "support": 0.010167,
+      "confidence": 0.674033,
+      "lift": 6.723523
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.010167,
+      "confidence": 0.659459,
+      "lift": 6.723461
+    },
+    {
+      "item": "Iphone Tempered Glass Screen Protector",
+      "support": 0.006,
+      "confidence": 0.389189,
+      "lift": 6.302659
+    },
+    {
+      "item": "Magsafe Charger",
+      "support": 0.005,
+      "confidence": 0.174927,
+      "lift": 4.847865
+    },
+    {
+      "item": "Usb C To Lightning Cable",
+      "support": 0.005167,
+      "confidence": 0.180758,
+      "lift": 4.705198
+    }
+  ],
+  "Spigen Rugged Armor Phone Case": [
+    {
+      "item": "Iphone Tempered Glass Screen Protector",
+      "support": 0.006333,
+      "confidence": 0.444444,
+      "lift": 7.064018
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.006333,
+      "confidence": 0.444444,
+      "lift": 7.064018
+    },
+    {
+      "item": "Accessories",
+      "support": 0.006333,
+      "confidence": 0.444444,
+      "lift": 7.064018
+    },
+    {
+      "item": "Iphone",
+      "support": 0.006333,
+      "confidence": 0.434286,
+      "lift": 7.032967
+    },
+    {
+      "item": "Apple 20W Usb C Power Adapter",
+      "support": 0.006333,
+      "confidence": 0.424581,
+      "lift": 6.642728
+    },
+    {
+      "item": "Iphone 17 Pro",
+      "support": 0.005083,
+      "confidence": 0.165761,
+      "lift": 6.177424
+    },
+    {
+      "item": "Adjustable Phone Stand",
+      "support": 0.005167,
+      "confidence": 0.168478,
+      "lift": 4.109226
+    },
+    {
+      "item": "Magsafe Charger",
+      "support": 0.005583,
+      "confidence": 0.182065,
+      "lift": 3.611211
+    },
+    {
+      "item": "Usb C To Lightning Cable",
+      "support": 0.006083,
+      "confidence": 0.19837,
+      "lift": 3.278836
+    }
+  ],
+  "Iphone Se": [
+    {
+      "item": "Apple 20W Usb C Power Adapter",
+      "support": 0.005583,
+      "confidence": 0.432258,
+      "lift": 6.843136
+    },
+    {
+      "item": "Iphone",
+      "support": 0.005583,
+      "confidence": 0.432258,
+      "lift": 6.843136
+    },
+    {
+      "item": "Iphone Tempered Glass Screen Protector",
+      "support": 0.005583,
+      "confidence": 0.432258,
+      "lift": 6.843136
+    },
+    {
+      "item": "Accessories",
+      "support": 0.005583,
+      "confidence": 0.432258,
+      "lift": 6.843136
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.005583,
+      "confidence": 0.416149,
+      "lift": 6.739256
+    },
+    {
+      "item": "Iphone Clear Case",
+      "support": 0.005167,
+      "confidence": 0.190769,
+      "lift": 6.203877
+    },
+    {
+      "item": "Magsafe Charger",
+      "support": 0.005083,
+      "confidence": 0.187692,
+      "lift": 5.201634
+    },
+    {
+      "item": "Usb C To Lightning Cable",
+      "support": 0.005083,
+      "confidence": 0.187692,
+      "lift": 4.8857
+    }
+  ],
+  "Iphone Clear Case": [
+    {
+      "item": "Apple 20W Usb C Power Adapter",
+      "support": 0.00625,
+      "confidence": 0.436047,
+      "lift": 6.82211
+    },
+    {
+      "item": "Iphone Tempered Glass Screen Protector",
+      "support": 0.00625,
+      "confidence": 0.436047,
+      "lift": 6.82211
+    },
+    {
+      "item": "Accessories",
+      "support": 0.00625,
+      "confidence": 0.436047,
+      "lift": 6.82211
+    },
+    {
+      "item": "Iphone",
+      "support": 0.00625,
+      "confidence": 0.416667,
+      "lift": 6.747638
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.00625,
+      "confidence": 0.416667,
+      "lift": 6.747638
+    },
+    {
+      "item": "Iphone Se",
+      "support": 0.005167,
+      "confidence": 0.168022,
+      "lift": 6.203877
+    },
+    {
+      "item": "Adjustable Phone Stand",
+      "support": 0.00525,
+      "confidence": 0.170732,
+      "lift": 4.164188
+    },
+    {
+      "item": "Magsafe Charger",
+      "support": 0.005167,
+      "confidence": 0.168022,
+      "lift": 3.332661
+    },
+    {
+      "item": "Usb C To Lightning Cable",
+      "support": 0.005833,
+      "confidence": 0.189702,
+      "lift": 3.135569
+    }
+  ],
+  "Iphone 16 Pro": [
+    {
+      "item": "Iphone",
+      "support": 0.008917,
+      "confidence": 0.66875,
+      "lift": 6.818182
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.008917,
+      "confidence": 0.66875,
+      "lift": 6.818182
+    },
+    {
+      "item": "Accessories",
+      "support": 0.008917,
+      "confidence": 0.66875,
+      "lift": 6.818182
+    },
+    {
+      "item": "Apple 20W Usb C Power Adapter",
+      "support": 0.008917,
+      "confidence": 0.648485,
+      "lift": 6.468677
+    },
+    {
+      "item": "Usb C To Lightning Cable",
+      "support": 0.005667,
+      "confidence": 0.20059,
+      "lift": 5.221431
+    },
+    {
+      "item": "Iphone Tempered Glass Screen Protector",
+      "support": 0.0175,
+      "confidence": 0.619469,
+      "lift": 4.959058
+    }
+  ],
+  "Iphone 17": [
+    {
+      "item": "Iphone",
+      "support": 0.008583,
+      "confidence": 0.656051,
+      "lift": 6.68871
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.008583,
+      "confidence": 0.656051,
+      "lift": 6.68871
+    },
+    {
+      "item": "Accessories",
+      "support": 0.008583,
+      "confidence": 0.656051,
+      "lift": 6.68871
+    },
+    {
+      "item": "Apple 20W Usb C Power Adapter",
+      "support": 0.008583,
+      "confidence": 0.613095,
+      "lift": 6.115663
+    },
+    {
+      "item": "Usb C To Lightning Cable",
+      "support": 0.005917,
+      "confidence": 0.21194,
+      "lift": 5.516884
+    },
+    {
+      "item": "Iphone Tempered Glass Screen Protector",
+      "support": 0.008417,
+      "confidence": 0.301493,
+      "lift": 4.88247
+    }
+  ],
+  "Airpods Max": [
+    {
+      "item": "Airpods Silicone Case Cover",
+      "support": 0.006167,
+      "confidence": 0.48366,
+      "lift": 6.602869
+    },
+    {
+      "item": "Accessories",
+      "support": 0.006167,
+      "confidence": 0.48366,
+      "lift": 6.602869
+    },
+    {
+      "item": "Replacement Silicone Ear Tips",
+      "support": 0.006167,
+      "confidence": 0.290196,
+      "lift": 6.014426
+    },
+    {
+      "item": "Iphone",
+      "support": 0.006417,
+      "confidence": 0.939024,
+      "lift": 4.764606
+    },
+    {
+      "item": "Iphone Tempered Glass Screen Protector",
+      "support": 0.006417,
+      "confidence": 0.611111,
+      "lift": 3.932082
+    },
+    {
+      "item": "Apple 20W Usb C Power Adapter",
+      "support": 0.005583,
+      "confidence": 0.531746,
+      "lift": 3.188882
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.005167,
+      "confidence": 0.492063,
+      "lift": 2.630183
+    }
+  ],
+  "Belkin Magsafe 3 In 1 Charging Stand": [
+    {
+      "item": "Apple Watch Charging Dock",
+      "support": 0.007417,
+      "confidence": 0.224181,
+      "lift": 6.482353
+    },
+    {
+      "item": "Accessories",
+      "support": 0.007417,
+      "confidence": 0.224181,
+      "lift": 6.482353
+    },
+    {
+      "item": "Iphone",
+      "support": 0.008917,
+      "confidence": 0.938596,
+      "lift": 4.762435
+    },
+    {
+      "item": "Apple 20W Usb C Power Adapter",
+      "support": 0.005167,
+      "confidence": 0.681319,
+      "lift": 4.085869
+    },
+    {
+      "item": "Iphone Tempered Glass Screen Protector",
+      "support": 0.008917,
+      "confidence": 0.622093,
+      "lift": 4.002743
+    },
+    {
+      "item": "Apple Watch",
+      "support": 0.0085,
+      "confidence": 0.256927,
+      "lift": 3.834731
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.005167,
+      "confidence": 0.579439,
+      "lift": 3.097225
+    }
+  ],
+  "Airpods 4": [
+    {
+      "item": "Airpods Silicone Case Cover",
+      "support": 0.021417,
+      "confidence": 0.453263,
+      "lift": 6.187888
+    },
+    {
+      "item": "Accessories",
+      "support": 0.021417,
+      "confidence": 0.453263,
+      "lift": 6.187888
+    },
+    {
+      "item": "Replacement Silicone Ear Tips",
+      "support": 0.01325,
+      "confidence": 0.280423,
+      "lift": 5.811881
+    },
+    {
+      "item": "Iphone",
+      "support": 0.006417,
+      "confidence": 0.9625,
+      "lift": 4.883721
+    },
+    {
+      "item": "Iphone Tempered Glass Screen Protector",
+      "support": 0.006417,
+      "confidence": 0.574627,
+      "lift": 3.697331
+    },
+    {
+      "item": "Apple 20W Usb C Power Adapter",
+      "support": 0.005583,
+      "confidence": 0.5,
+      "lift": 2.998501
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.005833,
+      "confidence": 0.522388,
+      "lift": 2.792275
+    }
+  ],
+  "Airpods Pro 2": [
+    {
+      "item": "Airpods Silicone Case Cover",
+      "support": 0.005917,
+      "confidence": 0.452229,
+      "lift": 6.173779
+    },
+    {
+      "item": "Accessories",
+      "support": 0.005917,
+      "confidence": 0.452229,
+      "lift": 6.173779
+    },
+    {
+      "item": "Replacement Silicone Ear Tips",
+      "support": 0.005917,
+      "confidence": 0.294606,
+      "lift": 6.10582
+    },
+    {
+      "item": "Iphone",
+      "support": 0.006333,
+      "confidence": 0.883721,
+      "lift": 4.483996
+    },
+    {
+      "item": "Iphone Tempered Glass Screen Protector",
+      "support": 0.006333,
+      "confidence": 0.638655,
+      "lift": 4.109311
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.010083,
+      "confidence": 0.214539,
+      "lift": 1.146756
+    }
+  ],
+  "Apple 96W Usb C Power Adapter": [
+    {
+      "item": "Accessories",
+      "support": 0.0095,
+      "confidence": 0.461538,
+      "lift": 5.948938
+    },
+    {
+      "item": "Macbook",
+      "support": 0.0095,
+      "confidence": 0.461538,
+      "lift": 5.948938
+    }
+  ],
+  "Anker 10000Mah Power Bank": [
+    {
+      "item": "Iphone",
+      "support": 0.00775,
+      "confidence": 0.58125,
+      "lift": 5.926083
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.00775,
+      "confidence": 0.58125,
+      "lift": 5.926083
+    },
+    {
+      "item": "Accessories",
+      "support": 0.00775,
+      "confidence": 0.58125,
+      "lift": 5.926083
+    },
+    {
+      "item": "Apple 20W Usb C Power Adapter",
+      "support": 0.00775,
+      "confidence": 0.553571,
+      "lift": 5.52191
+    },
+    {
+      "item": "Iphone Tempered Glass Screen Protector",
+      "support": 0.006833,
+      "confidence": 0.296029,
+      "lift": 4.705095
+    },
+    {
+      "item": "Usb C To Lightning Cable",
+      "support": 0.005583,
+      "confidence": 0.241877,
+      "lift": 3.997971
+    }
+  ],
+  "Adjustable Phone Stand": [
+    {
+      "item": "Iphone",
+      "support": 0.007167,
+      "confidence": 0.581081,
+      "lift": 5.924361
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.007167,
+      "confidence": 0.581081,
+      "lift": 5.924361
+    },
+    {
+      "item": "Accessories",
+      "support": 0.007167,
+      "confidence": 0.581081,
+      "lift": 5.924361
+    },
+    {
+      "item": "Apple 20W Usb C Power Adapter",
+      "support": 0.007167,
+      "confidence": 0.562092,
+      "lift": 5.606898
+    },
+    {
+      "item": "Iphone Silicone Case With Magsafe",
+      "support": 0.005417,
+      "confidence": 0.214521,
+      "lift": 5.117808
+    },
+    {
+      "item": "Spigen Rugged Armor Phone Case",
+      "support": 0.005167,
+      "confidence": 0.20462,
+      "lift": 4.930614
+    },
+    {
+      "item": "Iphone Tempered Glass Screen Protector",
+      "support": 0.007583,
+      "confidence": 0.614865,
+      "lift": 4.9222
+    },
+    {
+      "item": "Iphone Clear Case",
+      "support": 0.00525,
+      "confidence": 0.207921,
+      "lift": 4.770649
+    },
+    {
+      "item": "Esr Magsafe Phone Case",
+      "support": 0.006417,
+      "confidence": 0.156504,
+      "lift": 3.682449
+    }
+  ],
+  "Car Phone Mount": [
+    {
+      "item": "Accessories",
+      "support": 0.0075,
+      "confidence": 1.0,
+      "lift": 5.073996
+    },
+    {
+      "item": "Iphone",
+      "support": 0.0075,
+      "confidence": 1.0,
+      "lift": 5.073996
+    },
+    {
+      "item": "Iphone Tempered Glass Screen Protector",
+      "support": 0.009167,
+      "confidence": 0.614525,
+      "lift": 3.954049
+    },
+    {
+      "item": "Usb C Charge Cable",
+      "support": 0.0075,
+      "confidence": 0.32491,
+      "lift": 3.312589
+    },
+    {
+      "item": "Apple 20W Usb C Power Adapter",
+      "support": 0.007167,
+      "confidence": 0.310469,
+      "lift": 3.096951
+    }
+  ],
+  "Logitech Mx Master 3S Mouse": [
+    {
+      "item": "Accessories",
+      "support": 0.006917,
+      "confidence": 0.364035,
+      "lift": 4.692182
+    },
+    {
+      "item": "Macbook",
+      "support": 0.006917,
+      "confidence": 0.364035,
+      "lift": 4.692182
+    }
+  ],
+  "Airtag": [
+    {
+      "item": "Accessories",
+      "support": 0.005417,
+      "confidence": 0.902778,
+      "lift": 4.580691
+    },
+    {
+      "item": "Iphone",
+      "support": 0.005417,
+      "confidence": 0.902778,
+      "lift": 4.580691
+    },
+    {
+      "item": "Iphone Tempered Glass Screen Protector",
+      "support": 0.005417,
+      "confidence": 0.541667,
+      "lift": 3.485255
+    }
+  ],
+  "Screen Cleaning Kit": [
+    {
+      "item": "Accessories",
+      "support": 0.00675,
+      "confidence": 0.28223,
+      "lift": 3.637765
+    },
+    {
+      "item": "Macbook",
+      "support": 0.00675,
+      "confidence": 0.28223,
+      "lift": 3.637765
+    }
+  ],
+  "Apple 30W Usb C Power Adapter": [
+    {
+      "item": "Accessories",
+      "support": 0.010667,
+      "confidence": 1.0,
+      "lift": 1.086366
+    }
+  ],
+  "Anker 65W Gan Charger": [
+    {
+      "item": "Accessories",
+      "support": 0.010417,
+      "confidence": 1.0,
+      "lift": 1.086366
+    }
+  ],
+  "Sandisk 128Gb Microsd Card": [
+    {
+      "item": "Accessories",
+      "support": 0.010083,
+      "confidence": 1.0,
+      "lift": 1.086366
+    }
+  ],
+  "Cable Organizer Set": [
+    {
+      "item": "Accessories",
+      "support": 0.008583,
+      "confidence": 1.0,
+      "lift": 1.086366
+    }
+  ]
+}

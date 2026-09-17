@@ -5,8 +5,13 @@ import { logger } from "../utils/logger.js";
 // when present) and logs one structured line per request on completion — the minimum needed to
 // answer "what happened to request X" without a full APM tier.
 export const requestContext = (req, res, next) => {
-  const requestId = req.headers["x-request-id"] || crypto.randomUUID();
+  const supplied = req.headers["x-request-id"];
+  const requestId = typeof supplied === "string" && /^[A-Za-z0-9_-]{1,100}$/.test(supplied)
+    ? supplied
+    : crypto.randomUUID();
   req.requestId = requestId;
+  const abortController = new AbortController();
+  req.assistantSignal = abortController.signal;
   res.setHeader("X-Request-Id", requestId);
 
   const startedAt = Date.now();
@@ -19,6 +24,9 @@ export const requestContext = (req, res, next) => {
       durationMs: Date.now() - startedAt,
       userId: req.user?.id,
     });
+  });
+  res.on("close", () => {
+    if (!res.writableFinished) abortController.abort();
   });
 
   next();

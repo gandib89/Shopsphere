@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { adjustStock, cancelOrderCore, updateFirstRevenueByOrder, resolveServerPromoDiscount, redeemServerPromoDiscount, canTransitionOrderStatus, effectiveProductPrice } from "./order.js";
+import { adjustStock, cancelOrderCore, isCancelEligible, updateFirstRevenueByOrder, resolveServerPromoDiscount, redeemServerPromoDiscount, canTransitionOrderStatus, effectiveProductPrice } from "./order.js";
 
 test("order status transitions only move forward through fulfilment", () => {
   assert.equal(canTransitionOrderStatus("Confirmed", "Processing"), true);
@@ -137,11 +137,22 @@ const createCancellationClient = (initialStatus) => {
   return client;
 };
 
+test("cancellation eligibility is independently callable without side effects", () => {
+  assert.equal(isCancelEligible("Pending"), true);
+  assert.equal(isCancelEligible("Confirmed"), true);
+  assert.equal(isCancelEligible("Shipped"), false);
+  assert.equal(isCancelEligible("Cancelled"), false);
+  assert.equal(isCancelEligible({ status: "Pending" }), true);
+  assert.equal(isCancelEligible({ status: "Delivered" }), false);
+});
+
 test("cancelling an unpaid Pending order does not restore stock", async () => {
   const client = createCancellationClient("Pending");
   const result = await cancelOrderCore("o1", "u1", client);
   assert.equal(result.order.status, "Cancelled");
   assert.equal(result.stockRestored, false);
+  assert.equal(result.refundRequired, null);
+  assert.equal(result.moneyMoved, false);
   assert.equal(client.state.order.product.quantity, 10);
 });
 
@@ -149,10 +160,40 @@ test("cancelling a Confirmed order restores stock exactly once", async () => {
   const client = createCancellationClient("Confirmed");
   const first = await cancelOrderCore("o1", "u1", client);
   assert.equal(first.stockRestored, true);
-  assert.equal(first.refundRequired, true);
+  assert.equal(first.refundRequired, "human");
+  assert.equal(first.moneyMoved, false);
   assert.equal(client.state.order.product.quantity, 10);
   await assert.rejects(cancelOrderCore("o1", "u1", client), (error) => error.statusCode === 409);
   assert.equal(client.state.order.product.quantity, 10);
+});
+
+test("a paid cancellation never calls a refund provider and reports human handling", async () => {
+  const client = createCancellationClient("Confirmed");
+  // If cancel ever touches money, these fakes fail loudly.
+  client.refund = { create: async () => { throw new Error("cancel must not create a Refund row"); } };
+  let providerCalls = 0;
+  const provider = { refund: async () => { providerCalls += 1; return { status: "Succeeded" }; } };
+  const result = await cancelOrderCore("o1", "u1", client);
+  assert.equal(result.order.status, "Cancelled");
+  assert.equal(result.stockRestored, true);
+  assert.equal(result.refundRequired, "human");
+  assert.equal(result.moneyMoved, false);
+  assert.equal(providerCalls, 0);
+  // No Refund row shape was produced by the state transition.
+  assert.equal(result.refund, undefined);
+});
+
+test("cancelOrderCore requires an explicit transaction client (no global fallback)", async () => {
+  await assert.rejects(cancelOrderCore("o1", "u1"), (error) => error.statusCode === 500);
+});
+
+test("cancelOrderCore accepts a raw transaction client without $transaction", async () => {
+  const client = createCancellationClient("Pending");
+  const tx = { ...client };
+  delete tx.$transaction;
+  const result = await cancelOrderCore("o1", "u1", tx);
+  assert.equal(result.order.status, "Cancelled");
+  assert.equal(result.moneyMoved, false);
 });
 
 test("concurrent cancellations can claim and restore a Confirmed order only once", async () => {
@@ -164,6 +205,9 @@ test("concurrent cancellations can claim and restore a Confirmed order only once
   assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
   assert.equal(results.filter((result) => result.status === "rejected" && result.reason.statusCode === 409).length, 1);
   assert.equal(client.state.order.product.quantity, 10);
+  const winner = results.find((result) => result.status === "fulfilled").value;
+  assert.equal(winner.refundRequired, "human");
+  assert.equal(winner.moneyMoved, false);
 });
 
 test("an admin can cancel a customer's order through the shared cancellation workflow", async () => {
@@ -171,6 +215,8 @@ test("an admin can cancel a customer's order through the shared cancellation wor
   const result = await cancelOrderCore("o1", { id: "admin1", role: "admin" }, client);
   assert.equal(result.order.status, "Cancelled");
   assert.equal(result.stockRestored, false);
+  assert.equal(result.refundRequired, null);
+  assert.equal(result.moneyMoved, false);
 });
 
 const createFakeRevenuePrisma = (rows) => ({
