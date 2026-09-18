@@ -626,6 +626,74 @@ const GetMyRevenueSummaryOutputSchema = z
   })
   .strict();
 
+// Admin platform revenue summary (#16): the same twelve fixed monthly buckets
+// aggregated across the whole platform from the append-only ledger. No raw
+// ledger rows, per-order data, payment events, or bank/customer fields exist
+// in the contract — only counts and exact-decimal money.
+const GetPlatformRevenueSummaryInputSchema = z
+  .object({
+    year: z.number().int().min(2000).max(2100).optional(),
+  })
+  .strict();
+
+const PlatformRevenueBucketSchema = z
+  .object({
+    month: z.number().int().min(1).max(12),
+    completedSaleCount: z.number().int().nonnegative(),
+    grossSale: MoneySchema,
+    adminCommission: MoneySchema,
+    sellerRevenue: MoneySchema,
+    refunded: MoneySchema,
+  })
+  .strict();
+
+const GetPlatformRevenueSummaryOutputSchema = z
+  .object({
+    year: z.number().int().min(2000).max(2100),
+    buckets: z.array(PlatformRevenueBucketSchema).length(12),
+    totals: z
+      .object({
+        completedSaleCount: z.number().int().nonnegative(),
+        grossSale: MoneySchema,
+        adminCommission: MoneySchema,
+        sellerRevenue: MoneySchema,
+        refunded: MoneySchema,
+      })
+      .strict(),
+  })
+  .strict();
+
+// Admin seller-application list (#16): approved business/display metadata and
+// the derived application status only. The seller leaves as a deterministic
+// opaque reference derived from the account id; email, phone, personal names,
+// home address, and identity evidence never appear.
+const ListSellerApplicationsInputSchema = z
+  .object({
+    status: z.enum(["pending", "approved", "rejected"]).optional(),
+    cursor: z.string().min(1).max(2048).optional(),
+    limit: z.number().int().min(1).max(50).optional(),
+  })
+  .strict();
+
+const SellerApplicationSchema = z
+  .object({
+    sellerReference: z.string().regex(/^seller-[0-9a-f]{12}$/),
+    shopName: z.string().max(200),
+    shopDescription: z.string().max(2000),
+    status: z.enum(["pending", "approved", "rejected"]),
+    requestDate: z.iso.datetime().max(100).nullable(),
+    decisionDate: z.iso.datetime().max(100).nullable(),
+    rejectionReason: z.string().min(1).max(500).nullable(),
+  })
+  .strict();
+
+const ListSellerApplicationsOutputSchema = z
+  .object({
+    applications: z.array(SellerApplicationSchema).max(50),
+    nextCursor: z.string().min(1).max(2048).nullable(),
+  })
+  .strict();
+
 const definitions = [
   {
     name: "get_capabilities",
@@ -1112,6 +1180,50 @@ const definitions = [
       operationId: "sales.revenueSummary",
       method: "POST",
       path: "/api/v1/assistant/get_my_revenue_summary",
+    },
+  },
+  {
+    name: "get_platform_revenue_summary",
+    title: "Get ShopSphere platform revenue summary",
+    description:
+      "Reads twelve fixed platform-wide monthly revenue buckets for one year with explicit gross, commission, seller, and refund amounts.",
+    inputSchema: GetPlatformRevenueSummaryInputSchema,
+    outputSchema: GetPlatformRevenueSummaryOutputSchema,
+    operationClass: "read",
+    roles: ["admin"],
+    scopes: ["platform:read"],
+    rateClass: "authenticated-read",
+    rollout: {
+      flag: "MCP_TOOL_GET_PLATFORM_REVENUE_SUMMARY_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "platform.revenueSummary",
+      method: "POST",
+      path: "/api/v1/assistant/get_platform_revenue_summary",
+    },
+  },
+  {
+    name: "list_seller_applications",
+    title: "List ShopSphere seller applications",
+    description:
+      "Lists one bounded page of seller applications with approved shop display metadata and application status only.",
+    inputSchema: ListSellerApplicationsInputSchema,
+    outputSchema: ListSellerApplicationsOutputSchema,
+    operationClass: "read",
+    roles: ["admin"],
+    scopes: ["sellers:read"],
+    rateClass: "authenticated-read",
+    rollout: {
+      flag: "MCP_TOOL_LIST_SELLER_APPLICATIONS_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "sellers.listApplications",
+      method: "POST",
+      path: "/api/v1/assistant/list_seller_applications",
     },
   },
 ];

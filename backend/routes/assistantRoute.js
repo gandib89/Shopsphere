@@ -31,6 +31,10 @@ import {
   getMyRevenueSummary,
   listMySales,
 } from "../services/assistantSellerOrders.js";
+import {
+  getPlatformRevenueSummary,
+  listSellerApplications,
+} from "../services/assistantAdminReads.js";
 import { auditContext, recordAssistantAudit } from "../services/assistantAudit.js";
 import { withAssistantActor } from "../database/assistantTransaction.js";
 import {
@@ -529,6 +533,44 @@ privateOperation({
   inputSchema: z.object({ year: z.number().int().min(2000).max(2100).optional() }).strict(),
   run: (input, ctx) => getMyRevenueSummary(input, ctx),
   observe: (output) => ({ resourceIds: [], rowCount: output.buckets.length }),
+});
+
+// Admin platform reads (#16). The delegated token must carry the exact
+// consented scope (platform:read / sellers:read) and the live account must be
+// an admin — a promoted user with an older narrower grant gains no authority
+// without renewed consent, because the scope check reads the token's grant,
+// not the current role. Outputs are fixed bounded aggregates and minimized
+// application metadata: no raw ledger, payment-event, bank, or customer rows;
+// no identity evidence or private contacts.
+privateOperation({
+  path: "/get_platform_revenue_summary",
+  tool: "get_platform_revenue_summary",
+  operation: "platform.revenueSummary",
+  roles: ["admin"],
+  scope: "platform:read",
+  rolloutFlag: "MCP_TOOL_GET_PLATFORM_REVENUE_SUMMARY_ENABLED",
+  inputSchema: z.object({ year: z.number().int().min(2000).max(2100).optional() }).strict(),
+  run: (input, ctx) => getPlatformRevenueSummary(input, ctx),
+  observe: (output) => ({ resourceIds: [], rowCount: output.buckets.length }),
+});
+
+privateOperation({
+  path: "/list_seller_applications",
+  tool: "list_seller_applications",
+  operation: "sellers.listApplications",
+  roles: ["admin"],
+  scope: "sellers:read",
+  rolloutFlag: "MCP_TOOL_LIST_SELLER_APPLICATIONS_ENABLED",
+  inputSchema: z.object({
+    status: z.enum(["pending", "approved", "rejected"]).optional(),
+    cursor,
+    limit: z.number().int().min(1).max(50).optional(),
+  }).strict(),
+  run: (input, ctx) => listSellerApplications(input, ctx),
+  observe: (output) => ({
+    resourceIds: output.applications.map(({ sellerReference }) => sellerReference),
+    rowCount: output.applications.length,
+  }),
 });
 
 router.use(authenticatePublicWorkload);
