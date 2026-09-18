@@ -169,5 +169,21 @@ export const readConfig = (environment = process.env) => ({
       environment.MCP_TOOL_LIST_SELLER_APPLICATIONS_ENABLED,
       false,
     ),
+    MCP_TOOL_DRAFT_LISTING_COPY_ENABLED: parseBoolean(
+      environment.MCP_TOOL_DRAFT_LISTING_COPY_ENABLED,
+      false,
+    ),
+    MCP_TOOL_SAVE_LISTING_DRAFT_ENABLED: parseBoolean(
+      environment.MCP_TOOL_SAVE_LISTING_DRAFT_ENABLED,
+      false,
+    ),
+    MCP_TOOL_LIST_MY_LISTING_DRAFTS_ENABLED: parseBoolean(
+      environment.MCP_TOOL_LIST_MY_LISTING_DRAFTS_ENABLED,
+      false,
+    ),
+    MCP_TOOL_GET_MY_LISTING_DRAFT_ENABLED: parseBoolean(
+      environment.MCP_TOOL_GET_MY_LISTING_DRAFT_ENABLED,
+      false,
+    ),
   },
 });

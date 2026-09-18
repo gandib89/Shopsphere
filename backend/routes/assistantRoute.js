@@ -35,6 +35,13 @@ import {
   getPlatformRevenueSummary,
   listSellerApplications,
 } from "../services/assistantAdminReads.js";
+import {
+  draftListingCopy,
+  getMyListingDraft,
+  listMyListingDrafts,
+  saveListingDraft,
+} from "../services/assistantListingDrafts.js";
+import { enforceListingDraftLimit } from "../services/assistantListingDraftLimits.js";
 import { auditContext, recordAssistantAudit } from "../services/assistantAudit.js";
 import { withAssistantActor } from "../database/assistantTransaction.js";
 import {
@@ -301,17 +308,21 @@ router.post(
   },
 );
 
-// Shared private-operation seam for buyer/seller reads (#12/#13/#14).
-// Every operation crosses the same chain: workload authentication, delegated
-// credential verification (no browser-JWT fallback), distributed limits,
-// and per-call role/scope/rollout authorization. Inputs are strict schemas
-// (unknown fields rejected, no caller totals/identity/owner fields); reads run
-// inside a transaction-local actor context; success and failure both audit.
-const privateOperation = ({ path, tool, operation, roles, scope, rolloutFlag, inputSchema, run, observe }) => {
+// Shared private-operation seam for buyer/seller reads (#12/#13/#14) and
+// seller listing drafts (#20). Every operation crosses the same chain:
+// workload authentication, delegated credential verification (no browser-JWT
+// fallback), distributed limits, and per-call role/scope/rollout
+// authorization. Inputs are strict schemas (unknown fields rejected, no
+// caller totals/identity/owner fields); reads run inside a transaction-local
+// actor context; success and failure both audit. `middlewares` lets a route
+// insert extra route-scoped controls (e.g. the #20 draft rate limiter) after
+// delegation and before the shared distributed limit.
+const privateOperation = ({ path, tool, operation, roles, scope, rolloutFlag, inputSchema, run, observe, middlewares = [] }) => {
   router.post(
     path,
     authenticateAssistantWorkload,
     authenticateAssistantDelegation,
+    ...middlewares,
     enforceAssistantDistributedLimit(),
     authorizeAssistantOperation({ operation, roles, scope, rolloutFlag }),
     async (req, res) => {
@@ -571,6 +582,88 @@ privateOperation({
     resourceIds: output.applications.map(({ sellerReference }) => sellerReference),
     rowCount: output.applications.length,
   }),
+});
+
+// Seller listing drafts (#20). Copy is composed only from supplied facts or
+// one owned product, and saving touches only owned listing_drafts rows —
+// never a live Product, notification, or storefront route. Isolation carries
+// BOTH sellerId and grantId in every service predicate (RLS is defense in
+// depth), unverified sellers may draft, and the draft limiter bounds this
+// heavier operation class to 10/minute and 100/day per subject+client.
+const draftCopyInput = z.object({
+  sourceProductId: z.string().min(1).max(100).optional(),
+  facts: z.object({
+    productName: z.string().min(1).max(140).optional(),
+    keyFeatures: z.array(z.string().min(1).max(200)).max(10).optional(),
+    audienceNote: z.string().min(1).max(300).optional(),
+  }).strict().optional(),
+}).strict().refine(
+  ({ sourceProductId, facts }) => sourceProductId !== undefined || facts !== undefined,
+  "sourceProductId or facts is required",
+);
+const draftHighlights = z.array(z.string().min(1).max(200)).max(10).optional();
+const draftId = z.string().min(1).max(100);
+
+privateOperation({
+  path: "/draft_listing_copy",
+  tool: "draft_listing_copy",
+  operation: "listings.draftCopy",
+  roles: ["seller"],
+  scope: "listings:draft",
+  rolloutFlag: "MCP_TOOL_DRAFT_LISTING_COPY_ENABLED",
+  inputSchema: draftCopyInput,
+  middlewares: [enforceListingDraftLimit()],
+  run: (input, ctx) => draftListingCopy(input, ctx),
+  observe: () => ({ resourceIds: [], rowCount: 1 }),
+});
+
+privateOperation({
+  path: "/save_listing_draft",
+  tool: "save_listing_draft",
+  operation: "listings.saveDraft",
+  roles: ["seller"],
+  scope: "listings:draft",
+  rolloutFlag: "MCP_TOOL_SAVE_LISTING_DRAFT_ENABLED",
+  inputSchema: z.object({
+    draftId: z.string().min(1).max(100).optional(),
+    title: z.string().min(1).max(140),
+    description: z.string().min(1).max(4000),
+    highlights: draftHighlights,
+    sourceProductId: z.string().min(1).max(100).optional(),
+  }).strict(),
+  middlewares: [enforceListingDraftLimit()],
+  run: (input, ctx) => saveListingDraft(input, ctx),
+  observe: (output) => ({ resourceIds: [output.draftId], rowCount: output.version > 1 ? 2 : 1 }),
+});
+
+privateOperation({
+  path: "/list_my_listing_drafts",
+  tool: "list_my_listing_drafts",
+  operation: "listings.listDrafts",
+  roles: ["seller"],
+  scope: "listings:draft",
+  rolloutFlag: "MCP_TOOL_LIST_MY_LISTING_DRAFTS_ENABLED",
+  inputSchema: z.object({
+    cursor,
+    limit: z.number().int().min(1).max(50).optional(),
+    includeSuperseded: z.boolean().optional(),
+  }).strict(),
+  middlewares: [enforceListingDraftLimit()],
+  run: (input, ctx) => listMyListingDrafts(input, ctx),
+  observe: (output) => ({ resourceIds: output.drafts.map(({ draftId }) => draftId), rowCount: output.drafts.length }),
+});
+
+privateOperation({
+  path: "/get_my_listing_draft",
+  tool: "get_my_listing_draft",
+  operation: "listings.getDraft",
+  roles: ["seller"],
+  scope: "listings:draft",
+  rolloutFlag: "MCP_TOOL_GET_MY_LISTING_DRAFT_ENABLED",
+  inputSchema: z.object({ draftId: draftId }).strict(),
+  middlewares: [enforceListingDraftLimit()],
+  run: (input, ctx) => getMyListingDraft(input, ctx),
+  observe: (output) => ({ resourceIds: [output.draftId], rowCount: 1 }),
 });
 
 router.use(authenticatePublicWorkload);

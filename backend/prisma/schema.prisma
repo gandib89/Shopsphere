@@ -460,3 +460,26 @@ model Bill {
 
   @@map("bills")
 }
+
+// Seller-owned unpublished listing drafts (#20). A draft is a standalone,
+// versioned record: saving composes copy but never creates, modifies, or
+// publishes a live Product. grantId records the delegated grant (Keycloak sid)
+// that created the row so reads, writes, versions, and cursors stay isolated
+// per subject and grant.
+model ListingDraft {
+  id              String   @id @db.VarChar(24)
+  sellerId        String   @db.VarChar(24)
+  grantId         String   @db.VarChar(200)
+  sourceProductId String?  @db.VarChar(24)
+  title           String   @db.VarChar(140)
+  description     String   @db.VarChar(4000)
+  highlights      Json?
+  status          String   @default("Draft")
+  version         Int      @default(1)
+  supersedesId    String?  @db.VarChar(24)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([sellerId, grantId, createdAt])
+  @@map("listing_drafts")
+}

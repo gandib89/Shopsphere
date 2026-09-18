@@ -86,6 +86,7 @@
     { "name": "revenue:read", "description": "Read your revenue summary", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read your monthly revenue, commission, and refund summary" }, "protocolMappers": [] },
     { "name": "platform:read", "description": "Read ShopSphere platform revenue aggregates", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read platform-wide monthly revenue, commission, and refund aggregates" }, "protocolMappers": [] },
     { "name": "sellers:read", "description": "Read minimized seller application summaries", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read seller application status and approved shop display metadata" }, "protocolMappers": [] }
+    { "name": "listings:draft", "description": "Draft and version your listing copy", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Draft and version your unpublished listing copy" }, "protocolMappers": [] }
   ],
   "clients": [
     {
@@ -115,6 +116,7 @@
         "revenue:read",
         "platform:read",
         "sellers:read"
+        "listings:draft"
       ]
     },
     {
@@ -139,6 +141,7 @@
         "revenue:read",
         "platform:read",
         "sellers:read"
+        "listings:draft"
       ]
     },
     {

@@ -44,6 +44,10 @@ export const createShopSphereMcpServer = ({
     get_my_revenue_summary: (args, requestId) => backendClient.call("get_my_revenue_summary", args, requestId),
     get_platform_revenue_summary: (args, requestId) => backendClient.call("get_platform_revenue_summary", args, requestId),
     list_seller_applications: (args, requestId) => backendClient.call("list_seller_applications", args, requestId),
+    draft_listing_copy: (args, requestId) => backendClient.call("draft_listing_copy", args, requestId),
+    save_listing_draft: (args, requestId) => backendClient.call("save_listing_draft", args, requestId),
+    list_my_listing_drafts: (args, requestId) => backendClient.call("list_my_listing_drafts", args, requestId),
+    get_my_listing_draft: (args, requestId) => backendClient.call("get_my_listing_draft", args, requestId),
     get_store_policy: (args, requestId) => backendClient.call("get_store_policy", args, requestId),
     search_products: (args, requestId) => backendClient.call("search_products", args, requestId),
     compare_products: (args, requestId) => backendClient.call("compare_products", args, requestId),
@@ -63,7 +67,8 @@ export const createShopSphereMcpServer = ({
         description: tool.description,
         inputSchema: tool.inputSchema,
         outputSchema: tool.outputSchema,
-        annotations: { readOnlyHint: true },
+        // Draft-class tools persist draft rows, so they are not read-only.
+        annotations: { readOnlyHint: tool.operationClass === "read" },
       },
       async (args, extra) => {
         const startedAt = Date.now();

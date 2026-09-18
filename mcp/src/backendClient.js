@@ -23,6 +23,10 @@ const OPERATIONS = Object.freeze({
   get_my_revenue_summary: "/api/v1/assistant/get_my_revenue_summary",
   get_platform_revenue_summary: "/api/v1/assistant/get_platform_revenue_summary",
   list_seller_applications: "/api/v1/assistant/list_seller_applications",
+  draft_listing_copy: "/api/v1/assistant/draft_listing_copy",
+  save_listing_draft: "/api/v1/assistant/save_listing_draft",
+  list_my_listing_drafts: "/api/v1/assistant/list_my_listing_drafts",
+  get_my_listing_draft: "/api/v1/assistant/get_my_listing_draft",
 });
 
 const PRIVATE_SCOPES = Object.freeze({
@@ -44,6 +48,10 @@ const PRIVATE_SCOPES = Object.freeze({
   get_my_revenue_summary: Object.freeze(["revenue:read"]),
   get_platform_revenue_summary: Object.freeze(["platform:read"]),
   list_seller_applications: Object.freeze(["sellers:read"]),
+  draft_listing_copy: Object.freeze(["listings:draft"]),
+  save_listing_draft: Object.freeze(["listings:draft"]),
+  list_my_listing_drafts: Object.freeze(["listings:draft"]),
+  get_my_listing_draft: Object.freeze(["listings:draft"]),
 });
 
 export const createBackendClient = ({ origin, token, exchangeToken, timeoutMs = 10_000, fetchImpl = fetch }) => {
