@@ -161,5 +161,13 @@ export const readConfig = (environment = process.env) => ({
       environment.MCP_TOOL_GET_MY_REVENUE_SUMMARY_ENABLED,
       false,
     ),
+    MCP_TOOL_LIST_PROMOTION_CONFIGURATION_ENABLED: parseBoolean(
+      environment.MCP_TOOL_LIST_PROMOTION_CONFIGURATION_ENABLED,
+      false,
+    ),
+    MCP_TOOL_GET_PROMOTION_USAGE_SUMMARY_ENABLED: parseBoolean(
+      environment.MCP_TOOL_GET_PROMOTION_USAGE_SUMMARY_ENABLED,
+      false,
+    ),
   },
 });

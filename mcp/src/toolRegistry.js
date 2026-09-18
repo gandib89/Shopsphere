@@ -626,6 +626,67 @@ const GetMyRevenueSummaryOutputSchema = z
   })
   .strict();
 
+// Admin promotion reads (#18): configuration is public inside the admin trust
+// boundary — the code string itself is included — but creator identity and any
+// per-user redemption data (user ids, redemption timestamps, per-user rows)
+// have no field in these schemas at all. Percentage and fixed discounts are
+// exact decimal values: percentages are bounded 0..100, fixed amounts use the
+// shared money contract.
+const PromotionPercentSchema = z
+  .object({
+    percent: z.string().regex(/^(?:\d{1,2}(?:\.\d{1,2})?|100(?:\.0{1,2})?)$/),
+  })
+  .strict();
+
+const PromotionConfigurationSchema = z
+  .object({
+    promoCodeId: z.string().min(1).max(100),
+    code: z.string().min(1).max(50),
+    discountType: z.enum(["percentage", "fixed"]),
+    discountValue: z.union([PromotionPercentSchema, MoneySchema]),
+    minPurchase: MoneySchema,
+    maxDiscount: MoneySchema.nullable(),
+    usageLimit: z.number().int().min(1).nullable(),
+    usedCount: z.number().int().nonnegative(),
+    validFrom: z.iso.datetime().max(100),
+    validUntil: z.iso.datetime().max(100).nullable(),
+    isActive: z.boolean(),
+  })
+  .strict();
+
+const ListPromotionConfigurationInputSchema = z
+  .object({
+    cursor: z.string().min(1).max(2048).optional(),
+    limit: z.number().int().min(1).max(50).optional(),
+    activeOnly: z.boolean().optional(),
+  })
+  .strict();
+
+const ListPromotionConfigurationOutputSchema = z
+  .object({
+    promotions: z.array(PromotionConfigurationSchema).max(50),
+    nextCursor: z.string().min(1).max(2048).nullable(),
+  })
+  .strict();
+
+const PromoCodeIdInputSchema = z
+  .object({
+    promoCodeId: z.string().min(1).max(100),
+  })
+  .strict();
+
+const GetPromotionUsageSummaryOutputSchema = z
+  .object({
+    promoCodeId: z.string().min(1).max(100),
+    code: z.string().min(1).max(50),
+    totalRedemptions: z.number().int().nonnegative(),
+    distinctUsers: z.number().int().nonnegative(),
+    active: z.boolean(),
+    validFrom: z.iso.datetime().max(100),
+    validUntil: z.iso.datetime().max(100).nullable(),
+  })
+  .strict();
+
 const definitions = [
   {
     name: "get_capabilities",
@@ -1112,6 +1173,50 @@ const definitions = [
       operationId: "sales.revenueSummary",
       method: "POST",
       path: "/api/v1/assistant/get_my_revenue_summary",
+    },
+  },
+  {
+    name: "list_promotion_configuration",
+    title: "List ShopSphere promotion configuration",
+    description:
+      "Lists one bounded page of promotion configurations with allowlisted rule fields and usage counters; never per-user redemption history.",
+    inputSchema: ListPromotionConfigurationInputSchema,
+    outputSchema: ListPromotionConfigurationOutputSchema,
+    operationClass: "read",
+    roles: ["admin"],
+    scopes: ["promotions:read"],
+    rateClass: "authenticated-read",
+    rollout: {
+      flag: "MCP_TOOL_LIST_PROMOTION_CONFIGURATION_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "promotions.listConfiguration",
+      method: "POST",
+      path: "/api/v1/assistant/list_promotion_configuration",
+    },
+  },
+  {
+    name: "get_promotion_usage_summary",
+    title: "Get ShopSphere promotion usage summary",
+    description:
+      "Reads aggregate redemption counters and the validity window for one promotion; per-user redemption history is never exposed.",
+    inputSchema: PromoCodeIdInputSchema,
+    outputSchema: GetPromotionUsageSummaryOutputSchema,
+    operationClass: "read",
+    roles: ["admin"],
+    scopes: ["promotions:read"],
+    rateClass: "authenticated-read",
+    rollout: {
+      flag: "MCP_TOOL_GET_PROMOTION_USAGE_SUMMARY_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "promotions.usageSummary",
+      method: "POST",
+      path: "/api/v1/assistant/get_promotion_usage_summary",
     },
   },
 ];

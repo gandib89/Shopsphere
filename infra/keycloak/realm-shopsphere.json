@@ -83,7 +83,8 @@
     { "name": "orders:read", "description": "Read your permitted orders", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read your permitted order history" }, "protocolMappers": [] },
     { "name": "cart:read", "description": "Read and preview your cart", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read and preview your cart" }, "protocolMappers": [] },
     { "name": "sales:read", "description": "Read your sale lines", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read your sale lines attributed at purchase time" }, "protocolMappers": [] },
-    { "name": "revenue:read", "description": "Read your revenue summary", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read your monthly revenue, commission, and refund summary" }, "protocolMappers": [] }
+    { "name": "revenue:read", "description": "Read your revenue summary", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read your monthly revenue, commission, and refund summary" }, "protocolMappers": [] },
+    { "name": "promotions:read", "description": "Read promotion configuration and aggregate usage", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read promotion configuration and aggregate usage statistics (admin)" }, "protocolMappers": [] }
   ],
   "clients": [
     {
@@ -110,7 +111,8 @@
         "orders:read",
         "cart:read",
         "sales:read",
-        "revenue:read"
+        "revenue:read",
+        "promotions:read"
       ]
     },
     {
@@ -132,7 +134,8 @@
         "orders:read",
         "cart:read",
         "sales:read",
-        "revenue:read"
+        "revenue:read",
+        "promotions:read"
       ]
     },
     {
