@@ -301,6 +301,9 @@ model Cart {
   user       User     @relation(fields: [userId], references: [id])
   email      String
   totalPrice Decimal  @default(0) @db.Decimal(12, 2)
+  // Optimistic-concurrency guard for proposal execution (#22): bumped atomically
+  // (+1) by every cart mutation so a proposal can pin the version it previewed.
+  version    Int      @default(0)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @default(now())
 
@@ -459,4 +462,52 @@ model Bill {
   ordersReferencing Order[] @relation("OrderBill")
 
   @@map("bills")
+}
+
+// Canonical cart-change proposal (#22). Created by the assistant operation
+// proposals.proposeCartChange from the delegated token's subject/role/client/
+// grant; executed only by the first-party browser endpoint. Payload columns are
+// immutable at the database level (trigger proposals_payload_immutable); only
+// status/execution columns may transition. executionReference is a deterministic
+// outcome reference (proposal-exec-<id>), never a credential.
+model Proposal {
+  id                 String    @id @db.VarChar(24)
+  subjectId          String    @db.VarChar(24)
+  role               String    @db.VarChar(20)
+  clientId           String    @db.VarChar(200)
+  grantId            String    @db.VarChar(200)
+  actionKind         String    @db.VarChar(40) // "cart.add_item" | "cart.update_quantity" | "cart.remove_item"
+  targetType         String    @db.VarChar(20) // "cart_item" | "cart"
+  targetId           String?   @db.VarChar(24)
+  canonicalPayload   Json
+  preview            Json
+  expectedVersion    Int
+  payloadHash        String    @db.VarChar(64)
+  status             String    @default("pending") @db.VarChar(20) // pending | executed | expired | stale | rejected
+  expiresAt          DateTime
+  executedAt         DateTime?
+  executionReference String?   @db.VarChar(100)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  outboxEvents ProposalOutboxEvent[]
+
+  @@index([subjectId, createdAt])
+  @@index([status, expiresAt])
+  @@map("proposals")
+}
+
+// Append-only outbox for proposal outcomes (created | executed | expired |
+// stale | rejected). Rows are inserted in the same transaction as the proposal
+// write or cart mutation; a database trigger rejects UPDATE and DELETE.
+model ProposalOutboxEvent {
+  id          String   @id @db.Uuid
+  proposalId  String   @db.VarChar(24)
+  proposal    Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  eventType   String   @db.VarChar(20)
+  payloadHash String   @db.VarChar(64)
+  occurredAt  DateTime @default(now())
+
+  @@index([proposalId, occurredAt])
+  @@map("proposal_outbox_events")
 }

@@ -42,6 +42,8 @@ export const createShopSphereMcpServer = ({
     list_my_seller_orders: (args, requestId) => backendClient.call("list_my_seller_orders", args, requestId),
     get_my_seller_order: (args, requestId) => backendClient.call("get_my_seller_order", args, requestId),
     get_my_revenue_summary: (args, requestId) => backendClient.call("get_my_revenue_summary", args, requestId),
+    propose_cart_change: (args, requestId) => backendClient.call("propose_cart_change", args, requestId),
+    get_my_action_status: (args, requestId) => backendClient.call("get_my_action_status", args, requestId),
     get_store_policy: (args, requestId) => backendClient.call("get_store_policy", args, requestId),
     search_products: (args, requestId) => backendClient.call("search_products", args, requestId),
     compare_products: (args, requestId) => backendClient.call("compare_products", args, requestId),
@@ -54,6 +56,8 @@ export const createShopSphereMcpServer = ({
     const handle = handlers[tool.name];
     if (!handle) continue;
 
+    // propose-class tools create durable records, so they must not advertise
+    // themselves as read-only (clients may auto-approve on that hint).
     server.registerTool(
       tool.name,
       {
@@ -61,7 +65,7 @@ export const createShopSphereMcpServer = ({
         description: tool.description,
         inputSchema: tool.inputSchema,
         outputSchema: tool.outputSchema,
-        annotations: { readOnlyHint: true },
+        annotations: { readOnlyHint: tool.operationClass === "read" },
       },
       async (args, extra) => {
         const startedAt = Date.now();

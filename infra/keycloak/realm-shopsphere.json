@@ -82,6 +82,8 @@
     { "name": "notifications:read", "description": "Read your notifications", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read your notifications" }, "protocolMappers": [] },
     { "name": "orders:read", "description": "Read your permitted orders", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read your permitted order history" }, "protocolMappers": [] },
     { "name": "cart:read", "description": "Read and preview your cart", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read and preview your cart" }, "protocolMappers": [] },
+    { "name": "cart:propose", "description": "Propose cart changes for your review", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Propose cart changes that you review and confirm in ShopSphere before anything changes" }, "protocolMappers": [] },
+    { "name": "proposals:read", "description": "Read the status of your own proposals", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read the status of proposals created on your behalf" }, "protocolMappers": [] },
     { "name": "sales:read", "description": "Read your sale lines", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read your sale lines attributed at purchase time" }, "protocolMappers": [] },
     { "name": "revenue:read", "description": "Read your revenue summary", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read your monthly revenue, commission, and refund summary" }, "protocolMappers": [] }
   ],
@@ -109,6 +111,8 @@
         "notifications:read",
         "orders:read",
         "cart:read",
+        "cart:propose",
+        "proposals:read",
         "sales:read",
         "revenue:read"
       ]
@@ -131,6 +135,8 @@
         "notifications:read",
         "orders:read",
         "cart:read",
+        "cart:propose",
+        "proposals:read",
         "sales:read",
         "revenue:read"
       ]

@@ -116,10 +116,12 @@ export const addToCart = async (req, res) => {
       }
     }
 
-    // Recalculate and persist totalPrice (was a Mongoose pre-save hook)
+    // Recalculate and persist totalPrice (was a Mongoose pre-save hook).
+    // version bumps atomically on every mutation (#22): proposals pin the
+    // version they previewed and execution rejects anything but an exact match.
     const populatedCart = await getCartWithItems(user.email);
     const { itemsWithDiscount, totalPrice, totalDiscount, finalPrice } = withDiscount(populatedCart.items);
-    await prisma.cart.update({ where: { id: populatedCart.id }, data: { totalPrice, updatedAt: new Date() } });
+    await prisma.cart.update({ where: { id: populatedCart.id }, data: { totalPrice, updatedAt: new Date(), version: { increment: 1 } } });
 
     res.status(201).json({
       success: true,
@@ -213,7 +215,7 @@ export const updateCartItem = async (req, res) => {
 
     const populatedCart = await getCartWithItems(user.email);
     const totalPrice = populatedCart.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    await prisma.cart.update({ where: { id: populatedCart.id }, data: { totalPrice, updatedAt: new Date() } });
+    await prisma.cart.update({ where: { id: populatedCart.id }, data: { totalPrice, updatedAt: new Date(), version: { increment: 1 } } });
 
     res.status(200).json({
       success: true,
@@ -248,7 +250,7 @@ export const removeFromCart = async (req, res) => {
 
     const populatedCart = await getCartWithItems(user.email);
     const totalPrice = populatedCart.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    await prisma.cart.update({ where: { id: populatedCart.id }, data: { totalPrice, updatedAt: new Date() } });
+    await prisma.cart.update({ where: { id: populatedCart.id }, data: { totalPrice, updatedAt: new Date(), version: { increment: 1 } } });
 
     res.status(200).json({
       success: true,
@@ -275,7 +277,7 @@ export const clearCart = async (req, res) => {
     }
 
     await prisma.cartItem.deleteMany({ where: { cartId: cart.id } });
-    await prisma.cart.update({ where: { id: cart.id }, data: { totalPrice: 0, updatedAt: new Date() } });
+    await prisma.cart.update({ where: { id: cart.id }, data: { totalPrice: 0, updatedAt: new Date(), version: { increment: 1 } } });
 
     res.status(200).json({
       success: true,
