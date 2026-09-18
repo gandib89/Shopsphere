@@ -89,6 +89,7 @@
     { "name": "platform:read", "description": "Read ShopSphere platform revenue aggregates", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read platform-wide monthly revenue, commission, and refund aggregates" }, "protocolMappers": [] },
     { "name": "sellers:read", "description": "Read minimized seller application summaries", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read seller application status and approved shop display metadata" }, "protocolMappers": [] }
     { "name": "listings:draft", "description": "Draft and version your listing copy", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Draft and version your unpublished listing copy" }, "protocolMappers": [] }
+    { "name": "support:read", "description": "Read ShopSphere support queues", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read minimized order-exception and return support queues" }, "protocolMappers": [] }
   ],
   "clients": [
     {
@@ -121,6 +122,7 @@
         "platform:read",
         "sellers:read"
         "listings:draft"
+        "support:read"
       ]
     },
     {
@@ -148,6 +150,7 @@
         "platform:read",
         "sellers:read"
         "listings:draft"
+        "support:read"
       ]
     },
     {

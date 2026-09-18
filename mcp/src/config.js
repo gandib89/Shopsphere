@@ -193,5 +193,17 @@ export const readConfig = (environment = process.env) => ({
       environment.MCP_TOOL_GET_MY_ACTION_STATUS_ENABLED,
       false,
     ),
+    MCP_TOOL_LIST_ORDER_EXCEPTION_QUEUE_ENABLED: parseBoolean(
+      environment.MCP_TOOL_LIST_ORDER_EXCEPTION_QUEUE_ENABLED,
+      false,
+    ),
+    MCP_TOOL_GET_ORDER_EXCEPTION_DETAIL_ENABLED: parseBoolean(
+      environment.MCP_TOOL_GET_ORDER_EXCEPTION_DETAIL_ENABLED,
+      false,
+    ),
+    MCP_TOOL_LIST_RETURN_QUEUE_ENABLED: parseBoolean(
+      environment.MCP_TOOL_LIST_RETURN_QUEUE_ENABLED,
+      false,
+    ),
   },
 });
