@@ -84,6 +84,11 @@ import {
   LISTING_PUBLISH_DISCLOSURES,
   listingProductVersionOf,
 } from "../services/assistantListingProposals.js";
+import {
+  FULFILLMENT_ACTION_KIND,
+  applyFulfillmentTransition,
+  revalidateFulfillmentForExecution,
+} from "../services/assistantFulfillmentProposals.js";
 
 export const PROPOSAL_LIST_LIMIT = 20;
 
@@ -187,6 +192,17 @@ const executedResponseFor = (proposal) => {
         change: proposal.canonicalPayload?.change,
         newValue: proposal.canonicalPayload?.newValue,
       },
+    };
+  }
+  // Seller fulfillment proposals (#29): the applied status is replayed from the
+  // immutable stored payload only (the sale line id from the stored target), so
+  // a retry after success is byte-identical.
+  if (proposal.actionKind === FULFILLMENT_ACTION_KIND) {
+    return {
+      status: "executed",
+      executionReference: proposal.executionReference ?? executionReferenceFor(proposal.id),
+      saleLineId: proposal.targetId,
+      appliedStatus: proposal.canonicalPayload?.nextStatus,
     };
   }
   return {
@@ -413,7 +429,10 @@ const applyPriceChange = async (tx, { product, account, payload, now }) => {
 // lists; order.cancel replays the proposal's own immutable stored
 // disclosedConsequences so the review list matches the preview exactly.
 const disclosuresFor = (proposal) => {
-  if (proposal.actionKind === "order.cancel") {
+  // order.cancel (#24) and seller fulfillment transitions (#29) replay the
+  // proposal's own immutable stored disclosedConsequences so the review list
+  // matches the preview exactly.
+  if (proposal.actionKind === "order.cancel" || proposal.actionKind === FULFILLMENT_ACTION_KIND) {
     const disclosed = proposal.preview?.disclosedConsequences;
     return Array.isArray(disclosed)
       ? disclosed.filter((entry) => typeof entry === "string").slice(0, 10)
@@ -655,6 +674,46 @@ export const executeProposal = async (req, res, client = prisma) => {
         console.error("DEBUG_LISTING", proposal.actionKind, JSON.stringify(account), userId === account.id);
         if (!account.isVerified) return { kind: "forbidden" };
         return executeListingProposal(tx, { proposal, userId, now });
+      }
+
+      // 4b. Seller fulfillment proposals (#29): reauthorize the acting account
+      //     as a VERIFIED seller right now (the #26 listing-branch pattern —
+      //     verification revoked after propose time is an actor
+      //     reauthorization failure, answered 403 verification_required with
+      //     NO proposal transition and no mutation), then revalidate the owned
+      //     sale line under the immutable sellerIdAtPurchase attribution: the
+      //     stored status must still sit exactly one allowed seller step away
+      //     from the stored next stage (else rejected) and the shared
+      //     orderVersionOf epoch-seconds proxy must equal expectedVersion
+      //     (else stale). The apply is ONE conditional updateMany (status +
+      //     the single stage timestamp field, CAS on the exact read
+      //     status + updatedAt) inside this same transaction; a lost CAS
+      //     throws order_state_changed, which rolls the claim back too. It
+      //     NEVER sends the buyer status email the storefront flow sends
+      //     inline (the disclosure says exactly that) and never writes a
+      //     notification, payment, refund, revenue, or stock change.
+      if (proposal.actionKind === FULFILLMENT_ACTION_KIND) {
+        if (!account.isVerified) return { kind: "forbidden" };
+        const revalidation = await revalidateFulfillmentForExecution(tx, { proposal, account });
+        if (!revalidation.ok) {
+          const claimed = await transitionPending(tx, proposal.id, userId, { status: revalidation.terminal });
+          if (claimed.count === 1) await writeOutbox(tx, proposal.id, revalidation.terminal, proposal.payloadHash);
+          return resolveTerminal(await reloadProposal(tx, proposal.id));
+        }
+        const claimed = await transitionPending(tx, proposal.id, userId, {
+          status: "executed",
+          executedAt: now,
+          executionReference: executionReferenceFor(proposal.id),
+        });
+        if (claimed.count !== 1) return resolveTerminal(await reloadProposal(tx, proposal.id));
+        await applyFulfillmentTransition(tx, {
+          order: revalidation.order,
+          nextStatus: revalidation.nextStatus,
+          accountId: account.id,
+          now,
+        });
+        await writeOutbox(tx, proposal.id, "executed", proposal.payloadHash);
+        return { kind: "executed", response: executedResponseFor(proposal) };
       }
 
       // 4c. product.set_price / product.set_discount (#27): reauthorize the

@@ -51,6 +51,18 @@ type ProposalPreview = {
   newValue?: string;
   effectiveDisplayPriceBefore?: Money;
   effectiveDisplayPriceAfter?: Money;
+  // Seller fulfillment proposals (#29): exact server-computed sale-line state.
+  // There is no currentStatus input — the server derives the exact stored
+  // status — and the transition is the exact one-step-forward seller stage.
+  saleLineId?: string;
+  nextStatus?: 'Processing' | 'Shipped' | 'Delivered';
+  stageTimestamps?: {
+    confirmedAt: string | null;
+    processingAt: string | null;
+    shippedAt: string | null;
+    deliveredAt: string | null;
+  };
+  willSetTimestamp?: 'confirmedAt' | 'processingAt' | 'shippedAt' | 'deliveredAt';
 };
 type ProposalStatus = 'pending' | 'executed' | 'expired' | 'stale' | 'rejected';
 type Proposal = {
@@ -181,6 +193,21 @@ const actionDescriptors: Record<string, ActionDescriptor> = {
       rejected: 'This discount change can no longer be applied to your product. Nothing was changed.',
     },
   },
+  // Seller fulfillment proposals (#29): confirming applies the exact one-step
+  // forward transition to the seller's own sale line with the browser session.
+  'sale.advance_fulfillment': {
+    title: 'Advance fulfillment',
+    description: 'An AI assistant prepared this fulfillment step. Nothing has changed yet — review the exact sale line below, then confirm.',
+    executedMessage: 'Confirmed. Your sale line now reflects exactly the reviewed fulfillment step. It was reviewed on this screen before it was applied. No payment, refund, or stock change happened.',
+    confirmToast: 'Confirmed. The fulfillment step was applied to your sale line.',
+    backTarget: '/seller-orders',
+    confirmLabel: 'Confirm — apply this fulfillment step',
+    confirmCopy: 'I have reviewed the exact sale line status and the effects listed above. Confirming applies exactly this fulfillment step to my sale line with my own ShopSphere session.',
+    blocked: {
+      stale: 'Your product sale changed after this proposal was created, so it can no longer be applied. Nothing was changed.',
+      rejected: 'This fulfillment step can no longer be applied to your product sale. Nothing was changed.',
+    },
+  },
 };
 
 const actionLabels: Record<string, string> = {
@@ -193,6 +220,7 @@ const actionLabels: Record<string, string> = {
   'listing.update_content': 'Update listing content',
   'product.set_price': 'Change listing price',
   'product.set_discount': 'Change listing discount',
+  'sale.advance_fulfillment': 'Advance fulfillment',
 };
 
 const statusLabels: Record<ProposalStatus, string> = {
@@ -217,6 +245,12 @@ const blockedMessageFor = (actionKind: string, reason: string) =>
   actionDescriptors[actionKind]?.blocked?.[reason] ?? blockedMessages[reason] ?? blockedMessages.rejected;
 
 const formatMoney = (money: Money | null) => (money ? `${money.amount} ${money.currency}` : '—');
+
+const formatStageTimestamp = (iso: string | null | undefined) => {
+  if (!iso) return 'Not set';
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString();
+};
 
 const formatExpiry = (iso: string) => {
   const date = new Date(iso);
@@ -354,6 +388,7 @@ export default function ProposalReview() {
   const isReturn = proposal.actionKind === 'order.return_request';
   const isCancel = proposal.actionKind === 'order.cancel';
   const isListing = proposal.actionKind.startsWith('listing.');
+  const isFulfillment = proposal.actionKind === 'sale.advance_fulfillment';
   const backTarget = descriptor.backTarget;
 
   return (
@@ -465,6 +500,39 @@ export default function ProposalReview() {
                 Grounded in approved ShopSphere policy: {preview.policyBasis!.map((source) => `${source.sourceId} (v${source.sourceVersion})`).join(', ')}.
               </p>
             )}
+            <p className="mt-3 text-xs text-ink-muted">
+              Expires at {formatExpiry(proposal.expiresAt)} — after that this proposal cannot be applied.
+            </p>
+          </section>
+        ) : isFulfillment ? (
+          <section aria-labelledby="proposal-target" className="border border-hairline bg-paper-raised p-6">
+            <h2 id="proposal-target" className="text-xl font-bold">
+              {preview.productName ?? 'Sale line'} {preview.orderNumber ? `· ${preview.orderNumber}` : ''}
+            </h2>
+            <p className="mt-1 text-sm text-ink-muted">
+              Status: {preview.currentStatus} · Proposal status: {statusLabels[proposal.status]}
+            </p>
+            <dl className="mt-5 overflow-hidden border border-hairline text-sm">
+              <div className="grid grid-cols-3 gap-2 bg-paper px-4 py-2 font-semibold">
+                <span className="col-span-1">Field</span>
+                <span className="col-span-2">Exact value to apply</span>
+              </div>
+              {([
+                ['Sale line', preview.saleLineId ?? preview.orderNumber ?? '—'],
+                ['Product', preview.productName ?? '—'],
+                ['Fulfillment transition', `${preview.currentStatus ?? '—'} → ${preview.nextStatus ?? '—'}`],
+                ['Confirmed', formatStageTimestamp(preview.stageTimestamps?.confirmedAt)],
+                ['Processing', formatStageTimestamp(preview.stageTimestamps?.processingAt)],
+                ['Shipped', formatStageTimestamp(preview.stageTimestamps?.shippedAt)],
+                ['Delivered', formatStageTimestamp(preview.stageTimestamps?.deliveredAt)],
+                ['Stage timestamp to set', preview.willSetTimestamp ?? '—'],
+              ] as const).map(([label, value]) => (
+                <div key={label} className="grid grid-cols-3 gap-2 border-t border-hairline px-4 py-2 tabular-nums">
+                  <span className="font-medium">{label}</span>
+                  <span className="col-span-2">{value}</span>
+                </div>
+              ))}
+            </dl>
             <p className="mt-3 text-xs text-ink-muted">
               Expires at {formatExpiry(proposal.expiresAt)} — after that this proposal cannot be applied.
             </p>

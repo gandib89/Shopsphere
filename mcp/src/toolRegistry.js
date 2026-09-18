@@ -1102,6 +1102,56 @@ const ProposePriceChangeOutputSchema = z
   .strict();
 
 
+// Seller fulfillment-transition proposals (#29). The input is exactly one owned
+// sale line (the seller's own Order row id, attributed via the immutable
+// sellerIdAtPurchase) and the requested next stage. There is NO currentStatus
+// input (the server derives the exact stored status) and NO confirm/execute
+// affordance: forged fields fail the schema, not the order. Eligibility is the
+// exact server state machine — only the exact next stage out of
+// Confirmed/Processing/Shipped can be proposed (pending payment can never be
+// proposed to Confirmed or beyond) — so the output's currentStatus is pinned to
+// the three fulfillable stages and willSetTimestamp to the four stage
+// timestamp fields. The disclosed consequences are fixed server strings; the
+// notification line states honestly that this execution sends no buyer
+// notification/email (the storefront fulfillment flow normally sends one).
+const ProposeFulfillmentTransitionInputSchema = z
+  .object({
+    saleLineId: z.string().regex(/^[a-f0-9]{24}$/),
+    nextStatus: z.enum(["Processing", "Shipped", "Delivered"]),
+  })
+  .strict();
+
+const ProposeFulfillmentPreviewSchema = z
+  .object({
+    actionKind: z.literal("sale.advance_fulfillment"),
+    saleLineId: z.string().min(1).max(100),
+    orderNumber: z.string().min(1).max(100).nullable(),
+    productName: z.string().min(1).max(200).nullable(),
+    currentStatus: z.enum(["Confirmed", "Processing", "Shipped"]),
+    nextStatus: z.enum(["Processing", "Shipped", "Delivered"]),
+    stageTimestamps: z
+      .object({
+        confirmedAt: z.iso.datetime().max(100).nullable(),
+        processingAt: z.iso.datetime().max(100).nullable(),
+        shippedAt: z.iso.datetime().max(100).nullable(),
+        deliveredAt: z.iso.datetime().max(100).nullable(),
+      })
+      .strict(),
+    willSetTimestamp: z.enum(["confirmedAt", "processingAt", "shippedAt", "deliveredAt"]),
+    disclosedConsequences: z.array(z.string().min(1).max(300)).max(10),
+  })
+  .strict();
+
+const ProposeFulfillmentTransitionOutputSchema = z
+  .object({
+    proposalId: z.string().min(1).max(100),
+    status: z.literal("pending"),
+    expiresAt: z.iso.datetime().max(100),
+    preview: ProposeFulfillmentPreviewSchema,
+  })
+  .strict();
+
+
 // Admin support queues (#17): membership is a fixed server rule — the exact
 // stored return/refund exception status strings inside a rolling 90-day window —
 // never a caller-supplied filter. Inputs therefore carry pagination only, plus
@@ -2085,6 +2135,29 @@ const definitions = [
       operationId: "proposals.priceChange",
       method: "POST",
       path: "/api/v1/assistant/propose_price_change",
+    },
+  },
+
+  {
+    name: "propose_fulfillment_transition",
+    title: "Propose a ShopSphere fulfillment step",
+    description:
+      "Records one pending forward-only fulfillment proposal for one of the seller's own sale lines (Confirmed to Processing, Processing to Shipped, Shipped to Delivered) to review and confirm in ShopSphere. It derives the current status server-side, never advances the order itself, and never touches payment, stock, or any buyer notification.",
+    inputSchema: ProposeFulfillmentTransitionInputSchema,
+    outputSchema: ProposeFulfillmentTransitionOutputSchema,
+    operationClass: "propose",
+    roles: ["seller"],
+    scopes: ["fulfillment:propose"],
+    rateClass: "proposal",
+    rollout: {
+      flag: "MCP_TOOL_PROPOSE_FULFILLMENT_TRANSITION_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "proposals.fulfillmentTransition",
+      method: "POST",
+      path: "/api/v1/assistant/propose_fulfillment_transition",
     },
   },
 

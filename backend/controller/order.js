@@ -24,6 +24,24 @@ const ORDER_STATUS_TRANSITIONS = Object.freeze({
 export const canTransitionOrderStatus = (currentStatus, nextStatus) =>
   currentStatus === nextStatus || Boolean(ORDER_STATUS_TRANSITIONS[currentStatus]?.includes(nextStatus));
 
+// The fulfilment pipeline, once an order is paid for (hoisted + exported for
+// the #29 assistant fulfillment proposals so the storefront and the proposal
+// platform share one definition of the seller state machine).
+export const DELIVERY_STAGES = Object.freeze(["Confirmed", "Processing", "Shipped", "Delivered"]);
+export const STAGE_TIMESTAMP_FIELD = Object.freeze({
+  Confirmed: "confirmedAt",
+  Processing: "processingAt",
+  Shipped: "shippedAt",
+  Delivered: "deliveredAt",
+});
+// Sellers advance exactly one step forward; Pending → Confirmed goes through
+// confirmOrderCore (verified payment) and is never a seller-transition.
+export const SELLER_FULFILLMENT_TRANSITIONS = Object.freeze({
+  Confirmed: "Processing",
+  Processing: "Shipped",
+  Shipped: "Delivered",
+});
+
 export { effectiveProductPrice } from "../utils/productPricing.js";
 
 const deliveryAddressSchema = z.object({
@@ -1081,8 +1099,7 @@ export const updateSellerOrderStatus = async (req, res) => {
     // The fulfilment pipeline, once an order is paid for. Pending isn't in here — moving
     // out of Pending requires a verified payment (confirmOrderCore), and Cancelled/Return/
     // Refund states go through their own dedicated workflows so stock and refund rules run.
-    const DELIVERY_STAGES = ["Confirmed", "Processing", "Shipped", "Delivered"];
-    const STAGE_TIMESTAMP_FIELD = { Confirmed: "confirmedAt", Processing: "processingAt", Shipped: "shippedAt", Delivered: "deliveredAt" };
+    // DELIVERY_STAGES / STAGE_TIMESTAMP_FIELD are the hoisted module constants.
 
     const isAdmin = req.user.role === "admin";
     // Admin override: force a Pending order into the fulfilment pipeline without a verified
@@ -1100,7 +1117,7 @@ export const updateSellerOrderStatus = async (req, res) => {
     // Admins can jump to any pipeline stage (forward to skip a step, or back to correct a
     // mistake). Sellers can only advance one step at a time.
     const manualOverride = isAdmin && DELIVERY_STAGES.includes(order.status) && DELIVERY_STAGES.includes(status);
-    const sellerTransitions = { Confirmed: "Processing", Processing: "Shipped", Shipped: "Delivered" };
+    const sellerTransitions = SELLER_FULFILLMENT_TRANSITIONS;
     if (!manualOverride && sellerTransitions[order.status] !== status) {
       return res.status(409).json({ message: `Order cannot move from ${order.status} to ${status}` });
     }
