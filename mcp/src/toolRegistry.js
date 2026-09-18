@@ -871,7 +871,13 @@ const ProposeCartChangeOutputSchema = z
   })
   .strict();
 
-const ProposalActionKindSchema = z.enum(["cart.add_item", "cart.update_quantity", "cart.remove_item", "order.cancel"]);
+const ProposalActionKindSchema = z.enum([
+  "cart.add_item",
+  "cart.update_quantity",
+  "cart.remove_item",
+  "order.cancel",
+  "order.return_request",
+]);
 
 const GetMyActionStatusInputSchema = z
   .object({
@@ -927,6 +933,41 @@ const ProposeOrderCancellationOutputSchema = z
     status: z.literal("pending"),
     expiresAt: z.iso.datetime().max(100),
     preview: OrderCancellationPreviewSchema,
+  })
+  .strict();
+
+
+// Buyer return proposals (#25). The input is exactly one owned order plus a
+// bounded free-text reason — there is no evidence URL, attachment path, or
+// image field (evidence upload stays in ShopSphere's trusted flows), and no
+// confirm/execute affordance: forged fields fail the schema, not the order.
+// The preview is the exact server-computed owned-order and policy picture; the
+// caller cannot influence any of it. Money uses the shared NPR contract.
+const ProposeOrderReturnInputSchema = z
+  .object({
+    orderId: z.string().regex(/^[A-Za-z0-9]{1,24}$/),
+    reason: z.string().trim().min(10).max(1000),
+  })
+  .strict();
+
+const ProposeOrderReturnPreviewSchema = z
+  .object({
+    orderId: z.string().min(1).max(100),
+    orderNumber: z.string().min(1).max(100).nullable(),
+    currentStatus: z.string().min(1).max(50),
+    returnEligible: z.literal(true),
+    orderTotal: MoneySchema,
+    policyBasis: z.array(DraftPolicySourceSchema).max(10),
+    disclosedConsequences: z.array(z.string().min(1).max(300)).max(10),
+  })
+  .strict();
+
+const ProposeOrderReturnOutputSchema = z
+  .object({
+    proposalId: z.string().min(1).max(100),
+    status: z.literal("pending"),
+    expiresAt: z.iso.datetime().max(100),
+    preview: ProposeOrderReturnPreviewSchema,
   })
   .strict();
 
@@ -1870,6 +1911,29 @@ const definitions = [
       operationId: "proposals.orderCancel",
       method: "POST",
       path: "/api/v1/assistant/propose_order_cancellation",
+    },
+  },
+
+  {
+    name: "propose_order_return",
+    title: "Propose a ShopSphere order return",
+    description:
+      "Records one pending return-request proposal for one of the buyer's own delivered orders inside the approved return window. It accepts no evidence URLs or attachments, never creates the return itself, and never releases a refund.",
+    inputSchema: ProposeOrderReturnInputSchema,
+    outputSchema: ProposeOrderReturnOutputSchema,
+    operationClass: "propose",
+    roles: ["user"],
+    scopes: ["returns:propose"],
+    rateClass: "proposal",
+    rollout: {
+      flag: "MCP_TOOL_PROPOSE_ORDER_RETURN_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "proposals.orderReturn",
+      method: "POST",
+      path: "/api/v1/assistant/propose_order_return",
     },
   },
 

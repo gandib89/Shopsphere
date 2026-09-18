@@ -193,10 +193,12 @@ export const proposeCartChange = async (input, { client, principal, now = new Da
 
 // Deterministic coarse reason for a terminal status. The detailed reason is
 // shown once, synchronously, by the first-party execute endpoint; the MCP
-// status surface only gets this bounded classification.
-const outcomeReasonFor = (status) => {
+// status surface only gets this bounded classification. The stale reason names
+// what moved on: the cart version for cart proposals, the order state for
+// return proposals (#25).
+const outcomeReasonFor = (status, actionKind) => {
   if (status === "expired") return "expired";
-  if (status === "stale") return "cart_version_changed";
+  if (status === "stale") return actionKind === "order.return_request" ? "order_state_changed" : "cart_version_changed";
   if (status === "rejected") return "revalidation_failed";
   return null;
 };
@@ -227,6 +229,6 @@ export const getMyActionStatus = async (input, { client, principal, now = new Da
     createdAt: proposal.createdAt.toISOString(),
     expiresAt: proposal.expiresAt.toISOString(),
     executedAt: proposal.executedAt ? proposal.executedAt.toISOString() : null,
-    outcomeReason: outcomeReasonFor(status),
+    outcomeReason: outcomeReasonFor(status, proposal.actionKind),
   };
 };

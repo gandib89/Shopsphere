@@ -206,9 +206,12 @@ model Order {
   promoCode             String?
   promoDiscountAmount   Decimal?  @db.Decimal(12, 2)
   confirmedAt           DateTime?
-  processingAt          DateTime?
+  processingAt           DateTime?
   shippedAt             DateTime?
   createdAt             DateTime  @default(now())
+  // Mutation marker maintained by Prisma on every update. Assistant proposals
+  // (#25) snapshot it as the optimistic version proxy for return requests.
+  updatedAt             DateTime  @updatedAt
 
   bills    Bill[]          @relation("BillOrder")
   revenues Revenue[]

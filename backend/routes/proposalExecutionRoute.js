@@ -41,6 +41,13 @@ import { isDelegatedTokenShape } from "../utils/mcpOAuth.js";
 import { adjustStock, isCancelEligible } from "../controller/order.js";
 import { orderVersionOf } from "../services/assistantCancellationProposals.js";
 import { sanitizeVariants } from "../services/assistantCart.js";
+import {
+  RETURN_ACTION_KIND,
+  RETURN_DISCLOSURES,
+  RETURN_NEXT_STEPS,
+  applyReturnRequest,
+  revalidateReturnForExecution,
+} from "../services/assistantReturnProposals.js";
 
 export const PROPOSAL_LIST_LIMIT = 20;
 
@@ -57,6 +64,9 @@ const DISCLOSURES = Object.freeze({
     "Removes the reviewed item from your cart",
     "No payment is taken",
   ]),
+  // Buyer return proposals (#25): disclosures live in the return service so the
+  // proposal preview and this review screen stay identical.
+  [RETURN_ACTION_KIND]: RETURN_DISCLOSURES,
 });
 
 const PROPOSAL_SELECT = {
@@ -242,6 +252,14 @@ export const getProposalReview = async (req, res, client = prisma) => {
     if (!proposal) {
       return res.status(404).json({ code: "not_found", message: "Resource not found" });
     }
+    // The return reason is user-authored content stored in the canonical
+    // payload, so the review screen must show it. It is bounded server-side and
+    // never appears in cart or cancellation proposals or in any audit row.
+    const storedReason = proposal.actionKind === RETURN_ACTION_KIND
+      && proposal.canonicalPayload
+      && typeof proposal.canonicalPayload.reason === "string"
+      ? proposal.canonicalPayload.reason.slice(0, 1000)
+      : null;
     return res.json({
       proposal: {
         id: proposal.id,
@@ -253,6 +271,7 @@ export const getProposalReview = async (req, res, client = prisma) => {
         expiresAt: proposal.expiresAt.toISOString(),
         createdAt: proposal.createdAt.toISOString(),
         preview: proposal.preview,
+        reason: storedReason,
         disclosures: disclosuresFor(proposal),
       },
     });
@@ -317,6 +336,34 @@ export const executeProposal = async (req, res, client = prisma) => {
         const claimed = await transitionPending(tx, proposal.id, userId, { status: "rejected" });
         if (claimed.count === 1) await writeOutbox(tx, proposal.id, "rejected", proposal.payloadHash);
         return resolveTerminal(await reloadProposal(tx, proposal.id));
+      }
+
+      // 4a. order.return_request (#25): revalidate the live owned order against the
+      //     current approved policy window and exact stored state (order moved on =>
+      //     stale/rejected, no mutation), claim exactly once, apply the stored
+      //     reason, and write the outbox event — all in this transaction. There is
+      //     NO payment or refund call on this path: refunds stay a separate admin
+      //     action, and evidence upload stays in ShopSphere's trusted flows.
+      if (proposal.actionKind === RETURN_ACTION_KIND) {
+        const revalidation = await revalidateReturnForExecution(tx, { proposal, account, now });
+        if (!revalidation.ok) {
+          const claimed = await transitionPending(tx, proposal.id, userId, { status: revalidation.terminal });
+          if (claimed.count === 1) await writeOutbox(tx, proposal.id, revalidation.terminal, proposal.payloadHash);
+          return resolveTerminal(await reloadProposal(tx, proposal.id));
+        }
+        const claimed = await transitionPending(tx, proposal.id, userId, {
+          status: "executed",
+          executedAt: now,
+          executionReference: executionReferenceFor(proposal.id),
+        });
+        if (claimed.count !== 1) return resolveTerminal(await reloadProposal(tx, proposal.id));
+        await applyReturnRequest(tx, { order: revalidation.order, proposal, now });
+        await writeOutbox(tx, proposal.id, "executed", proposal.payloadHash);
+        return {
+          kind: "executed",
+          executionReference: executionReferenceFor(proposal.id),
+          nextSteps: [...RETURN_NEXT_STEPS],
+        };
       }
 
       // 4b. order.cancel (#24): reauthorize the owned order, recheck the
@@ -430,7 +477,13 @@ export const executeProposal = async (req, res, client = prisma) => {
       return res.status(404).json({ code: "not_found", message: "Resource not found" });
     }
     if (outcome.kind === "executed") {
-      return res.json(outcome.response);
+      const body = outcome.response ?? {
+        status: "executed",
+        executionReference: outcome.executionReference,
+        ...(outcome.cartVersion !== undefined ? { cartVersion: outcome.cartVersion } : {}),
+        ...(outcome.nextSteps !== undefined ? { nextSteps: outcome.nextSteps } : {}),
+      };
+      return res.json(body);
     }
     return res.status(409).json({
       code: "proposal_not_executable",
