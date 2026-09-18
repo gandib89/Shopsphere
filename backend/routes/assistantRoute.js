@@ -44,6 +44,7 @@ import {
 import { enforceListingDraftLimit } from "../services/assistantListingDraftLimits.js";
 import { getMyActionStatus, proposeCartChange } from "../services/assistantProposals.js";
 import { enforceProposalCreationLimits } from "../services/assistantProposalLimits.js";
+import { proposeOrderReturn } from "../services/assistantReturnProposals.js";
 import {
   getOrderExceptionDetail,
   listOrderExceptionQueue,
@@ -195,7 +196,9 @@ const auditedError = async (req, res, { operation, tool, input = {}, status, cod
       operation,
       tool,
       input,
-      authorizationOutcome: status === 400 ? "allowed" : "denied",
+      // 400 and 409 are post-authorization denials (bad input, business-state
+      // conflict), not authorization failures.
+      authorizationOutcome: status === 400 || status === 409 ? "allowed" : "denied",
       outcome: code,
       failureReason: code,
       latencyMs: Date.now() - startedAt,
@@ -206,7 +209,9 @@ const auditedError = async (req, res, { operation, tool, input = {}, status, cod
         ? "Resource not found"
         : status === 400
           ? "Invalid operation input"
-          : "Assistant operation is unavailable",
+          : status === 409
+            ? "Request conflicts with the current state"
+            : "Assistant operation is unavailable",
     });
   } catch {
     return res.status(503).json({ code: "audit_unavailable", message: "Audit service is unavailable" });
@@ -389,13 +394,13 @@ const privateOperation = ({ path, tool, operation, roles, scope, rolloutFlag, in
           rowCount,
         });
       } catch (error) {
-        const status = error?.statusCode === 404 ? 404 : error?.statusCode === 400 ? 400 : error?.statusCode === 503 ? 503 : 500;
+        const status = error?.statusCode === 404 ? 404 : error?.statusCode === 400 ? 400 : error?.statusCode === 409 ? 409 : error?.statusCode === 503 ? 503 : 500;
         return auditedError(req, res, {
           operation,
           tool,
           input: auditEventInput(parsed.data),
           status,
-          code: status === 404 ? "not_found" : status === 400 ? "invalid_input" : "operation_unavailable",
+          code: status === 404 ? "not_found" : status === 400 ? "invalid_input" : status === 409 ? (error?.code ?? "conflict") : "operation_unavailable",
           startedAt,
         });
       }
@@ -802,6 +807,34 @@ privateOperation({
   inputSchema: z.object({ proposalId: z.string().min(1).max(100) }).strict(),
   run: (input, ctx) => getMyActionStatus(input, ctx),
   observe: (output) => ({ resourceIds: [output.proposalId], rowCount: 1 }),
+});
+
+// Buyer return proposals (#25), on the #22 proposal platform. The strict input
+// carries exactly { orderId, reason } — there is no evidence URL, attachment
+// path, or image field, and no confirm/execute affordance: forged evidence or
+// confirmation fields fail the schema, not the order. proposeOrderReturn
+// persists ONLY a proposal row (never a live return request, notification, or
+// refund) and therefore runs the proposal-class rate limits in addition to the
+// shared delegation chain. The free-text `reason` is user-authored content and
+// is projected OUT of every audited input (success, failure, and rate-limit
+// denials alike) — it is never echoed into audits or logs.
+export const returnProposalAuditInput = ({ orderId }) => ({ orderId });
+
+privateOperation({
+  path: "/propose_order_return",
+  tool: "propose_order_return",
+  operation: "proposals.orderReturn",
+  roles: ["user"],
+  scope: "returns:propose",
+  rolloutFlag: "MCP_TOOL_PROPOSE_ORDER_RETURN_ENABLED",
+  inputSchema: z.object({
+    orderId: z.string().regex(/^[A-Za-z0-9]{1,24}$/),
+    reason: z.string().trim().min(10).max(1000),
+  }).strict(),
+  middlewares: [enforceProposalCreationLimits()],
+  auditInput: returnProposalAuditInput,
+  run: (input, ctx) => proposeOrderReturn(input, ctx),
+  observe: (output) => ({ resourceIds: [output.proposalId, output.preview.orderId], rowCount: 1 }),
 });
 
 // Admin support queues (#17). Membership is the fixed server rule encoded in

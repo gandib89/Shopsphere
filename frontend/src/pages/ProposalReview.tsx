@@ -15,13 +15,23 @@ type PreviewSide = {
   lineTotal: Money | null;
   cartSubtotal: Money;
 };
+type PolicySource = { sourceId: string; sourceVersion: string };
 type ProposalPreview = {
   actionKind: string;
-  currency: string;
-  productName: string;
-  availability: string;
-  before: PreviewSide;
-  after: PreviewSide;
+  // Cart-change proposals (#22)
+  currency?: string;
+  productName?: string;
+  availability?: string;
+  before?: PreviewSide;
+  after?: PreviewSide;
+  // Return-request proposals (#25): exact server-computed owned-order facts
+  orderId?: string;
+  orderNumber?: string | null;
+  currentStatus?: string;
+  returnEligible?: boolean;
+  orderTotal?: Money;
+  policyBasis?: PolicySource[];
+  disclosedConsequences?: string[];
 };
 type ProposalStatus = 'pending' | 'executed' | 'expired' | 'stale' | 'rejected';
 type Proposal = {
@@ -32,15 +42,66 @@ type Proposal = {
   expiresAt: string;
   createdAt: string;
   preview: ProposalPreview;
+  reason: string | null;
   disclosures: string[];
 };
+type ExecuteOutcome = { executionReference?: string; cartVersion?: number; nextSteps?: string[] };
 
 const API = import.meta.env.VITE_BACKEND_URL || '';
+
+// Per-actionKind descriptors (#25): every reviewed kind states its own title,
+// screen description, applied-outcome wording, confirm toast, blocked-outcome
+// messages, and where "Not now" leads. Cart kinds keep the exact wording the
+// screen always had.
+type ActionDescriptor = {
+  title: string;
+  description: string;
+  executedMessage: string;
+  confirmToast: string;
+  backTarget: string;
+  blocked?: Record<string, string>;
+};
+
+const actionDescriptors: Record<string, ActionDescriptor> = {
+  'cart.add_item': {
+    title: 'Add to cart',
+    description: 'An AI assistant prepared this cart change. Nothing has changed yet — review the exact values below, then confirm.',
+    executedMessage: 'Confirmed. Your cart now reflects exactly the reviewed change. These changes were reviewed on this screen before they were applied.',
+    confirmToast: 'Confirmed. Your cart now matches this reviewed change.',
+    backTarget: '/cart',
+  },
+  'cart.update_quantity': {
+    title: 'Change cart quantity',
+    description: 'An AI assistant prepared this cart change. Nothing has changed yet — review the exact values below, then confirm.',
+    executedMessage: 'Confirmed. Your cart now reflects exactly the reviewed change. These changes were reviewed on this screen before they were applied.',
+    confirmToast: 'Confirmed. Your cart now matches this reviewed change.',
+    backTarget: '/cart',
+  },
+  'cart.remove_item': {
+    title: 'Remove from cart',
+    description: 'An AI assistant prepared this cart change. Nothing has changed yet — review the exact values below, then confirm.',
+    executedMessage: 'Confirmed. Your cart now reflects exactly the reviewed change. These changes were reviewed on this screen before they were applied.',
+    confirmToast: 'Confirmed. Your cart now matches this reviewed change.',
+    backTarget: '/cart',
+  },
+  'order.return_request': {
+    title: 'Request order return',
+    description: 'An AI assistant prepared this return request. Nothing has changed yet — review the exact details below, then confirm.',
+    executedMessage: 'Confirmed. Your return request was submitted for seller/admin review in ShopSphere.',
+    confirmToast: 'Confirmed. Your return request was submitted.',
+    backTarget: '/my-orders',
+    blocked: {
+      stale: 'Your order changed after this proposal was created, so it can no longer be applied. Nothing was changed.',
+      rejected: 'This order can no longer be returned. Nothing was changed.',
+    },
+  },
+};
 
 const actionLabels: Record<string, string> = {
   'cart.add_item': 'Add to cart',
   'cart.update_quantity': 'Change cart quantity',
   'cart.remove_item': 'Remove from cart',
+  'order.return_request': 'Request order return',
 };
 
 const statusLabels: Record<ProposalStatus, string> = {
@@ -51,6 +112,19 @@ const statusLabels: Record<ProposalStatus, string> = {
   rejected: 'Not applicable',
 };
 
+// Distinct, deterministic outcomes for every non-executable state. The backend
+// answers 409 proposal_not_executable with a machine reason; the message here
+// always states clearly that nothing was changed. Per-kind overrides win, then
+// the shared defaults.
+const blockedMessages: Record<string, string> = {
+  expired: 'This proposal expired before it was confirmed. Nothing was changed.',
+  stale: 'Your cart changed after this proposal was created, so it can no longer be applied. Nothing was changed.',
+  rejected: 'This proposal can no longer be applied to your cart. Nothing was changed.',
+};
+
+const blockedMessageFor = (actionKind: string, reason: string) =>
+  actionDescriptors[actionKind]?.blocked?.[reason] ?? blockedMessages[reason] ?? blockedMessages.rejected;
+
 const formatMoney = (money: Money | null) => (money ? `${money.amount} ${money.currency}` : '—');
 
 const formatExpiry = (iso: string) => {
@@ -58,19 +132,11 @@ const formatExpiry = (iso: string) => {
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString();
 };
 
-// Distinct, deterministic outcomes for every non-executable state. The backend
-// answers 409 proposal_not_executable with a machine reason; the message here
-// always states clearly that nothing was changed.
-const blockedMessages: Record<string, string> = {
-  expired: 'This proposal expired before it was confirmed. Nothing was changed.',
-  stale: 'Your cart changed after this proposal was created, so it can no longer be applied. Nothing was changed.',
-  rejected: 'This proposal can no longer be applied to your cart. Nothing was changed.',
-};
-
 export default function ProposalReview() {
   const { proposalId } = useParams<{ proposalId: string }>();
   const navigate = useNavigate();
   const [proposal, setProposal] = useState<Proposal | null>(null);
+  const [outcome, setOutcome] = useState<ExecuteOutcome | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [loadError, setLoadError] = useState('');
@@ -112,8 +178,10 @@ export default function ProposalReview() {
     try {
       const response = await authFetch(`${API}/api/v1/proposals/${encodeURIComponent(proposalId)}/execute`, { method: 'POST' });
       if (response.ok) {
+        const body: ExecuteOutcome = await response.json().catch(() => ({}));
+        setOutcome(body);
         setProposal((current) => (current ? { ...current, status: 'executed' } : current));
-        toast.success('Confirmed. Your cart now matches this reviewed change.');
+        toast.success(actionDescriptors[proposal?.actionKind ?? '']?.confirmToast ?? 'Confirmed.');
       } else if (response.status === 404) {
         setNotFound(true);
         setProposal(null);
@@ -122,7 +190,7 @@ export default function ProposalReview() {
         const reason = typeof body.reason === 'string' ? body.reason : 'rejected';
         setBlockReason(reason);
         setProposal((current) => (current ? { ...current, status: (reason as ProposalStatus) in statusLabels ? (reason as ProposalStatus) : current.status } : current));
-        toast.error(blockedMessages[reason] ?? blockedMessages.rejected);
+        toast.error(blockedMessageFor(proposal?.actionKind ?? '', reason));
       } else {
         toast.error('The proposal could not be confirmed. Nothing was changed.');
       }
@@ -157,45 +225,92 @@ export default function ProposalReview() {
     );
   }
 
+  const descriptor = actionDescriptors[proposal.actionKind]
+    ?? {
+      title: 'Review proposed cart change',
+      description: 'An AI assistant prepared this cart change. Nothing has changed yet — review the exact values below, then confirm.',
+      executedMessage: 'Confirmed. Your cart now reflects exactly the reviewed change. These changes were reviewed on this screen before they were applied.',
+      confirmToast: 'Confirmed. Your cart now matches this reviewed change.',
+      backTarget: '/cart',
+    };
   const { preview } = proposal;
   const isPending = proposal.status === 'pending';
+  const isReturn = proposal.actionKind === 'order.return_request';
+  const backTarget = descriptor.backTarget;
 
   return (
     <main className="min-h-screen bg-paper text-ink">
       <PageHeader
         eyebrow="AI proposal"
-        title={actionLabels[proposal.actionKind] ?? 'Review proposed cart change'}
-        description="An AI assistant prepared this cart change. Nothing has changed yet — review the exact values below, then confirm."
+        title={descriptor.title}
+        description={descriptor.description}
       />
       <div className="container mx-auto max-w-3xl space-y-6 px-4 py-8 sm:px-6">
-        <section aria-labelledby="proposal-target" className="border border-hairline bg-paper-raised p-6">
-          <h2 id="proposal-target" className="text-xl font-bold">{preview.productName}</h2>
-          <p className="mt-1 text-sm text-ink-muted">
-            Availability: {preview.availability} · Proposal status: {statusLabels[proposal.status]}
-          </p>
-          <dl className="mt-5 overflow-hidden border border-hairline text-sm">
-            <div className="grid grid-cols-3 gap-2 bg-paper px-4 py-2 font-semibold">
-              <span>Value</span>
-              <span>Before</span>
-              <span>After</span>
-            </div>
-            {([
-              ['Quantity', preview.before.quantity ?? '—', preview.after.quantity ?? '—'],
-              ['Unit price', formatMoney(preview.before.unitPrice), formatMoney(preview.after.unitPrice)],
-              ['Line total', formatMoney(preview.before.lineTotal), formatMoney(preview.after.lineTotal)],
-              ['Cart subtotal', formatMoney(preview.before.cartSubtotal), formatMoney(preview.after.cartSubtotal)],
-            ] as const).map(([label, before, after]) => (
-              <div key={label} className="grid grid-cols-3 gap-2 border-t border-hairline px-4 py-2 tabular-nums">
-                <span className="font-medium">{label}</span>
-                <span>{before}</span>
-                <span>{after}</span>
+        {isReturn ? (
+          <section aria-labelledby="proposal-target" className="border border-hairline bg-paper-raised p-6">
+            <h2 id="proposal-target" className="text-xl font-bold">
+              Return request for order {preview.orderNumber ?? preview.orderId ?? '—'}
+            </h2>
+            <p className="mt-1 text-sm text-ink-muted">
+              Status: {preview.currentStatus} · Proposal status: {statusLabels[proposal.status]}
+            </p>
+            <dl className="mt-5 overflow-hidden border border-hairline text-sm">
+              <div className="grid grid-cols-3 gap-2 bg-paper px-4 py-2 font-semibold">
+                <span className="col-span-1">Field</span>
+                <span className="col-span-2">Exact value to apply</span>
               </div>
-            ))}
-          </dl>
-          <p className="mt-3 text-xs text-ink-muted">
-            All amounts in {preview.currency}. Expires at {formatExpiry(proposal.expiresAt)} — after that this proposal cannot be applied.
-          </p>
-        </section>
+              {([
+                ['Order number', preview.orderNumber ?? preview.orderId ?? '—'],
+                ['Current status', preview.currentStatus ?? '—'],
+                ['Order total', formatMoney(preview.orderTotal ?? null)],
+                ['Requested reason', proposal.reason ?? '—'],
+                ['Return window eligible', preview.returnEligible ? 'Yes' : 'No'],
+              ] as const).map(([label, value]) => (
+                <div key={label} className="grid grid-cols-3 gap-2 border-t border-hairline px-4 py-2 tabular-nums">
+                  <span className="font-medium">{label}</span>
+                  <span className="col-span-2">{value}</span>
+                </div>
+              ))}
+            </dl>
+            {(preview.policyBasis?.length ?? 0) > 0 && (
+              <p className="mt-3 text-xs text-ink-muted">
+                Grounded in approved ShopSphere policy: {preview.policyBasis!.map((source) => `${source.sourceId} (v${source.sourceVersion})`).join(', ')}.
+              </p>
+            )}
+            <p className="mt-3 text-xs text-ink-muted">
+              Expires at {formatExpiry(proposal.expiresAt)} — after that this proposal cannot be applied.
+            </p>
+          </section>
+        ) : (
+          <section aria-labelledby="proposal-target" className="border border-hairline bg-paper-raised p-6">
+            <h2 id="proposal-target" className="text-xl font-bold">{preview.productName}</h2>
+            <p className="mt-1 text-sm text-ink-muted">
+              Availability: {preview.availability} · Proposal status: {statusLabels[proposal.status]}
+            </p>
+            <dl className="mt-5 overflow-hidden border border-hairline text-sm">
+              <div className="grid grid-cols-3 gap-2 bg-paper px-4 py-2 font-semibold">
+                <span>Value</span>
+                <span>Before</span>
+                <span>After</span>
+              </div>
+              {([
+                ['Quantity', preview.before?.quantity ?? '—', preview.after?.quantity ?? '—'],
+                ['Unit price', formatMoney(preview.before?.unitPrice ?? null), formatMoney(preview.after?.unitPrice ?? null)],
+                ['Line total', formatMoney(preview.before?.lineTotal ?? null), formatMoney(preview.after?.lineTotal ?? null)],
+                ['Cart subtotal', formatMoney(preview.before?.cartSubtotal ?? null), formatMoney(preview.after?.cartSubtotal ?? null)],
+              ] as const).map(([label, before, after]) => (
+                <div key={label} className="grid grid-cols-3 gap-2 border-t border-hairline px-4 py-2 tabular-nums">
+                  <span className="font-medium">{label}</span>
+                  <span>{before}</span>
+                  <span>{after}</span>
+                </div>
+              ))}
+            </dl>
+            <p className="mt-3 text-xs text-ink-muted">
+              All amounts in {preview.currency}. Expires at {formatExpiry(proposal.expiresAt)} — after that this proposal cannot be applied.
+            </p>
+          </section>
+        )}
 
         <section aria-labelledby="proposal-effects" className="border border-hairline bg-paper-raised p-6">
           <div className="mb-3 flex items-center gap-2">
@@ -216,32 +331,41 @@ export default function ProposalReview() {
           <div role="status" className="flex items-start gap-3 border border-moss/40 bg-moss/10 p-4 text-sm leading-6">
             <CheckCircle2 aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-moss" />
             <span>
-              Confirmed. Your cart now reflects exactly the reviewed change. These changes were reviewed on this screen before they were applied.
+              {descriptor.executedMessage}
+              {(outcome?.nextSteps?.length ?? 0) > 0 && (
+                <ul className="mt-2 list-disc space-y-1 pl-5">
+                  {outcome!.nextSteps!.map((step) => (
+                    <li key={step}>{step}</li>
+                  ))}
+                </ul>
+              )}
             </span>
           </div>
         ) : isPending ? (
           <section aria-labelledby="proposal-confirm" className="border border-hairline bg-paper-raised p-6">
             <h2 id="proposal-confirm" className="text-lg font-bold">Confirm this change</h2>
             <p className="mt-2 text-sm leading-6 text-ink-muted">
-              I have reviewed the exact before and after values and the effects listed above. Confirming applies exactly these values to my cart with my own ShopSphere session.
+              {isReturn
+                ? 'I have reviewed the exact details and the effects listed above. Confirming creates this return request with my own ShopSphere session.'
+                : 'I have reviewed the exact before and after values and the effects listed above. Confirming applies exactly these values to my cart with my own ShopSphere session.'}
             </p>
             {blockReason && (
               <div role="alert" className="mt-3 flex items-start gap-3 border border-red-700 bg-red-50 p-4 text-sm text-red-800">
                 <XCircle aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0" />
-                <span>{blockedMessages[blockReason] ?? blockedMessages.rejected}</span>
+                <span>{blockedMessageFor(proposal.actionKind, blockReason)}</span>
               </div>
             )}
             <div className="mt-5 flex flex-col gap-3 sm:flex-row">
               <Button onClick={() => void confirm()} disabled={busy}>
                 {busy ? 'Confirming…' : 'Confirm — apply exactly these changes'}
               </Button>
-              <Button variant="quiet" onClick={() => navigate('/cart')}>Not now</Button>
+              <Button variant="quiet" onClick={() => navigate(backTarget)}>Not now</Button>
             </div>
           </section>
         ) : (
           <div role="alert" className="border border-hairline bg-paper-raised p-4 text-sm leading-6">
-            {blockedMessages[proposal.status] ?? 'This proposal can no longer be applied. Nothing was changed.'}
-            <div className="mt-3"><Button variant="quiet" onClick={() => navigate('/cart')}>Back to cart</Button></div>
+            {blockedMessageFor(proposal.actionKind, proposal.status)}
+            <div className="mt-3"><Button variant="quiet" onClick={() => navigate(backTarget)}>Back to my orders</Button></div>
           </div>
         )}
       </div>
