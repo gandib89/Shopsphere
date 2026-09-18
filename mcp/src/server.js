@@ -19,6 +19,7 @@ const oauth = config.enabled
       tokenEndpoint: config.oauthTokenEndpoint,
       introspectionEndpoint: config.oauthIntrospectionEndpoint,
       audience: config.oauthAudience,
+      resourceUrl: config.resourceUrl,
       clientId: config.oauthClientId,
       clientSecret: config.oauthClientSecret,
       assistantAudience: config.assistantAudience,

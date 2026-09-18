@@ -316,14 +316,17 @@ export const createMcpHttpServer = ({
 
       const authorization = request.headers.get("authorization") || "";
       const suppliedToken = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
+      let authPhase = "token verification";
       try {
         if (tokenVerifier) authContext = await tokenVerifier(suppliedToken);
         else if (!safeEqual(suppliedToken, accessToken)) throw Object.assign(new Error("Unauthorized"), { statusCode: 401 });
         if (authContextResolver) {
+          authPhase = "authorization context";
           const resolved = await authContextResolver({ auth: authContext, subjectToken: suppliedToken });
           authContext = resolved.auth;
         }
       } catch (error) {
+        console.warn("Local OAuth diagnosis", { phase: authPhase, hasToken: Boolean(suppliedToken), reason: error?.message });
         const status = error?.statusCode === 503 ? 503 : error?.statusCode === 403 ? 403 : 401;
         try { await auditIngress({ operation: "authorization.resolve", outcome: status === 503 ? "dependency_unavailable" : "denied", failureReason: status === 503 ? "issuer_or_grant_unavailable" : "invalid_credential" }); } catch { return withCors(withRequestId(jsonResponse(503, { error: "Audit service unavailable" }), requestId), origin); }
         return withCors(withRequestId(jsonResponse(status, { error: status === 503 ? "OAuth issuer unavailable" : "Unauthorized" }), requestId), origin);

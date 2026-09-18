@@ -28,6 +28,7 @@ export const readConfig = (environment = process.env) => ({
   oauthTokenEndpoint: environment.MCP_OAUTH_TOKEN_ENDPOINT,
   oauthIntrospectionEndpoint: environment.MCP_OAUTH_INTROSPECTION_ENDPOINT,
   oauthAudience: environment.MCP_OAUTH_AUDIENCE ?? "shopsphere-mcp",
+  resourceUrl: environment.MCP_RESOURCE_URL,
   oauthClientId: environment.MCP_WORKLOAD_CLIENT_ID ?? "shopsphere-mcp-workload",
   oauthClientSecret: environment.MCP_WORKLOAD_CLIENT_SECRET,
   assistantAudience: environment.ASSISTANT_AUDIENCE ?? "shopsphere-assistant-api",

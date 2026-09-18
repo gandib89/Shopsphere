@@ -32,6 +32,7 @@ const tokenFixture = async ({ azp = "shopsphere-mcp-client", audience = AUDIENCE
 const createAuth = ({ jwks, active = true, fetchImpl } = {}) => createKeycloakMcpAuth({
   issuer: ISSUER,
   audience: AUDIENCE,
+  resourceUrl: "https://mcp.test/mcp",
   assistantAudience: "shopsphere-assistant-api",
   clientId: "shopsphere-mcp-workload",
   clientSecret: "workload-secret",
@@ -55,6 +56,21 @@ test("verifies an active audience-bound token from an approved client", async ()
     scopes: ["profile:read", "catalog:read"],
   });
   assert.deepEqual(auth.protectedResourceMetadata.authorization_servers, [ISSUER]);
+  assert.equal(auth.protectedResourceMetadata.resource, "https://mcp.test/mcp");
+});
+
+test("rejects an audience name or non-loopback HTTP as protected resource metadata", () => {
+  for (const resourceUrl of ["shopsphere-mcp", "http://mcp.test/mcp"]) {
+    assert.throws(() => createKeycloakMcpAuth({
+      issuer: ISSUER,
+      audience: AUDIENCE,
+      resourceUrl,
+      assistantAudience: "shopsphere-assistant-api",
+      clientId: "shopsphere-mcp-workload",
+      clientSecret: "workload-secret",
+      trustedClients: ["shopsphere-mcp-client"],
+    }), /MCP_RESOURCE_URL/);
+  }
 });
 
 test("rejects inactive, wrong-audience, and unapproved-client tokens", async () => {
