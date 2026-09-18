@@ -118,6 +118,28 @@ export const listPromotionConfiguration = async (
   };
 };
 
+// Internal-only helper for the #21 promotion recommendation draft: resolves
+// one promotion through the exact minimized configuration projection and the
+// same aggregate-only usage counting as the #18 reads. Per-user rows are never
+// read back — distinct redeemers are counted through a groupBy of the
+// composite key only. A missing or out-of-scope id resolves to null (the
+// caller turns that into the generic not-found). Not wired to any route
+// itself; the caller is responsible for the admin check.
+export const findPromotionWithUsage = async ({ promoCodeId } = {}, { client } = {}) => {
+  if (!promoCodeId || typeof promoCodeId !== "string" || promoCodeId.length > 100) return null;
+  const promo = await client.promoCode.findFirst({
+    where: { id: promoCodeId },
+    select: promotionSelect,
+  });
+  if (!promo) return null;
+  if (promo.discountType !== "percentage" && promo.discountType !== "fixed") throw invalidConfiguration();
+  const redeemerGroups = await client.promoCodeUsage.groupBy({
+    by: ["userId"],
+    where: { promoCodeId: promo.id },
+  });
+  return { ...minimizePromotion(promo), distinctUsers: redeemerGroups.length };
+};
+
 export const getPromotionUsageSummary = async (
   { promoCodeId } = {},
   { client, principal },

@@ -22,6 +22,7 @@ export const OAUTH_SCOPES = Object.freeze([
   "support:read",
   "support:draft",
   "promotions:read",
+  "recommendations:draft",
 ]);
 
 const configuredClients = (process.env.MCP_OAUTH_CLIENTS ?? "shopsphere-mcp-client")

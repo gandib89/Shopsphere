@@ -183,6 +183,37 @@ const minimizeApplication = (row) => {
   };
 };
 
+// Internal-only helper for the #21 recommendation drafts: resolves the opaque
+// seller reference emitted by listSellerApplications back to its minimized
+// application row. The digest is one-way, so resolution re-derives the
+// reference over a bounded, id-ordered scan of seller accounts — never a raw
+// user-id or email lookup (the draft input cannot carry either, and no reverse
+// map exists). Only the application projection is read, and the scan never
+// exceeds MAX_REFERENCE_SCAN_PAGES pages, so a miss stays a bounded read. Not
+// wired to any route itself; the caller is responsible for the admin check.
+const SELLER_REFERENCE_PATTERN = /^seller-[0-9a-f]{12}$/;
+const REFERENCE_SCAN_PAGE = 100;
+const MAX_REFERENCE_SCAN_PAGES = 10;
+
+export const findSellerApplicationByReference = async (reference, { client }) => {
+  if (typeof reference !== "string" || !SELLER_REFERENCE_PATTERN.test(reference)) return null;
+  let cursorId = null;
+  for (let page = 0; page < MAX_REFERENCE_SCAN_PAGES; page += 1) {
+    const rows = await client.user.findMany({
+      where: { role: "seller", ...(cursorId ? { id: { gt: cursorId } } : {}) },
+      select: applicationSelect,
+      orderBy: { id: "asc" },
+      take: REFERENCE_SCAN_PAGE,
+    });
+    if (rows.length === 0) return null;
+    const match = rows.find((row) => sellerReference(row.id) === reference);
+    if (match) return minimizeApplication(match);
+    cursorId = rows[rows.length - 1].id;
+    if (rows.length < REFERENCE_SCAN_PAGE) return null;
+  }
+  return null;
+};
+
 export const listSellerApplications = async (
   { status, cursor, limit = DEFAULT_LIMIT } = {},
   { client, principal, cursorSecret },

@@ -35,6 +35,9 @@ const OPERATIONS = Object.freeze({
   draft_support_message: "/api/v1/assistant/draft_support_message",
   list_promotion_configuration: "/api/v1/assistant/list_promotion_configuration",
   get_promotion_usage_summary: "/api/v1/assistant/get_promotion_usage_summary",
+  draft_seller_review_recommendation: "/api/v1/assistant/draft_seller_review_recommendation",
+  draft_return_review_recommendation: "/api/v1/assistant/draft_return_review_recommendation",
+  draft_promotion_recommendation: "/api/v1/assistant/draft_promotion_recommendation",
 });
 
 const PRIVATE_SCOPES = Object.freeze({
@@ -68,6 +71,9 @@ const PRIVATE_SCOPES = Object.freeze({
   draft_support_message: Object.freeze(["support:draft"]),
   list_promotion_configuration: Object.freeze(["promotions:read"]),
   get_promotion_usage_summary: Object.freeze(["promotions:read"]),
+  draft_seller_review_recommendation: Object.freeze(["recommendations:draft"]),
+  draft_return_review_recommendation: Object.freeze(["recommendations:draft"]),
+  draft_promotion_recommendation: Object.freeze(["recommendations:draft"]),
 });
 
 export const createBackendClient = ({ origin, token, exchangeToken, timeoutMs = 10_000, fetchImpl = fetch }) => {

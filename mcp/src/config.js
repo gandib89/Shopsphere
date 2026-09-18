@@ -217,5 +217,17 @@ export const readConfig = (environment = process.env) => ({
       environment.MCP_TOOL_GET_PROMOTION_USAGE_SUMMARY_ENABLED,
       false,
     ),
+    MCP_TOOL_DRAFT_SELLER_REVIEW_RECOMMENDATION_ENABLED: parseBoolean(
+      environment.MCP_TOOL_DRAFT_SELLER_REVIEW_RECOMMENDATION_ENABLED,
+      false,
+    ),
+    MCP_TOOL_DRAFT_RETURN_REVIEW_RECOMMENDATION_ENABLED: parseBoolean(
+      environment.MCP_TOOL_DRAFT_RETURN_REVIEW_RECOMMENDATION_ENABLED,
+      false,
+    ),
+    MCP_TOOL_DRAFT_PROMOTION_RECOMMENDATION_ENABLED: parseBoolean(
+      environment.MCP_TOOL_DRAFT_PROMOTION_RECOMMENDATION_ENABLED,
+      false,
+    ),
   },
 });

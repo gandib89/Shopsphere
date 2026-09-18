@@ -56,6 +56,13 @@ import {
   getPromotionUsageSummary,
   listPromotionConfiguration,
 } from "../services/assistantAdminPromotions.js";
+import {
+  draftPromotionRecommendation,
+  draftReturnReviewRecommendation,
+  draftSellerReviewRecommendation,
+  returnReviewObserve,
+} from "../services/assistantAdminRecommendations.js";
+import { createRecommendationLimit } from "../services/assistantRecommendationLimits.js";
 import { auditContext, recordAssistantAudit } from "../services/assistantAudit.js";
 import { withAssistantActor } from "../database/assistantTransaction.js";
 import {
@@ -908,6 +915,64 @@ privateOperation({
   inputSchema: z.object({ promoCodeId: z.string().min(1).max(100) }).strict(),
   run: (input, ctx) => getPromotionUsageSummary(input, ctx),
   observe: (output) => ({ resourceIds: [output.promoCodeId], rowCount: 1 }),
+});
+
+// Admin recommendation drafts (#21). DETERMINISTIC template composition from
+// the authorized minimized admin views (seller application, return queue,
+// promotion configuration + aggregate usage) plus approved, versioned policy
+// sources — no LLM. ZERO AUTHORITY: these paths cannot approve or reject
+// sellers or returns, cannot release refunds, cannot activate or deactivate
+// promotions, cannot reset usage counters, and cannot notify anyone — every
+// draft only recommends that a human reviewer decide. Inputs carry opaque
+// references only (no raw user ids or emails), foreign/missing references
+// resolve to the identical generic 404, absent facts render as literal
+// "unknown", and every draft is bounded to 4000 characters with a truncation
+// flag. The draft rate class carries stricter route-scoped limits (10/minute,
+// 100/day per subject+client, fail-closed) on top of the shared distributed
+// limit, and the return draft's user-authored `purpose` rides through
+// observe() into the durable audit metadata exactly like the queue detail
+// tool — it never appears in a response.
+const sellerReferenceInput = z.object({
+  sellerReference: z.string().regex(/^seller-[0-9a-f]{12}$/),
+}).strict();
+
+privateOperation({
+  path: "/draft_seller_review_recommendation",
+  tool: "draft_seller_review_recommendation",
+  operation: "recommendations.sellerReview",
+  roles: ["admin"],
+  scope: "recommendations:draft",
+  rolloutFlag: "MCP_TOOL_DRAFT_SELLER_REVIEW_RECOMMENDATION_ENABLED",
+  inputSchema: sellerReferenceInput,
+  middlewares: [createRecommendationLimit()],
+  run: (input, ctx) => draftSellerReviewRecommendation(input, ctx),
+  observe: (_output, input) => ({ resourceIds: [input.sellerReference], rowCount: 1 }),
+});
+
+privateOperation({
+  path: "/draft_return_review_recommendation",
+  tool: "draft_return_review_recommendation",
+  operation: "recommendations.returnReview",
+  roles: ["admin"],
+  scope: "recommendations:draft",
+  rolloutFlag: "MCP_TOOL_DRAFT_RETURN_REVIEW_RECOMMENDATION_ENABLED",
+  inputSchema: z.object({ orderId, purpose: z.string().min(10).max(500) }).strict(),
+  middlewares: [createRecommendationLimit()],
+  run: (input, ctx) => draftReturnReviewRecommendation(input, ctx),
+  observe: (output, input) => returnReviewObserve(output, input),
+});
+
+privateOperation({
+  path: "/draft_promotion_recommendation",
+  tool: "draft_promotion_recommendation",
+  operation: "recommendations.promotionReview",
+  roles: ["admin"],
+  scope: "recommendations:draft",
+  rolloutFlag: "MCP_TOOL_DRAFT_PROMOTION_RECOMMENDATION_ENABLED",
+  inputSchema: z.object({ promoCodeId: z.string().min(1).max(100) }).strict(),
+  middlewares: [createRecommendationLimit()],
+  run: (input, ctx) => draftPromotionRecommendation(input, ctx),
+  observe: (_output, input) => ({ resourceIds: [input.promoCodeId], rowCount: 1 }),
 });
 
 router.use(authenticatePublicWorkload);
