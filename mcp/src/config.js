@@ -193,6 +193,14 @@ export const readConfig = (environment = process.env) => ({
       environment.MCP_TOOL_GET_MY_ACTION_STATUS_ENABLED,
       false,
     ),
+    MCP_TOOL_PROPOSE_LISTING_PUBLISH_ENABLED: parseBoolean(
+      environment.MCP_TOOL_PROPOSE_LISTING_PUBLISH_ENABLED,
+      false,
+    ),
+    MCP_TOOL_PROPOSE_LISTING_CONTENT_CHANGE_ENABLED: parseBoolean(
+      environment.MCP_TOOL_PROPOSE_LISTING_CONTENT_CHANGE_ENABLED,
+      false,
+    ),
     MCP_TOOL_LIST_ORDER_EXCEPTION_QUEUE_ENABLED: parseBoolean(
       environment.MCP_TOOL_LIST_ORDER_EXCEPTION_QUEUE_ENABLED,
       false,
