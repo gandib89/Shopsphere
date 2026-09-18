@@ -53,7 +53,7 @@ test("negotiates the pinned protocol and serves public get_capabilities", async 
   const result = await client.callTool({ name: "get_capabilities", arguments: {} });
   assert.equal(result.isError, undefined);
   assert.equal(result.structuredContent.protocolVersion, PROTOCOL_VERSION);
-  assert.equal(result.structuredContent.registryVersion, "1.2.0");
+  assert.equal(result.structuredContent.registryVersion, "1.3.0");
   assert.deepEqual(result.structuredContent.tools, [
     {
       name: "get_capabilities",

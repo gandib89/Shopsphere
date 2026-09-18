@@ -149,5 +149,17 @@ export const readConfig = (environment = process.env) => ({
       environment.MCP_TOOL_GET_MY_INVENTORY_SUMMARY_ENABLED,
       false,
     ),
+    MCP_TOOL_LIST_MY_SELLER_ORDERS_ENABLED: parseBoolean(
+      environment.MCP_TOOL_LIST_MY_SELLER_ORDERS_ENABLED,
+      false,
+    ),
+    MCP_TOOL_GET_MY_SELLER_ORDER_ENABLED: parseBoolean(
+      environment.MCP_TOOL_GET_MY_SELLER_ORDER_ENABLED,
+      false,
+    ),
+    MCP_TOOL_GET_MY_REVENUE_SUMMARY_ENABLED: parseBoolean(
+      environment.MCP_TOOL_GET_MY_REVENUE_SUMMARY_ENABLED,
+      false,
+    ),
   },
 });

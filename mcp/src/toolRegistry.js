@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const PROTOCOL_VERSION = "2025-11-25";
-export const REGISTRY_VERSION = "1.2.0";
+export const REGISTRY_VERSION = "1.3.0";
 export const POLICY_VERSION = "1.0.0";
 export const POLICY_TOPICS = Object.freeze([
   "returns",
@@ -503,6 +503,129 @@ const GetMyInventorySummaryOutputSchema = z.object({
     .max(50),
 }).strict();
 
+// Seller sale-line reads (#15): authorized through immutable Order.sellerIdAtPurchase
+// only — never current product ownership and never a caller-supplied seller id.
+// Customer identity leaves as a deterministic opaque reference derived from the
+// buyer's id; names, emails, addresses, and commissions never appear.
+const SellerSaleStatusSchema = z.enum([
+  "Pending",
+  "Confirmed",
+  "Processing",
+  "Shipped",
+  "Delivered",
+  "Cancelled",
+  "ReturnRequested",
+  "Returned",
+  "Refund Released",
+]);
+
+const SellerSaleLineSchema = z
+  .object({
+    id: z.string().min(1).max(100),
+    status: z.string().min(1).max(50),
+    quantity: z.number().int().min(1),
+    totalPrice: MoneySchema,
+    createdAt: z.iso.datetime().max(100),
+    orderGroupId: z.string().min(1).max(100).nullable(),
+    productId: z.string().min(1).max(100),
+    productName: z.string().min(1).max(200).nullable(),
+    buyerReference: z.string().min(1).max(100).nullable(),
+  })
+  .strict();
+
+const ListMySellerOrdersInputSchema = z
+  .object({
+    status: SellerSaleStatusSchema.optional(),
+    from: z.string().min(1).max(100).optional(),
+    to: z.string().min(1).max(100).optional(),
+    cursor: z.string().min(1).max(2048).optional(),
+    limit: z.number().int().min(1).max(50).optional(),
+  })
+  .strict();
+
+const ListMySellerOrdersOutputSchema = z
+  .object({
+    sales: z.array(SellerSaleLineSchema).max(50),
+    nextCursor: z.string().min(1).max(2048).nullable(),
+  })
+  .strict();
+
+const GetMySellerOrderInputSchema = z
+  .object({
+    orderId: z.string().min(1).max(100),
+  })
+  .strict();
+
+const SellerSaleDetailSchema = SellerSaleLineSchema.extend({
+  variants: z
+    .object({
+      storage: z.string().max(100).nullable(),
+      color: z.string().max(100).nullable(),
+      ram: z.string().max(100).nullable(),
+      screenSize: z.string().max(100).nullable(),
+      processor: z.string().max(100).nullable(),
+    })
+    .strict(),
+  confirmedAt: z.iso.datetime().max(100).nullable(),
+  processingAt: z.iso.datetime().max(100).nullable(),
+  shippedAt: z.iso.datetime().max(100).nullable(),
+  deliveredAt: z.iso.datetime().max(100).nullable(),
+  cancelledAt: z.iso.datetime().max(100).nullable(),
+  revenue: z
+    .object({
+      status: z.string().min(1).max(50),
+      grossSale: MoneySchema,
+      commission: MoneySchema,
+      netSale: MoneySchema,
+    })
+    .strict()
+    .nullable(),
+}).strict();
+
+const GetMySellerOrderOutputSchema = z
+  .object({
+    sale: SellerSaleDetailSchema,
+    groupSales: z.array(SellerSaleLineSchema).max(50),
+  })
+  .strict();
+
+// Revenue summary (#15): exactly twelve fixed monthly buckets for one year.
+// grossSale/commission/netSale sum Completed ledger rows by sale month;
+// refunded sums succeeded refund amounts by the month the refund completed and
+// is never netted against the sale buckets.
+const GetMyRevenueSummaryInputSchema = z
+  .object({
+    year: z.number().int().min(2000).max(2100).optional(),
+  })
+  .strict();
+
+const RevenueBucketSchema = z
+  .object({
+    month: z.number().int().min(1).max(12),
+    saleCount: z.number().int().nonnegative(),
+    grossSale: MoneySchema,
+    commission: MoneySchema,
+    netSale: MoneySchema,
+    refunded: MoneySchema,
+  })
+  .strict();
+
+const GetMyRevenueSummaryOutputSchema = z
+  .object({
+    year: z.number().int().min(2000).max(2100),
+    buckets: z.array(RevenueBucketSchema).length(12),
+    totals: z
+      .object({
+        saleCount: z.number().int().nonnegative(),
+        grossSale: MoneySchema,
+        commission: MoneySchema,
+        netSale: MoneySchema,
+        refunded: MoneySchema,
+      })
+      .strict(),
+  })
+  .strict();
+
 const definitions = [
   {
     name: "get_capabilities",
@@ -923,6 +1046,72 @@ const definitions = [
       operationId: "products.getMyInventorySummary",
       method: "POST",
       path: "/api/v1/assistant/get_my_inventory_summary",
+    },
+  },
+  {
+    name: "list_my_seller_orders",
+    title: "List my ShopSphere sales",
+    description:
+      "Lists sale lines attributed to the authenticated seller at purchase time over a bounded date range, with opaque buyer references.",
+    inputSchema: ListMySellerOrdersInputSchema,
+    outputSchema: ListMySellerOrdersOutputSchema,
+    operationClass: "read",
+    roles: ["seller"],
+    scopes: ["sales:read"],
+    rateClass: "authenticated-read",
+    rollout: {
+      flag: "MCP_TOOL_LIST_MY_SELLER_ORDERS_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "sales.listMine",
+      method: "POST",
+      path: "/api/v1/assistant/list_my_seller_orders",
+    },
+  },
+  {
+    name: "get_my_seller_order",
+    title: "Get my ShopSphere sale",
+    description:
+      "Inspects one sale line attributed to the authenticated seller at purchase time, with its stored ledger entry and only same-seller group lines.",
+    inputSchema: GetMySellerOrderInputSchema,
+    outputSchema: GetMySellerOrderOutputSchema,
+    operationClass: "read",
+    roles: ["seller"],
+    scopes: ["sales:read"],
+    rateClass: "authenticated-read",
+    rollout: {
+      flag: "MCP_TOOL_GET_MY_SELLER_ORDER_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "sales.getMine",
+      method: "POST",
+      path: "/api/v1/assistant/get_my_seller_order",
+    },
+  },
+  {
+    name: "get_my_revenue_summary",
+    title: "Get my ShopSphere revenue summary",
+    description:
+      "Reads twelve fixed monthly revenue buckets for the authenticated seller with explicit gross, commission, net, and refund amounts.",
+    inputSchema: GetMyRevenueSummaryInputSchema,
+    outputSchema: GetMyRevenueSummaryOutputSchema,
+    operationClass: "read",
+    roles: ["seller"],
+    scopes: ["revenue:read"],
+    rateClass: "authenticated-read",
+    rollout: {
+      flag: "MCP_TOOL_GET_MY_REVENUE_SUMMARY_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "sales.revenueSummary",
+      method: "POST",
+      path: "/api/v1/assistant/get_my_revenue_summary",
     },
   },
 ];

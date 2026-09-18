@@ -72,6 +72,9 @@ test("buyer and seller private reads mount behind workload authentication", asyn
     "list_my_products",
     "get_my_product",
     "get_my_inventory_summary",
+    "list_my_seller_orders",
+    "get_my_seller_order",
+    "get_my_revenue_summary",
   ];
   for (const path of paths) {
     const response = await fetch(`http://127.0.0.1:${port}/api/v1/assistant/${path}`, {

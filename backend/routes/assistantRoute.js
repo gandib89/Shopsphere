@@ -26,6 +26,11 @@ import {
   getMyProduct,
   listMyProducts,
 } from "../services/assistantSellerCatalog.js";
+import {
+  getMySale,
+  getMyRevenueSummary,
+  listMySales,
+} from "../services/assistantSellerOrders.js";
 import { auditContext, recordAssistantAudit } from "../services/assistantAudit.js";
 import { withAssistantActor } from "../database/assistantTransaction.js";
 import {
@@ -352,6 +357,7 @@ const privateOperation = ({ path, tool, operation, roles, scope, rolloutFlag, in
 
 const isoDateTime = z.string().min(1).max(100).optional();
 const orderStatus = z.enum(["Pending", "Confirmed", "Processing", "Shipped", "Delivered", "Cancelled", "ReturnRequested", "Returned"]).optional();
+const sellerSaleStatus = z.enum(["Pending", "Confirmed", "Processing", "Shipped", "Delivered", "Cancelled", "ReturnRequested", "Returned", "Refund Released"]).optional();
 
 privateOperation({
   path: "/get_my_cart",
@@ -483,6 +489,46 @@ privateOperation({
   inputSchema: z.object({ threshold: z.number().int().min(1).max(50).optional() }).strict(),
   run: (input, ctx) => getMyInventorySummary(input, ctx),
   observe: (output) => ({ resourceIds: output.lowStock.map(({ productId }) => productId), rowCount: output.lowStockCount }),
+});
+
+// Seller sale lines and revenue (#15). Sale-line authorization is the immutable
+// seller-at-purchase attribution resolved server-side from the delegated token;
+// no sellerId input field exists. Revenue buckets are fixed month/year ledger
+// aggregates with explicit refund semantics.
+privateOperation({
+  path: "/list_my_seller_orders",
+  tool: "list_my_seller_orders",
+  operation: "sales.listMine",
+  roles: ["seller"],
+  scope: "sales:read",
+  rolloutFlag: "MCP_TOOL_LIST_MY_SELLER_ORDERS_ENABLED",
+  inputSchema: z.object({ status: sellerSaleStatus, from: isoDateTime, to: isoDateTime, cursor, limit: z.number().int().min(1).max(50).optional() }).strict(),
+  run: (input, ctx) => listMySales(input, ctx),
+  observe: (output) => ({ resourceIds: output.sales.map(({ id }) => id), rowCount: output.sales.length }),
+});
+
+privateOperation({
+  path: "/get_my_seller_order",
+  tool: "get_my_seller_order",
+  operation: "sales.getMine",
+  roles: ["seller"],
+  scope: "sales:read",
+  rolloutFlag: "MCP_TOOL_GET_MY_SELLER_ORDER_ENABLED",
+  inputSchema: z.object({ orderId }).strict(),
+  run: (input, ctx) => getMySale(input, ctx),
+  observe: (output) => ({ resourceIds: [output.sale.id, ...output.groupSales.map(({ id }) => id)], rowCount: 1 + output.groupSales.length }),
+});
+
+privateOperation({
+  path: "/get_my_revenue_summary",
+  tool: "get_my_revenue_summary",
+  operation: "sales.revenueSummary",
+  roles: ["seller"],
+  scope: "revenue:read",
+  rolloutFlag: "MCP_TOOL_GET_MY_REVENUE_SUMMARY_ENABLED",
+  inputSchema: z.object({ year: z.number().int().min(2000).max(2100).optional() }).strict(),
+  run: (input, ctx) => getMyRevenueSummary(input, ctx),
+  observe: (output) => ({ resourceIds: [String(output.year)], rowCount: output.buckets.length }),
 });
 
 router.use(authenticatePublicWorkload);
