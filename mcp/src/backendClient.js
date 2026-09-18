@@ -33,6 +33,8 @@ const OPERATIONS = Object.freeze({
   get_order_exception_detail: "/api/v1/assistant/get_order_exception_detail",
   list_return_queue: "/api/v1/assistant/list_return_queue",
   draft_support_message: "/api/v1/assistant/draft_support_message",
+  list_promotion_configuration: "/api/v1/assistant/list_promotion_configuration",
+  get_promotion_usage_summary: "/api/v1/assistant/get_promotion_usage_summary",
 });
 
 const PRIVATE_SCOPES = Object.freeze({
@@ -64,6 +66,8 @@ const PRIVATE_SCOPES = Object.freeze({
   get_order_exception_detail: Object.freeze(["support:read"]),
   list_return_queue: Object.freeze(["support:read"]),
   draft_support_message: Object.freeze(["support:draft"]),
+  list_promotion_configuration: Object.freeze(["promotions:read"]),
+  get_promotion_usage_summary: Object.freeze(["promotions:read"]),
 });
 
 export const createBackendClient = ({ origin, token, exchangeToken, timeoutMs = 10_000, fetchImpl = fetch }) => {

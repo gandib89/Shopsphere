@@ -52,6 +52,10 @@ import {
 } from "../services/assistantAdminQueues.js";
 import { draftSupportMessage } from "../services/assistantSupportDrafts.js";
 import { createDraftSupportLimit } from "../services/assistantSupportDraftLimits.js";
+import {
+  getPromotionUsageSummary,
+  listPromotionConfiguration,
+} from "../services/assistantAdminPromotions.js";
 import { auditContext, recordAssistantAudit } from "../services/assistantAudit.js";
 import { withAssistantActor } from "../database/assistantTransaction.js";
 import {
@@ -870,6 +874,40 @@ privateOperation({
   auditInput: ({ orderId, topic }) => ({ orderId, topic }),
   run: (input, ctx) => draftSupportMessage(input, ctx),
   observe: (output) => ({ resourceIds: [output.orderId], rowCount: 1 }),
+});
+
+// Admin promotion reads (#18). Read-only by construction: the operations run
+// only SELECT projections and aggregate counts inside the actor transaction —
+// no promo mutation route, notification broadcast, counter reset, or activation
+// toggle is reachable from these paths. Configuration is an allowlist (the code
+// string is configuration, not a secret); per-user redemption history has no
+// field in any output. Missing and out-of-scope codes return the same 404.
+privateOperation({
+  path: "/list_promotion_configuration",
+  tool: "list_promotion_configuration",
+  operation: "promotions.listConfiguration",
+  roles: ["admin"],
+  scope: "promotions:read",
+  rolloutFlag: "MCP_TOOL_LIST_PROMOTION_CONFIGURATION_ENABLED",
+  inputSchema: z.object({
+    cursor,
+    limit: z.number().int().min(1).max(50).optional(),
+    activeOnly: z.boolean().optional(),
+  }).strict(),
+  run: (input, ctx) => listPromotionConfiguration(input, ctx),
+  observe: (output) => ({ resourceIds: output.promotions.map(({ promoCodeId }) => promoCodeId), rowCount: output.promotions.length }),
+});
+
+privateOperation({
+  path: "/get_promotion_usage_summary",
+  tool: "get_promotion_usage_summary",
+  operation: "promotions.usageSummary",
+  roles: ["admin"],
+  scope: "promotions:read",
+  rolloutFlag: "MCP_TOOL_GET_PROMOTION_USAGE_SUMMARY_ENABLED",
+  inputSchema: z.object({ promoCodeId: z.string().min(1).max(100) }).strict(),
+  run: (input, ctx) => getPromotionUsageSummary(input, ctx),
+  observe: (output) => ({ resourceIds: [output.promoCodeId], rowCount: 1 }),
 });
 
 router.use(authenticatePublicWorkload);
