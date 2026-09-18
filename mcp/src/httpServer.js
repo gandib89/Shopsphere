@@ -276,7 +276,7 @@ export const createMcpHttpServer = ({
           clientId: authContext?.clientId || null,
           workloadId: "shopsphere-mcp",
           grantId: authContext?.grantId || null,
-          policyVersion: "1.2.0",
+          policyVersion: POLICY_VERSION,
           tool: null,
           operation,
           authorizationOutcome,
