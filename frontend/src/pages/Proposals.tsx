@@ -26,6 +26,8 @@ const actionLabels: Record<string, string> = {
   'order.return_request': 'Request order return',
   'listing.publish_draft': 'Publish draft as live listing',
   'listing.update_content': 'Update listing content',
+  'product.set_price': 'Price change',
+  'product.set_discount': 'Discount change',
 };
 
 const statusLabels: Record<string, string> = {

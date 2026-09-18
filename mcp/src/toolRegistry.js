@@ -1050,6 +1050,58 @@ const ProposeOrderReturnOutputSchema = z
   })
   .strict();
 
+
+// Seller price proposals (#27). The input is exactly one owned product, one
+// change kind, and one bounded decimal value — there is NO optionId (options
+// carry additive priceDelta deltas, not absolute prices, so option-level
+// targeting cannot produce an exact old/new-value contract), no caller-supplied
+// payable total, and no confirm/execute affordance: forged fields fail the
+// schema, not the listing. The configured bounds ([1, 999999.99] NPR for
+// set_price, [0, 100]% for set_discount) and the differ-from-current rule are
+// enforced server-side (assistantPriceProposals.js) and re-checked at
+// execution. The preview is the exact server-computed old/new snapshot with
+// integer-paisa display math (the exact-decimal form of
+// effectiveProductPrice) and fixed disclosure strings.
+const ProposePriceChangeInputSchema = z
+  .object({
+    productId: z.string().min(1).max(100),
+    change: z.enum(["set_price", "set_discount"]),
+    newValue: DecimalInputSchema,
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.change === "set_discount" && !/^\d{1,4}(\.\d{1,2})?$/.test(value.newValue)) {
+      ctx.addIssue({ code: "custom", path: ["newValue"], message: "set_discount takes a percent between 0 and 100" });
+    }
+  });
+
+const PriceChangeValueSchema = z.string().regex(/^\d{1,10}(\.\d{1,2})?$/);
+
+const ProposePriceChangePreviewSchema = z
+  .object({
+    actionKind: z.enum(["product.set_price", "product.set_discount"]),
+    currency: z.literal("NPR"),
+    productId: z.string().min(1).max(100),
+    productName: z.string().min(1).max(200),
+    change: z.enum(["set_price", "set_discount"]),
+    oldValue: PriceChangeValueSchema,
+    newValue: PriceChangeValueSchema,
+    effectiveDisplayPriceBefore: MoneySchema,
+    effectiveDisplayPriceAfter: MoneySchema,
+    disclosedConsequences: z.array(z.string().min(1).max(300)).max(10),
+  })
+  .strict();
+
+const ProposePriceChangeOutputSchema = z
+  .object({
+    proposalId: z.string().min(1).max(100),
+    status: z.literal("pending"),
+    expiresAt: z.iso.datetime().max(100),
+    preview: ProposePriceChangePreviewSchema,
+  })
+  .strict();
+
+
 // Admin support queues (#17): membership is a fixed server rule — the exact
 // stored return/refund exception status strings inside a rolling 90-day window —
 // never a caller-supplied filter. Inputs therefore carry pagination only, plus
@@ -2010,6 +2062,29 @@ const definitions = [
       operationId: "proposals.orderReturn",
       method: "POST",
       path: "/api/v1/assistant/propose_order_return",
+    },
+  },
+
+  {
+    name: "propose_price_change",
+    title: "Propose a ShopSphere price change",
+    description:
+      "Records one pending price or discount proposal for one of the seller's own products to review and confirm in ShopSphere with a password re-confirmation. It accepts no option-level target, no caller-supplied totals, never changes the live listing, and never touches orders, payments, or promotions.",
+    inputSchema: ProposePriceChangeInputSchema,
+    outputSchema: ProposePriceChangeOutputSchema,
+    operationClass: "propose",
+    roles: ["seller"],
+    scopes: ["pricing:propose"],
+    rateClass: "proposal",
+    rollout: {
+      flag: "MCP_TOOL_PROPOSE_PRICE_CHANGE_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "proposals.priceChange",
+      method: "POST",
+      path: "/api/v1/assistant/propose_price_change",
     },
   },
 

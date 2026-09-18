@@ -209,6 +209,10 @@ export const readConfig = (environment = process.env) => ({
       environment.MCP_TOOL_PROPOSE_LISTING_CONTENT_CHANGE_ENABLED,
       false,
     ),
+    MCP_TOOL_PROPOSE_PRICE_CHANGE_ENABLED: parseBoolean(
+      environment.MCP_TOOL_PROPOSE_PRICE_CHANGE_ENABLED,
+      false,
+    ),
     MCP_TOOL_LIST_ORDER_EXCEPTION_QUEUE_ENABLED: parseBoolean(
       environment.MCP_TOOL_LIST_ORDER_EXCEPTION_QUEUE_ENABLED,
       false,

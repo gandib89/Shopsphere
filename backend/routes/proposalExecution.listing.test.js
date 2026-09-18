@@ -116,7 +116,7 @@ const createFakeClient = (state, { casFails = false } = {}) => {
   };
   const tx = {
     user: {
-      findUnique: async ({ where }) => state.users.get(where.id) ?? null,
+      findUnique: async ({ where }) => { console.error('DEBUG_USER', where.id, JSON.stringify(state.users.get(where.id))); return state.users.get(where.id) ?? null; },
       findMany: forbidden("user", "findMany"),
     },
     notification: {

@@ -31,6 +31,28 @@
 // action. Orders carry no version column, so expectedVersion is the
 // orderVersionOf(order.updatedAt) epoch-seconds proxy documented in
 // services/assistantCancellationProposals.js.
+//
+// product.set_price / product.set_discount (#27): execution is the ONE exact
+// mutation a seller price proposal may produce. Stepped-up authentication
+// (the ticket's "recent or stepped-up auth" requirement, implemented the
+// AiConnections way): the browser session alone is not enough — the execute
+// call must carry { confirmPassword } in its JSON body and it is verified
+// against the account's stored password hash with the SAME verifyPassword
+// helper the AiConnections re-confirmation flow uses (argon2id, with legacy
+// bcrypt hashes still honored). A missing or wrong password answers
+// 403 reauthorization_required with NO state change whatsoever — no proposal
+// transition, no outbox row, no product write. Accounts without a password
+// (OAuth-only) cannot step up and always get the 403. A seller whose
+// verification was revoked since propose time answers 403
+// verification_required, likewise with no state change (both checks are
+// actor reauthorization, deliberately distinct from the proposal-state
+// terminal transitions). Execution then reauthorizes ownership, requires the
+// productVersionOf(product.updatedAt) epoch-seconds proxy to equal
+// expectedVersion (else stale 409, no mutation), re-checks the configured
+// bounds against the CURRENT value, claims the proposal exactly once, and
+// applies one conditional product update (price, or discount +
+// discountUpdatedAt) inside the same transaction as the claim and the outbox
+// event.
 import express from "express";
 
 import { verifyToken } from "../middlewares/authMiddleware.js";
@@ -38,9 +60,16 @@ import { prisma } from "../database/prismaClient.js";
 import { generateId } from "../utils/generateId.js";
 import { listPriceWithOptions } from "../utils/productPricing.js";
 import { isDelegatedTokenShape } from "../utils/mcpOAuth.js";
+import { verifyPassword } from "../utils/password.js";
 import { adjustStock, isCancelEligible } from "../controller/order.js";
 import { orderVersionOf } from "../services/assistantCancellationProposals.js";
 import { sanitizeVariants } from "../services/assistantCart.js";
+import {
+  PRICE_ACTION_KINDS,
+  priceChangeRejectionFor,
+  priceUpdateDataFor,
+  productVersionOf,
+} from "../services/assistantPriceProposals.js";
 import {
   RETURN_ACTION_KIND,
   RETURN_DISCLOSURES,
@@ -134,11 +163,30 @@ const executedResponseFor = (proposal) => {
       orderStatus: "Cancelled",
     };
   }
+  // Buyer return proposals (#25): the replay path (a proposal already executed
+  // by a concurrent winner) must produce the same deterministic shape the
+  // fresh-execution path returns — nextSteps, not the cart fallback. This
+  // repairs a pre-existing gap in the merged #25 state (its own retry and
+  // concurrency tests pin the nextSteps shape); fresh execution behavior is
+  // unchanged.
   if (proposal.actionKind === RETURN_ACTION_KIND) {
     return {
       status: "executed",
       executionReference: proposal.executionReference ?? executionReferenceFor(proposal.id),
       nextSteps: [...RETURN_NEXT_STEPS],
+    };
+  }
+  // Seller price proposals (#27): the applied change is replayed from the
+  // immutable stored payload only, so a retry after success is byte-identical.
+  if (PRICE_ACTION_KINDS.includes(proposal.actionKind)) {
+    return {
+      status: "executed",
+      executionReference: proposal.executionReference ?? executionReferenceFor(proposal.id),
+      productId: proposal.targetId,
+      appliedChange: {
+        change: proposal.canonicalPayload?.change,
+        newValue: proposal.canonicalPayload?.newValue,
+      },
     };
   }
   return {
@@ -340,11 +388,41 @@ const applyOrderCancel = async (tx, { order, account, now }) => {
   }
 };
 
+// Applies the ONE exact stored price mutation (#27) inside the same
+// transaction as the proposal claim: a single conditional product update —
+// price for set_price, discount + discountUpdatedAt for set_discount — guarded
+// on ownership AND the exact updatedAt the version proxy was derived from. A
+// concurrent storefront price change between the fresh read and this update
+// counts 0 and throws, rolling the whole transaction (claim included) back so
+// the proposal stays pending and a retry re-runs every check. It NEVER touches
+// orders, payments, refunds, revenue, promotions, or notifications.
+const applyPriceChange = async (tx, { product, account, payload, now }) => {
+  const claim = await tx.product.updateMany({
+    where: { id: product.id, sellerId: account.id, updatedAt: product.updatedAt },
+    data: priceUpdateDataFor(payload.change, payload.newValue, now),
+  });
+  if (claim.count !== 1) {
+    throw Object.assign(
+      new Error("Product state changed; the price change was not applied"),
+      { statusCode: 409, code: "product_state_changed" },
+    );
+  }
+};
+
 // Side-effect disclosures shown on the review screen. Cart kinds carry static
 // lists; order.cancel replays the proposal's own immutable stored
 // disclosedConsequences so the review list matches the preview exactly.
 const disclosuresFor = (proposal) => {
   if (proposal.actionKind === "order.cancel") {
+    const disclosed = proposal.preview?.disclosedConsequences;
+    return Array.isArray(disclosed)
+      ? disclosed.filter((entry) => typeof entry === "string").slice(0, 10)
+      : [];
+  }
+  // Seller price proposals (#27): replay the proposal's own immutable stored
+  // disclosedConsequences, like order.cancel, so the review list matches the
+  // preview exactly.
+  if (PRICE_ACTION_KINDS.includes(proposal.actionKind)) {
     const disclosed = proposal.preview?.disclosedConsequences;
     return Array.isArray(disclosed)
       ? disclosed.filter((entry) => typeof entry === "string").slice(0, 10)
@@ -443,12 +521,43 @@ export const executeProposal = async (req, res, client = prisma) => {
       }
 
       // 4. Reauthorize the acting account: the browser session must still be
-      //    the proposal subject with the role recorded at proposal time.
+      //    the proposal subject with the role recorded at proposal time. For
+      //    seller price proposals (#27) the row also carries the password
+      //    hash and live verification flag for the stepped-up checks below.
       const account = await tx.user.findUnique({
         where: { id: userId },
-        select: { id: true, role: true, email: true, isVerified: true },
+        select: {
+          id: true,
+          role: true,
+          email: true,
+          isVerified: true,
+          ...(PRICE_ACTION_KINDS.includes(proposal.actionKind)
+            ? { password: true }
+            : {}),
+        },
       });
       if (!account) return { kind: "not_found" };
+
+      // 4a. Stepped-up authentication for seller price proposals (#27): the
+      //     session is not enough — the caller must re-confirm the current
+      //     ShopSphere password (AiConnections-style reauthorization, same
+      //     verifyPassword helper). Missing or wrong password ⇒ 403
+      //     reauthorization_required with NO state change of any kind: no
+      //     proposal transition, no outbox row, no product write. An account
+      //     without a password hash (OAuth-only) can never step up.
+      if (PRICE_ACTION_KINDS.includes(proposal.actionKind)) {
+        const confirmPassword =
+          typeof req.body?.confirmPassword === "string" ? req.body.confirmPassword : "";
+        const reauthorized =
+          confirmPassword.length > 0
+          && Boolean(account.password)
+          && (await verifyPassword(account.password, confirmPassword));
+        if (!reauthorized) return { kind: "reauthorization_required" };
+        // Verification revoked after propose time is an actor reauthorization
+        // failure too: 403 verification_required, likewise NO state change.
+        if (!account.isVerified) return { kind: "verification_required" };
+      }
+
       if (account.role !== proposal.role) {
         const claimed = await transitionPending(tx, proposal.id, userId, { status: "rejected" });
         if (claimed.count === 1) await writeOutbox(tx, proposal.id, "rejected", proposal.payloadHash);
@@ -543,8 +652,63 @@ export const executeProposal = async (req, res, client = prisma) => {
       //     the proposal stays pending and the caller gets the fixed
       //     403 verification_required with no transition and no mutation.
       if (proposal.actionKind.startsWith("listing.")) {
+        console.error("DEBUG_LISTING", proposal.actionKind, JSON.stringify(account), userId === account.id);
         if (!account.isVerified) return { kind: "forbidden" };
         return executeListingProposal(tx, { proposal, userId, now });
+      }
+
+      // 4c. product.set_price / product.set_discount (#27): reauthorize the
+      //     owned product, recheck the version proxy and the configured bounds
+      //     against the CURRENT value, claim exactly once, and apply the one
+      //     conditional product update — all in this transaction. There is NO
+      //     notification, promotion, order, or payment interaction on this
+      //     path.
+      if (PRICE_ACTION_KINDS.includes(proposal.actionKind)) {
+        const payload = proposal.canonicalPayload;
+        const product = await tx.product.findFirst({
+          where: {
+            id: typeof payload?.productId === "string" ? payload.productId : "",
+            sellerId: account.id,
+          },
+          select: { id: true, price: true, discount: true, updatedAt: true },
+        });
+        if (!product) {
+          // The stored target no longer resolves to this owner: the proposal
+          // can never be applied.
+          const claimed = await transitionPending(tx, proposal.id, userId, { status: "rejected" });
+          if (claimed.count === 1) await writeOutbox(tx, proposal.id, "rejected", proposal.payloadHash);
+          return resolveTerminal(await reloadProposal(tx, proposal.id));
+        }
+        // Stale check: any committed change to the product since the preview
+        // (price, discount, content, stock — anything touching the row) moves
+        // updatedAt, which moves the version proxy.
+        if (productVersionOf(product) !== proposal.expectedVersion) {
+          const claimed = await transitionPending(tx, proposal.id, userId, { status: "stale" });
+          if (claimed.count === 1) await writeOutbox(tx, proposal.id, "stale", proposal.payloadHash);
+          return resolveTerminal(await reloadProposal(tx, proposal.id));
+        }
+        // Business-rule revalidation on fresh state: the configured bounds and
+        // the differ-from-current rule against the live value (defense in
+        // depth for same-second version collisions).
+        if (priceChangeRejectionFor(payload, product)) {
+          const claimed = await transitionPending(tx, proposal.id, userId, { status: "rejected" });
+          if (claimed.count === 1) await writeOutbox(tx, proposal.id, "rejected", proposal.payloadHash);
+          return resolveTerminal(await reloadProposal(tx, proposal.id));
+        }
+
+        // Exactly-once claim (same as the cart and cancellation paths), then
+        // the one exact conditional product update inside this same
+        // transaction.
+        const claimed = await transitionPending(tx, proposal.id, userId, {
+          status: "executed",
+          executedAt: now,
+          executionReference: executionReferenceFor(proposal.id),
+        });
+        if (claimed.count !== 1) return resolveTerminal(await reloadProposal(tx, proposal.id));
+
+        await applyPriceChange(tx, { product, account, payload, now });
+        await writeOutbox(tx, proposal.id, "executed", proposal.payloadHash);
+        return { kind: "executed", response: executedResponseFor(proposal) };
       }
 
       // 5. Stale check: the cart must still be at the previewed version.
@@ -604,6 +768,20 @@ export const executeProposal = async (req, res, client = prisma) => {
     if (outcome.kind === "not_found") {
       return res.status(404).json({ code: "not_found", message: "Resource not found" });
     }
+    if (outcome.kind === "reauthorization_required") {
+      // Stepped-up authentication failed (#27). Nothing was mutated: this
+      // answer is produced before any proposal transition is attempted.
+      return res.status(403).json({
+        code: "reauthorization_required",
+        message: "Password confirmation was missing or incorrect; nothing was changed",
+      });
+    }
+    if (outcome.kind === "verification_required") {
+      return res.status(403).json({
+        code: "verification_required",
+        message: "Seller verification is required; nothing was changed",
+      });
+    }
     if (outcome.kind === "forbidden") {
       return res.status(403).json({ code: "verification_required", message: "Seller verification is required" });
     }
@@ -616,6 +794,7 @@ export const executeProposal = async (req, res, client = prisma) => {
       };
       return res.json(body);
     }
+    console.error("DEBUG_BLOCKED", JSON.stringify(outcome));
     return res.status(409).json({
       code: "proposal_not_executable",
       reason: outcome.reason,
@@ -629,6 +808,16 @@ export const executeProposal = async (req, res, client = prisma) => {
       return res.status(409).json({
         code: "order_state_changed",
         message: "Order state changed; the cancellation was not applied",
+      });
+    }
+    if (error?.code === "product_state_changed") {
+      // Same lost-race semantics for price proposals (#27): the conditional
+      // product update lost to a concurrent storefront write, the whole
+      // transaction (claim included) rolled back, and the proposal is still
+      // pending for a deterministic retry.
+      return res.status(409).json({
+        code: "product_state_changed",
+        message: "Product state changed; the price change was not applied",
       });
     }
     console.error("Error executing proposal:", error);
