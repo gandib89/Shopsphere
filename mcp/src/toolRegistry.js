@@ -871,7 +871,7 @@ const ProposeCartChangeOutputSchema = z
   })
   .strict();
 
-const ProposalActionKindSchema = z.enum(["cart.add_item", "cart.update_quantity", "cart.remove_item"]);
+const ProposalActionKindSchema = z.enum(["cart.add_item", "cart.update_quantity", "cart.remove_item", "order.cancel"]);
 
 const GetMyActionStatusInputSchema = z
   .object({
@@ -888,6 +888,45 @@ const GetMyActionStatusOutputSchema = z
     expiresAt: z.iso.datetime().max(100),
     executedAt: z.iso.datetime().max(100).nullable(),
     outcomeReason: z.string().min(1).max(50).nullable(),
+  })
+  .strict();
+
+// Buyer order-cancellation proposals (#24). The preview is the exact
+// server-computed snapshot of the owned order at propose time: only an
+// eligible order (Pending|Confirmed — the server's fixed cancellable set)
+// produces a proposal, so currentStatus is pinned to those two values and
+// cancelEligible is always true in an output. stockToRestore follows the
+// server cancellation rule (quantity restored only from "Confirmed", 0
+// otherwise), paidAmount is the exact-decimal NPR amount of a succeeded
+// payment or null, and the disclosed consequences are fixed server strings
+// that state plainly that any refund is a separate manual admin action never
+// initiated by this tool or its execution.
+const ProposeOrderCancellationInputSchema = z
+  .object({
+    orderId: z.string().regex(/^[A-Za-z0-9]{1,24}$/),
+  })
+  .strict();
+
+const OrderCancellationPreviewSchema = z
+  .object({
+    actionKind: z.literal("order.cancel"),
+    currency: z.literal("NPR"),
+    orderId: z.string().min(1).max(100),
+    orderNumber: z.string().min(1).max(100).nullable(),
+    currentStatus: z.enum(["Pending", "Confirmed"]),
+    cancelEligible: z.literal(true),
+    stockToRestore: z.number().int().min(0).max(10_000),
+    paidAmount: MoneySchema.nullable(),
+    disclosedConsequences: z.array(z.string().min(1).max(200)).max(10),
+  })
+  .strict();
+
+const ProposeOrderCancellationOutputSchema = z
+  .object({
+    proposalId: z.string().min(1).max(100),
+    status: z.literal("pending"),
+    expiresAt: z.iso.datetime().max(100),
+    preview: OrderCancellationPreviewSchema,
   })
   .strict();
 
@@ -1760,6 +1799,29 @@ const definitions = [
       operationId: "proposals.actionStatus",
       method: "POST",
       path: "/api/v1/assistant/get_my_action_status",
+    },
+  },
+
+  {
+    name: "propose_order_cancellation",
+    title: "Propose a ShopSphere order cancellation",
+    description:
+      "Records one pending cancellation proposal for one of the buyer's own eligible orders to review and confirm in ShopSphere. It never cancels the order, never restores stock, and never starts a refund.",
+    inputSchema: ProposeOrderCancellationInputSchema,
+    outputSchema: ProposeOrderCancellationOutputSchema,
+    operationClass: "propose",
+    roles: ["user"],
+    scopes: ["orders:propose"],
+    rateClass: "proposal",
+    rollout: {
+      flag: "MCP_TOOL_PROPOSE_ORDER_CANCELLATION_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "proposals.orderCancel",
+      method: "POST",
+      path: "/api/v1/assistant/propose_order_cancellation",
     },
   },
 

@@ -50,6 +50,7 @@ export const createShopSphereMcpServer = ({
     get_my_listing_draft: (args, requestId) => backendClient.call("get_my_listing_draft", args, requestId),
     propose_cart_change: (args, requestId) => backendClient.call("propose_cart_change", args, requestId),
     get_my_action_status: (args, requestId) => backendClient.call("get_my_action_status", args, requestId),
+    propose_order_cancellation: (args, requestId) => backendClient.call("propose_order_cancellation", args, requestId),
     list_order_exception_queue: (args, requestId) => backendClient.call("list_order_exception_queue", args, requestId),
     get_order_exception_detail: (args, requestId) => backendClient.call("get_order_exception_detail", args, requestId),
     list_return_queue: (args, requestId) => backendClient.call("list_return_queue", args, requestId),
