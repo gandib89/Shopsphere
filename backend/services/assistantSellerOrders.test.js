@@ -143,6 +143,7 @@ test("sale detail re-scopes group children to the same seller attribution", asyn
       findFirst: async () => detailRow(),
       findMany: async (args) => {
         assert.deepEqual(args.where, { sellerIdAtPurchase: SELLER, orderGroupId: "group-1", id: { not: "order-1" } });
+        assert.equal(args.take, 50);
         return [saleRow({ id: "order-3", productId: "prod-rival" })];
       },
     },

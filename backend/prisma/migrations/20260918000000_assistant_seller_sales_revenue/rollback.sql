@@ -5,9 +5,12 @@ DROP POLICY IF EXISTS shopsphere_assistant_refund_seller ON refunds;
 DROP POLICY IF EXISTS shopsphere_assistant_product_sale ON products;
 ALTER TABLE revenues NO FORCE ROW LEVEL SECURITY;
 ALTER TABLE revenues DISABLE ROW LEVEL SECURITY;
+-- Revenues: this migration introduced the whole grant, so revoke every column.
 REVOKE SELECT (id, "orderId", "sellerId", "totalSalePrice", "adminCommission",
                "sellerRevenue", status, month, year, "createdAt")
   ON TABLE revenues FROM shopsphere_assistant_private_runtime;
-REVOKE SELECT (id, "orderId", amount, status, "completedAt", "createdAt")
+-- Refunds: only the completedAt column was added; the pre-existing
+-- get_my_payment_status columns must keep their grants.
+REVOKE SELECT ("completedAt")
   ON TABLE refunds FROM shopsphere_assistant_private_runtime;
 DROP POLICY IF EXISTS shopsphere_application_owner ON revenues;

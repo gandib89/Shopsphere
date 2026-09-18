@@ -27,7 +27,7 @@ CREATE POLICY shopsphere_assistant_revenue_seller ON revenues
   USING (
     "sellerId" = current_setting('shopsphere.actor_id', true)
     AND current_setting('shopsphere.actor_role', true) = 'seller'
-    AND current_setting('shopsphere.operation', true) IN ('sales.listMine', 'sales.getMine', 'sales.revenueSummary')
+    AND current_setting('shopsphere.operation', true) IN ('sales.getMine', 'sales.revenueSummary')
   );
 
 DROP POLICY IF EXISTS shopsphere_assistant_order_seller ON orders;
@@ -55,9 +55,12 @@ CREATE POLICY shopsphere_assistant_refund_seller ON refunds
     AND current_setting('shopsphere.operation', true) = 'sales.revenueSummary'
   );
 
--- Sale lines display the product name via the sold row, so a product whose
--- ownership later transferred stays readable (name only) through the
--- historical attribution, never through current Product.sellerId.
+-- Sale lines display the product name via the sold row, so the row scope
+-- follows the historical attribution: a product whose ownership later
+-- transferred stays reachable (through this policy) while the application
+-- projection selects the name only. RLS filters rows, not columns, so the
+-- seller-private column grant on products is shared with every policy on the
+-- table — the same trade-off the buyer order reads accept.
 DROP POLICY IF EXISTS shopsphere_assistant_product_sale ON products;
 CREATE POLICY shopsphere_assistant_product_sale ON products
   FOR SELECT TO shopsphere_assistant_private_runtime

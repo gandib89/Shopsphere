@@ -159,11 +159,13 @@ export const getMySale = async ({ orderId }, { client, principal }) => {
   });
   if (!row) throw notFound();
   // Multi-seller groups: one matching sale line never authorizes the whole
-  // checkout group — siblings are re-scoped to the same seller attribution.
+  // checkout group — siblings are re-scoped to the same seller attribution,
+  // and the page is bounded to the published 50-line contract.
   const groupRows = row.orderGroupId
     ? await client.order.findMany({
       where: buildSellerOrderWhere(principal.subject, { orderGroupId: row.orderGroupId, id: { not: row.id } }),
       select: saleSelect,
+      take: MAX_LIMIT,
     })
     : [];
   // The stored ledger entry for this sale (created at confirmation, zeroed and
@@ -195,6 +197,10 @@ export const getMySale = async ({ orderId }, { client, principal }) => {
   };
 };
 
+// Bucket windows use server-local months deliberately: the ledger's own
+// month/year columns are written with local getMonth()/getFullYear() (see the
+// order-confirmation revenue creation), so refund completion months must use
+// the same convention to stay comparable.
 const monthWindow = (year, month) => ({
   start: new Date(year, month - 1, 1),
   end: new Date(year, month, 1),

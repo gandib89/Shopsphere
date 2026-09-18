@@ -528,7 +528,7 @@ privateOperation({
   rolloutFlag: "MCP_TOOL_GET_MY_REVENUE_SUMMARY_ENABLED",
   inputSchema: z.object({ year: z.number().int().min(2000).max(2100).optional() }).strict(),
   run: (input, ctx) => getMyRevenueSummary(input, ctx),
-  observe: (output) => ({ resourceIds: [String(output.year)], rowCount: output.buckets.length }),
+  observe: (output) => ({ resourceIds: [], rowCount: output.buckets.length }),
 });
 
 router.use(authenticatePublicWorkload);
