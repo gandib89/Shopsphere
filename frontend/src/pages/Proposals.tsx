@@ -28,6 +28,7 @@ const actionLabels: Record<string, string> = {
   'listing.update_content': 'Update listing content',
   'product.set_price': 'Price change',
   'product.set_discount': 'Discount change',
+  'inventory.adjust': 'Adjust inventory',
 };
 
 const statusLabels: Record<string, string> = {

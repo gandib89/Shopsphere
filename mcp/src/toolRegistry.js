@@ -1101,6 +1101,57 @@ const ProposePriceChangeOutputSchema = z
   })
   .strict();
 
+// Seller inventory proposals (#28). The input is exactly one owned product,
+// at most one optionId (the option must track its own stock — stock != null;
+// a product-level quantity target is allowed only when NO option tracks
+// stock), exactly one of a bounded signed adjustment or an absolute setTo,
+// and a REQUIRED user-authored reason. There is NO confirm/execute
+// affordance, no other absolute-overwrite field, and no second change per
+// proposal: forged fields fail the schema, not the stock. The bounds
+// ([-10000, 10000] / [0, 100000]) and the nonnegative-result rule are
+// enforced server-side (assistantInventoryProposals.js) against the CURRENT
+// count and re-checked at execution. The preview is the exact server-computed
+// target/current/requested snapshot with fixed disclosure strings.
+const ProposeInventoryAdjustmentInputSchema = z
+  .object({
+    productId: z.string().min(1).max(100),
+    optionId: z.string().min(1).max(100).optional(),
+    adjustment: z.number().int().min(-10000).max(10000).optional(),
+    setTo: z.number().int().min(0).max(100000).optional(),
+    reason: z.string().trim().min(20).max(500),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const given = (value.adjustment !== undefined ? 1 : 0) + (value.setTo !== undefined ? 1 : 0);
+    if (given !== 1) {
+      ctx.addIssue({ code: "custom", path: ["adjustment"], message: "exactly one of adjustment or setTo is required" });
+    }
+  });
+
+const ProposeInventoryAdjustmentPreviewSchema = z
+  .object({
+    actionKind: z.literal("inventory.adjust"),
+    productId: z.string().min(1).max(100),
+    productName: z.string().min(1).max(200),
+    optionId: z.string().min(1).max(100).optional(),
+    optionKind: z.string().min(1).max(100).optional(),
+    optionValue: z.string().min(1).max(200).optional(),
+    currentCount: z.number().int().min(0),
+    requestedCount: z.number().int().min(0),
+    reason: z.string().min(20).max(500),
+    disclosedConsequences: z.array(z.string().min(1).max(300)).max(10),
+  })
+  .strict();
+
+const ProposeInventoryAdjustmentOutputSchema = z
+  .object({
+    proposalId: z.string().min(1).max(100),
+    status: z.literal("pending"),
+    expiresAt: z.iso.datetime().max(100),
+    preview: ProposeInventoryAdjustmentPreviewSchema,
+  })
+  .strict();
+
 
 // Admin support queues (#17): membership is a fixed server rule — the exact
 // stored return/refund exception status strings inside a rolling 90-day window —
@@ -2085,6 +2136,29 @@ const definitions = [
       operationId: "proposals.priceChange",
       method: "POST",
       path: "/api/v1/assistant/propose_price_change",
+    },
+  },
+
+  {
+    name: "propose_inventory_adjustment",
+    title: "Propose a ShopSphere inventory adjustment",
+    description:
+      "Records one pending stock proposal for one of the seller's own products — exactly one stock-tracking option or the product-level quantity — with a required reason. Nothing is reserved or changed at creation; a concurrent sale makes the proposal stale, and confirmation in ShopSphere never overwrites it or drives stock negative.",
+    inputSchema: ProposeInventoryAdjustmentInputSchema,
+    outputSchema: ProposeInventoryAdjustmentOutputSchema,
+    operationClass: "propose",
+    roles: ["seller"],
+    scopes: ["inventory:propose"],
+    rateClass: "proposal",
+    rollout: {
+      flag: "MCP_TOOL_PROPOSE_INVENTORY_ADJUSTMENT_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "proposals.inventoryAdjust",
+      method: "POST",
+      path: "/api/v1/assistant/propose_inventory_adjustment",
     },
   },
 

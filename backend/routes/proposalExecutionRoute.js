@@ -53,6 +53,24 @@
 // applies one conditional product update (price, or discount +
 // discountUpdatedAt) inside the same transaction as the claim and the outbox
 // event.
+//
+// inventory.adjust (#28): execution reauthorizes the owner AND live seller
+// verification (the same checks the listing branch uses), revalidates the
+// stored target, requires BOTH the productVersionOf(product.updatedAt)
+// epoch-seconds proxy to equal expectedVersion AND the CURRENT targeted stock
+// count to equal the previewed before-value (a sale or any inventory change
+// after the preview makes the proposal stale — it can never overwrite a
+// concurrent sale), recomputes the requested count from the CURRENT count
+// with the shared nonnegative-result rule (a negative result is rejected,
+// never applied), claims the proposal exactly once, and applies ONE
+// conditional compare-and-swap write (ProductOption.stock or
+// Product.quantity, guarded on the exact before-count) inside the same
+// transaction as the claim and the outbox event. Unlike the #27 price kinds,
+// inventory is NOT a sensitive change under the ticket spec — it moves a
+// stock count, not money or ownership — so NO confirmPassword step-up is
+// required: the browser session plus live verification is the intended
+// authorization. No notification, order, payment, or availability write
+// exists on this path.
 import express from "express";
 
 import { verifyToken } from "../middlewares/authMiddleware.js";
@@ -84,6 +102,12 @@ import {
   LISTING_PUBLISH_DISCLOSURES,
   listingProductVersionOf,
 } from "../services/assistantListingProposals.js";
+import {
+  INVENTORY_ADJUST_ACTION_KIND,
+  inventoryAdjustmentRejectionFor,
+  requestedCountFor,
+  resolveInventoryTarget,
+} from "../services/assistantInventoryProposals.js";
 
 export const PROPOSAL_LIST_LIMIT = 20;
 
@@ -187,6 +211,18 @@ const executedResponseFor = (proposal) => {
         change: proposal.canonicalPayload?.change,
         newValue: proposal.canonicalPayload?.newValue,
       },
+    };
+  }
+  // Seller inventory proposals (#28): the applied stock is replayed from the
+  // immutable stored payload only, so a retry after success is byte-identical.
+  if (proposal.actionKind === INVENTORY_ADJUST_ACTION_KIND) {
+    const payload = proposal.canonicalPayload;
+    return {
+      status: "executed",
+      executionReference: proposal.executionReference ?? executionReferenceFor(proposal.id),
+      productId: typeof payload?.productId === "string" ? payload.productId : proposal.targetId,
+      ...(typeof payload?.optionId === "string" ? { optionId: payload.optionId } : {}),
+      appliedStock: payload?.requestedCount,
     };
   }
   return {
@@ -310,6 +346,109 @@ const executeListingProposal = async (tx, { proposal, userId, now }) => {
   return resolveTerminal(await reloadProposal(tx, proposal.id));
 };
 
+// Applies the exact stored inventory action (#28). Only server-side state and
+// the stored canonical payload are consulted — the HTTP request body of the
+// execute call carries nothing (and needs no password step-up: stock is not a
+// sensitive change). Every recheck failure transitions the proposal to
+// "stale" or "rejected" exactly once, with no mutation of any stock counter:
+//   - the target must still resolve to this owner under the current-ownership
+//     predicate, with the same option-tracking semantics the propose path
+//     used (missing/unowned target, a lost option, an option that stopped
+//     tracking stock, or an ambiguous product-level target ⇒ rejected — the
+//     proposal can never be applied again);
+//   - the product's updatedAt-seconds proxy must equal expectedVersion (any
+//     committed product change after the preview ⇒ stale);
+//   - the CURRENT targeted count must equal the previewed before-value (a
+//     concurrent sale or inventory change ⇒ stale, never overwritten);
+//   - the stored change must still satisfy the bounds and produce a
+//     nonnegative result from the CURRENT count (same-second collision ⇒
+//     rejected, never negative stock);
+// and the one apply is a conditional compare-and-swap guarded on the exact
+// before-count, so a write landing inside the read-to-write window counts 0
+// rows, throws, and rolls the whole transaction (claim included) back — the
+// proposal stays pending and a retry re-runs every check deterministically.
+const executeInventoryProposal = async (tx, { proposal, userId, now }) => {
+  const payload = proposal.canonicalPayload;
+  const markStale = async () => {
+    const claimed = await transitionPending(tx, proposal.id, userId, { status: "stale" });
+    if (claimed.count === 1) await writeOutbox(tx, proposal.id, "stale", proposal.payloadHash);
+    return resolveTerminal(await reloadProposal(tx, proposal.id));
+  };
+  const markRejected = async () => {
+    const claimed = await transitionPending(tx, proposal.id, userId, { status: "rejected" });
+    if (claimed.count === 1) await writeOutbox(tx, proposal.id, "rejected", proposal.payloadHash);
+    return resolveTerminal(await reloadProposal(tx, proposal.id));
+  };
+
+  const optionId = typeof payload?.optionId === "string" ? payload.optionId : null;
+  const product = await tx.product.findFirst({
+    where: { id: typeof payload?.productId === "string" ? payload.productId : "", sellerId: userId },
+    select: {
+      id: true,
+      quantity: true,
+      updatedAt: true,
+      options: { select: { id: true, kind: true, value: true, stock: true } },
+    },
+  });
+  if (!product) return markRejected();
+
+  // Version proxy: any committed product mutation after the preview moves
+  // updatedAt, which moves the proxy.
+  if (productVersionOf(product) !== proposal.expectedVersion) return markStale();
+
+  // Target resolution with the SAME shared semantics propose time used.
+  const resolution = resolveInventoryTarget(product, optionId);
+  if (!resolution.ok) return markRejected();
+  const { currentCount, option } = resolution;
+
+  // Exact before-value equality: the previewed counter must be untouched. A
+  // concurrent sale changed the count and can never be overwritten.
+  if (payload.currentCount !== currentCount) return markStale();
+
+  // Business-rule revalidation on fresh state (defense in depth for
+  // same-second version collisions): bounds + nonnegative result from the
+  // CURRENT count.
+  const change = { adjustment: payload.adjustment ?? undefined, setTo: payload.setTo ?? undefined };
+  if (inventoryAdjustmentRejectionFor(change, currentCount)) return markRejected();
+  const requestedCount = requestedCountFor(change, currentCount);
+
+  // Exactly-once claim (same as every other kind), then the one conditional
+  // CAS write inside this same transaction.
+  const claimed = await transitionPending(tx, proposal.id, userId, {
+    status: "executed",
+    executedAt: now,
+    executionReference: executionReferenceFor(proposal.id),
+  });
+  if (claimed.count !== 1) return resolveTerminal(await reloadProposal(tx, proposal.id));
+
+  if (option) {
+    const applied = await tx.productOption.updateMany({
+      where: { id: option.id, stock: currentCount },
+      data: { stock: requestedCount },
+    });
+    if (applied.count !== 1) {
+      throw Object.assign(
+        new Error("Inventory changed; the stock adjustment was not applied"),
+        { statusCode: 409, code: "inventory_state_changed" },
+      );
+    }
+  } else {
+    const applied = await tx.product.updateMany({
+      where: { id: product.id, sellerId: userId, quantity: currentCount },
+      data: { quantity: requestedCount },
+    });
+    if (applied.count !== 1) {
+      throw Object.assign(
+        new Error("Inventory changed; the stock adjustment was not applied"),
+        { statusCode: 409, code: "inventory_state_changed" },
+      );
+    }
+  }
+
+  await writeOutbox(tx, proposal.id, "executed", proposal.payloadHash);
+  return resolveTerminal(await reloadProposal(tx, proposal.id));
+};
+
 // Applies the exact stored canonical action to the cart. Only server-side state
 // and the stored payload are consulted — the HTTP request body of the execute
 // call carries nothing, so a substituted payload can never reach the cart.
@@ -428,6 +567,14 @@ const disclosuresFor = (proposal) => {
       ? disclosed.filter((entry) => typeof entry === "string").slice(0, 10)
       : [];
   }
+  // Seller inventory proposals (#28): same stored-preview replay — the first
+  // disclosure interpolates the exact stored target label and counts.
+  if (proposal.actionKind === INVENTORY_ADJUST_ACTION_KIND) {
+    const disclosed = proposal.preview?.disclosedConsequences;
+    return Array.isArray(disclosed)
+      ? disclosed.filter((entry) => typeof entry === "string").slice(0, 10)
+      : [];
+  }
   return DISCLOSURES[proposal.actionKind] ?? [];
 };
 
@@ -441,13 +588,15 @@ export const getProposalReview = async (req, res, client = prisma) => {
     if (!proposal) {
       return res.status(404).json({ code: "not_found", message: "Resource not found" });
     }
-    // The return reason is user-authored content stored in the canonical
-    // payload, so the review screen must show it. It is bounded server-side and
-    // never appears in cart or cancellation proposals or in any audit row.
-    const storedReason = proposal.actionKind === RETURN_ACTION_KIND
+    // The return reason (#25) and the inventory reason (#28) are user-authored
+    // content stored in the canonical payload, so the review screen must show
+    // them. Both are bounded server-side and never appear in cart or
+    // cancellation proposals or in any audit row.
+    const storedReason = (proposal.actionKind === RETURN_ACTION_KIND
+      || proposal.actionKind === INVENTORY_ADJUST_ACTION_KIND)
       && proposal.canonicalPayload
       && typeof proposal.canonicalPayload.reason === "string"
-      ? proposal.canonicalPayload.reason.slice(0, 1000)
+      ? proposal.canonicalPayload.reason.slice(0, proposal.actionKind === RETURN_ACTION_KIND ? 1000 : 500)
       : null;
     return res.json({
       proposal: {
@@ -711,6 +860,20 @@ export const executeProposal = async (req, res, client = prisma) => {
         return { kind: "executed", response: executedResponseFor(proposal) };
       }
 
+      // 4d. inventory.adjust (#28): reauthorize the owned target, recheck the
+      //     version proxy AND the exact previewed stock count, recompute the
+      //     requested count from the CURRENT count (never negative), claim
+      //     exactly once, and apply the one conditional stock CAS write — all
+      //     in this transaction. Verification is re-checked live like the
+      //     listing kinds; there is NO password step-up (inventory is not a
+      //     sensitive change — it moves a stock count, not money), and NO
+      //     notification, order, payment, or availability interaction on this
+      //     path.
+      if (proposal.actionKind === INVENTORY_ADJUST_ACTION_KIND) {
+        if (!account.isVerified) return { kind: "forbidden" };
+        return executeInventoryProposal(tx, { proposal, userId: account.id, now });
+      }
+
       // 5. Stale check: the cart must still be at the previewed version.
       const cart = await tx.cart.findFirst({
         where: { userId },
@@ -776,6 +939,11 @@ export const executeProposal = async (req, res, client = prisma) => {
         message: "Password confirmation was missing or incorrect; nothing was changed",
       });
     }
+    if (outcome.kind === "forbidden") {
+      // Live verification revoked for a listing (#26) or inventory (#28)
+      // proposal. Nothing was mutated and the proposal stays pending.
+      return res.status(403).json({ code: "verification_required", message: "Seller verification is required" });
+    }
     if (outcome.kind === "verification_required") {
       return res.status(403).json({
         code: "verification_required",
@@ -794,7 +962,6 @@ export const executeProposal = async (req, res, client = prisma) => {
       };
       return res.json(body);
     }
-    console.error("DEBUG_BLOCKED", JSON.stringify(outcome));
     return res.status(409).json({
       code: "proposal_not_executable",
       reason: outcome.reason,
@@ -818,6 +985,18 @@ export const executeProposal = async (req, res, client = prisma) => {
       return res.status(409).json({
         code: "product_state_changed",
         message: "Product state changed; the price change was not applied",
+      });
+    }
+    if (error?.code === "inventory_state_changed") {
+      // Same lost-race semantics for inventory proposals (#28): the stock CAS
+      // write lost to a concurrent sale/inventory write that landed inside the
+      // read-to-write window, the whole transaction (claim included) rolled
+      // back, nothing was overwritten, and the proposal is still pending — a
+      // retry re-runs every check and resolves to stale (the count moved) or
+      // executes against the fresh count.
+      return res.status(409).json({
+        code: "inventory_state_changed",
+        message: "Inventory changed; the stock adjustment was not applied",
       });
     }
     console.error("Error executing proposal:", error);

@@ -51,6 +51,17 @@ type ProposalPreview = {
   newValue?: string;
   effectiveDisplayPriceBefore?: Money;
   effectiveDisplayPriceAfter?: Money;
+  // Seller inventory proposals (#28): exact server-computed target and stock
+  // snapshot. One stock-tracking option per proposal, or the product-level
+  // quantity when no option tracks stock. No money fields exist anywhere.
+  optionId?: string;
+  optionKind?: string;
+  optionValue?: string;
+  currentCount?: number;
+  requestedCount?: number;
+  // Inventory proposals (#28) also carry the required user-authored reason in
+  // the stored preview; the review endpoint surfaces it as proposal.reason.
+  reason?: string;
 };
 type ProposalStatus = 'pending' | 'executed' | 'expired' | 'stale' | 'rejected';
 type Proposal = {
@@ -181,6 +192,23 @@ const actionDescriptors: Record<string, ActionDescriptor> = {
       rejected: 'This discount change can no longer be applied to your product. Nothing was changed.',
     },
   },
+  // Seller inventory proposals (#28): confirming applies the exact stored
+  // stock change with no password step-up — inventory is not a sensitive
+  // change. A concurrent sale after the preview makes the proposal stale and
+  // is never overwritten.
+  'inventory.adjust': {
+    title: 'Adjust your inventory',
+    description: 'An AI assistant prepared this inventory adjustment. Nothing has changed yet — review the exact stock values below, then confirm.',
+    executedMessage: 'Confirmed. Your stock now reflects exactly the reviewed count. No orders or notifications were affected.',
+    confirmToast: 'Confirmed. Your inventory was adjusted.',
+    backTarget: '/seller-products',
+    confirmLabel: 'Confirm — apply this stock change',
+    confirmCopy: 'I have reviewed the exact current and requested stock counts and the effects listed above. Confirming applies exactly this change to my inventory with my own ShopSphere session.',
+    blocked: {
+      stale: 'Your stock changed after this proposal was created (for example by a sale), so it can no longer be applied. Nothing was changed.',
+      rejected: 'This stock change can no longer be applied to your product. Nothing was changed.',
+    },
+  },
 };
 
 const actionLabels: Record<string, string> = {
@@ -193,6 +221,7 @@ const actionLabels: Record<string, string> = {
   'listing.update_content': 'Update listing content',
   'product.set_price': 'Change listing price',
   'product.set_discount': 'Change listing discount',
+  'inventory.adjust': 'Adjust inventory',
 };
 
 const statusLabels: Record<ProposalStatus, string> = {
@@ -354,6 +383,7 @@ export default function ProposalReview() {
   const isReturn = proposal.actionKind === 'order.return_request';
   const isCancel = proposal.actionKind === 'order.cancel';
   const isListing = proposal.actionKind.startsWith('listing.');
+  const isInventory = proposal.actionKind === 'inventory.adjust';
   const backTarget = descriptor.backTarget;
 
   return (
@@ -500,6 +530,31 @@ export default function ProposalReview() {
             </dl>
             <p className="mt-3 text-xs text-ink-muted">
               All amounts in {preview.currency ?? 'NPR'}. Expires at {formatExpiry(proposal.expiresAt)} — after that this proposal cannot be applied.
+            </p>
+          </section>
+        ) : isInventory ? (
+          <section aria-labelledby="proposal-target" className="border border-hairline bg-paper-raised p-6">
+            <h2 id="proposal-target" className="text-xl font-bold">{preview.productName}</h2>
+            <p className="mt-1 text-sm text-ink-muted">Proposal status: {statusLabels[proposal.status]}</p>
+            <dl className="mt-5 overflow-hidden border border-hairline text-sm">
+              <div className="grid grid-cols-3 gap-2 bg-paper px-4 py-2 font-semibold">
+                <span className="col-span-1">Field</span>
+                <span className="col-span-2">Exact value to apply</span>
+              </div>
+              {([
+                ['Target', preview.optionId ? `Option ${preview.optionKind ?? ''}: ${preview.optionValue ?? ''}` : 'Product-level stock'],
+                ['Current stock', String(preview.currentCount ?? '—')],
+                ['Requested stock', String(preview.requestedCount ?? '—')],
+                ['Reason', proposal.reason ?? preview.reason ?? '—'],
+              ] as const).map(([label, value]) => (
+                <div key={label} className="grid grid-cols-3 gap-2 border-t border-hairline px-4 py-2 tabular-nums">
+                  <span className="font-medium">{label}</span>
+                  <span className="col-span-2">{value}</span>
+                </div>
+              ))}
+            </dl>
+            <p className="mt-3 text-xs text-ink-muted">
+              Expires at {formatExpiry(proposal.expiresAt)} — after that this proposal cannot be applied.
             </p>
           </section>
         ) : (
