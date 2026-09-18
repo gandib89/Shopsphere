@@ -17,6 +17,9 @@ const expected = {
   list_my_products: { roles: ["seller"], scopes: ["catalog:read"], operationId: "products.listMine", path: "/api/v1/assistant/list_my_products" },
   get_my_product: { roles: ["seller"], scopes: ["catalog:read"], operationId: "products.getMine", path: "/api/v1/assistant/get_my_product" },
   get_my_inventory_summary: { roles: ["seller"], scopes: ["catalog:read"], operationId: "products.getMyInventorySummary", path: "/api/v1/assistant/get_my_inventory_summary" },
+  list_my_seller_orders: { roles: ["seller"], scopes: ["sales:read"], operationId: "sales.listMine", path: "/api/v1/assistant/list_my_seller_orders" },
+  get_my_seller_order: { roles: ["seller"], scopes: ["sales:read"], operationId: "sales.getMine", path: "/api/v1/assistant/get_my_seller_order" },
+  get_my_revenue_summary: { roles: ["seller"], scopes: ["revenue:read"], operationId: "sales.revenueSummary", path: "/api/v1/assistant/get_my_revenue_summary" },
 };
 
 test("buyer and seller read tools carry closed role, scope, and backend metadata", () => {
@@ -41,8 +44,37 @@ test("private read inputs reject caller-supplied totals, identity, and owner fie
   assert.ok(!byName.list_my_orders.inputSchema.safeParse({ userId: "victim" }).success);
   assert.ok(!byName.get_my_order.inputSchema.safeParse({ orderId: "o1", email: "v@x.test" }).success);
   assert.ok(!byName.list_my_products.inputSchema.safeParse({ sellerId: "victim" }).success);
+  assert.ok(!byName.list_my_seller_orders.inputSchema.safeParse({ sellerId: "victim" }).success);
+  assert.ok(!byName.get_my_seller_order.inputSchema.safeParse({ orderId: "o1", email: "v@x.test" }).success);
+  assert.ok(!byName.get_my_revenue_summary.inputSchema.safeParse({ year: "2026" }).success);
   assert.ok(byName.get_my_cart.inputSchema.safeParse({}).success);
   assert.ok(byName.preview_checkout.inputSchema.safeParse({}).success);
+  assert.ok(byName.list_my_seller_orders.inputSchema.safeParse({}).success);
+  assert.ok(byName.get_my_revenue_summary.inputSchema.safeParse({}).success);
+  assert.ok(!byName.get_my_revenue_summary.inputSchema.safeParse({ year: 1899 }).success);
+  assert.ok(!byName.get_my_revenue_summary.inputSchema.safeParse({ year: 2101 }).success);
+});
+
+test("revenue summary output pins exactly twelve buckets with money semantics", () => {
+  const tool = toolRegistry.find((candidate) => candidate.name === "get_my_revenue_summary");
+  const bucket = (month) => ({
+    month,
+    saleCount: 1,
+    grossSale: { amount: "100", currency: "NPR" },
+    commission: { amount: "5", currency: "NPR" },
+    netSale: { amount: "95", currency: "NPR" },
+    refunded: { amount: "0", currency: "NPR" },
+  });
+  const totals = {
+    saleCount: 12,
+    grossSale: { amount: "1200", currency: "NPR" },
+    commission: { amount: "60", currency: "NPR" },
+    netSale: { amount: "1140", currency: "NPR" },
+    refunded: { amount: "0", currency: "NPR" },
+  };
+  assert.ok(tool.outputSchema.safeParse({ year: 2026, buckets: Array.from({ length: 12 }, (_, i) => bucket(i + 1)), totals }).success);
+  assert.ok(!tool.outputSchema.safeParse({ year: 2026, buckets: Array.from({ length: 11 }, (_, i) => bucket(i + 1)), totals }).success);
+  assert.ok(!tool.outputSchema.safeParse({ year: 2026, buckets: Array.from({ length: 12 }, (_, i) => bucket(i + 1)), totals: { ...totals, refunded: { amount: "1", currency: "USD" } } }).success);
 });
 
 test("inventory summary output requires the truncation flag", () => {
@@ -70,6 +102,11 @@ test("private reads are undiscoverable across roles, scopes, and disabled flags"
   assert.ok(!isToolAvailable(byName.get_my_cart, enabled, { role: "user", scopes: [] }));
   assert.ok(isToolAvailable(byName.list_my_products, enabled, seller));
   assert.ok(!isToolAvailable(byName.list_my_products, enabled, buyer));
+  assert.ok(isToolAvailable(byName.list_my_seller_orders, enabled, { role: "seller", scopes: ["sales:read"] }));
+  assert.ok(!isToolAvailable(byName.list_my_seller_orders, enabled, seller));
+  assert.ok(!isToolAvailable(byName.list_my_seller_orders, enabled, buyer));
+  assert.ok(isToolAvailable(byName.get_my_revenue_summary, enabled, { role: "seller", scopes: ["revenue:read"] }));
+  assert.ok(!isToolAvailable(byName.get_my_revenue_summary, enabled, { role: "seller", scopes: ["sales:read"] }));
   assert.ok(!isToolAvailable(byName.get_my_order, {}, buyer));
 });
 
@@ -90,7 +127,10 @@ test("backend client exchanges narrow scopes per private read operation", async 
   await client.call("preview_checkout", {}, { subjectToken: "s" });
   await client.call("get_my_order", { orderId: "o1" }, { subjectToken: "s" });
   await client.call("get_my_inventory_summary", {}, { subjectToken: "s" });
-  assert.deepEqual(seen, [["cart:read"], ["orders:read"], ["catalog:read"]]);
+  await client.call("list_my_seller_orders", {}, { subjectToken: "s" });
+  await client.call("get_my_seller_order", { orderId: "o1" }, { subjectToken: "s" });
+  await client.call("get_my_revenue_summary", {}, { subjectToken: "s" });
+  assert.deepEqual(seen, [["cart:read"], ["orders:read"], ["catalog:read"], ["sales:read"], ["sales:read"], ["revenue:read"]]);
 });
 
 test("new tool flags default to disabled and parse from the environment", () => {

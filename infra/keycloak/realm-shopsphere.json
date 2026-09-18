@@ -81,7 +81,23 @@
     { "name": "profile:read", "description": "Read your minimal profile summary", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read your display name, role, and verification state" }, "protocolMappers": [] },
     { "name": "notifications:read", "description": "Read your notifications", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read your notifications" }, "protocolMappers": [] },
     { "name": "orders:read", "description": "Read your permitted orders", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read your permitted order history" }, "protocolMappers": [] },
-    { "name": "cart:read", "description": "Read and preview your cart", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read and preview your cart" }, "protocolMappers": [] }
+    { "name": "cart:read", "description": "Read and preview your cart", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read and preview your cart" }, "protocolMappers": [] },
+    { "name": "cart:propose", "description": "Propose cart changes for your review", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Propose cart changes that you review and confirm in ShopSphere before anything changes" }, "protocolMappers": [] },
+    { "name": "returns:propose", "description": "Propose return requests for your review", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Propose return requests for your own delivered orders that you review and confirm in ShopSphere before anything changes" }, "protocolMappers": [] },
+    { "name": "proposals:read", "description": "Read the status of your own proposals", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read the status of proposals created on your behalf" }, "protocolMappers": [] },
+    { "name": "sales:read", "description": "Read your sale lines", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read your sale lines attributed at purchase time" }, "protocolMappers": [] },
+    { "name": "revenue:read", "description": "Read your revenue summary", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read your monthly revenue, commission, and refund summary" }, "protocolMappers": [] },
+    { "name": "platform:read", "description": "Read ShopSphere platform revenue aggregates", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read platform-wide monthly revenue, commission, and refund aggregates" }, "protocolMappers": [] },
+    { "name": "sellers:read", "description": "Read minimized seller application summaries", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read seller application status and approved shop display metadata" }, "protocolMappers": [] },
+    { "name": "listings:draft", "description": "Draft and version your listing copy", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Draft and version your unpublished listing copy" }, "protocolMappers": [] },
+{ "name": "support:read", "description": "Read ShopSphere support queues", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read minimized order-exception and return support queues" }, "protocolMappers": [] },
+{ "name": "support:draft", "description": "Draft support messages from your own orders", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Draft (never send) support messages about your own orders" }, "protocolMappers": [] },
+{ "name": "promotions:read", "description": "Read promotion configuration and aggregate usage", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read promotion configuration and aggregate usage statistics (admin)" }, "protocolMappers": [] },
+{ "name": "recommendations:draft", "description": "Draft admin recommendations", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Draft (never decide) seller, return, and promotion recommendations for human review" }, "protocolMappers": [] },
+{ "name": "orders:propose", "description": "Propose order cancellations for your review", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Propose cancellations of your own eligible orders that you review and confirm in ShopSphere before anything changes; refunds are never initiated here" }, "protocolMappers": [] },
+{ "name": "listings:propose", "description": "Propose listing publishes and content changes for your review", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Propose listing publishes and content changes that you review and confirm in ShopSphere before anything changes" }, "protocolMappers": [] },
+{ "name": "pricing:propose", "description": "Propose price changes for your review", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Propose price or discount changes for your own products that you review and confirm in ShopSphere before anything changes; no order, payment, or promotion is affected" }, "protocolMappers": [] },
+{ "name": "inventory:propose", "description": "Propose inventory adjustments for your review", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Propose stock adjustments for your own products that you review and confirm in ShopSphere before anything changes; no order or notification is affected" }, "protocolMappers": [] }
   ],
   "clients": [
     {
@@ -106,7 +122,23 @@
         "profile:read",
         "notifications:read",
         "orders:read",
-        "cart:read"
+        "cart:read",
+        "cart:propose",
+        "orders:propose",
+        "returns:propose",
+        "pricing:propose",
+        "inventory:propose",
+        "proposals:read",
+        "sales:read",
+        "revenue:read",
+        "platform:read",
+        "sellers:read",
+        "listings:draft",
+        "support:read",
+        "support:draft",
+        "promotions:read",
+        "recommendations:draft",
+        "listings:propose"
       ]
     },
     {
@@ -126,7 +158,23 @@
         "profile:read",
         "notifications:read",
         "orders:read",
-        "cart:read"
+        "cart:read",
+        "cart:propose",
+        "orders:propose",
+        "returns:propose",
+        "pricing:propose",
+        "inventory:propose",
+        "proposals:read",
+        "sales:read",
+        "revenue:read",
+        "platform:read",
+        "sellers:read",
+        "listings:draft",
+        "support:read",
+        "support:draft",
+        "promotions:read",
+        "recommendations:draft",
+        "listings:propose"
       ]
     },
     {

@@ -28,6 +28,7 @@ export const readConfig = (environment = process.env) => ({
   oauthTokenEndpoint: environment.MCP_OAUTH_TOKEN_ENDPOINT,
   oauthIntrospectionEndpoint: environment.MCP_OAUTH_INTROSPECTION_ENDPOINT,
   oauthAudience: environment.MCP_OAUTH_AUDIENCE ?? "shopsphere-mcp",
+  resourceUrl: environment.MCP_RESOURCE_URL,
   oauthClientId: environment.MCP_WORKLOAD_CLIENT_ID ?? "shopsphere-mcp-workload",
   oauthClientSecret: environment.MCP_WORKLOAD_CLIENT_SECRET,
   assistantAudience: environment.ASSISTANT_AUDIENCE ?? "shopsphere-assistant-api",
@@ -146,6 +147,110 @@ export const readConfig = (environment = process.env) => ({
     ),
     MCP_TOOL_GET_MY_INVENTORY_SUMMARY_ENABLED: parseBoolean(
       environment.MCP_TOOL_GET_MY_INVENTORY_SUMMARY_ENABLED,
+      false,
+    ),
+    MCP_TOOL_LIST_MY_SELLER_ORDERS_ENABLED: parseBoolean(
+      environment.MCP_TOOL_LIST_MY_SELLER_ORDERS_ENABLED,
+      false,
+    ),
+    MCP_TOOL_GET_MY_SELLER_ORDER_ENABLED: parseBoolean(
+      environment.MCP_TOOL_GET_MY_SELLER_ORDER_ENABLED,
+      false,
+    ),
+    MCP_TOOL_GET_MY_REVENUE_SUMMARY_ENABLED: parseBoolean(
+      environment.MCP_TOOL_GET_MY_REVENUE_SUMMARY_ENABLED,
+      false,
+    ),
+    MCP_TOOL_GET_PLATFORM_REVENUE_SUMMARY_ENABLED: parseBoolean(
+      environment.MCP_TOOL_GET_PLATFORM_REVENUE_SUMMARY_ENABLED,
+      false,
+    ),
+    MCP_TOOL_LIST_SELLER_APPLICATIONS_ENABLED: parseBoolean(
+      environment.MCP_TOOL_LIST_SELLER_APPLICATIONS_ENABLED,
+      false,
+    ),
+    MCP_TOOL_DRAFT_LISTING_COPY_ENABLED: parseBoolean(
+      environment.MCP_TOOL_DRAFT_LISTING_COPY_ENABLED,
+      false,
+    ),
+    MCP_TOOL_SAVE_LISTING_DRAFT_ENABLED: parseBoolean(
+      environment.MCP_TOOL_SAVE_LISTING_DRAFT_ENABLED,
+      false,
+    ),
+    MCP_TOOL_LIST_MY_LISTING_DRAFTS_ENABLED: parseBoolean(
+      environment.MCP_TOOL_LIST_MY_LISTING_DRAFTS_ENABLED,
+      false,
+    ),
+    MCP_TOOL_GET_MY_LISTING_DRAFT_ENABLED: parseBoolean(
+      environment.MCP_TOOL_GET_MY_LISTING_DRAFT_ENABLED,
+      false,
+    ),
+    MCP_TOOL_PROPOSE_CART_CHANGE_ENABLED: parseBoolean(
+      environment.MCP_TOOL_PROPOSE_CART_CHANGE_ENABLED,
+      false,
+    ),
+    MCP_TOOL_PROPOSE_ORDER_RETURN_ENABLED: parseBoolean(
+      environment.MCP_TOOL_PROPOSE_ORDER_RETURN_ENABLED,
+      false,
+    ),
+    MCP_TOOL_GET_MY_ACTION_STATUS_ENABLED: parseBoolean(
+      environment.MCP_TOOL_GET_MY_ACTION_STATUS_ENABLED,
+      false,
+    ),
+    MCP_TOOL_PROPOSE_ORDER_CANCELLATION_ENABLED: parseBoolean(
+      environment.MCP_TOOL_PROPOSE_ORDER_CANCELLATION_ENABLED,
+      false,
+    ),
+    MCP_TOOL_PROPOSE_LISTING_PUBLISH_ENABLED: parseBoolean(
+      environment.MCP_TOOL_PROPOSE_LISTING_PUBLISH_ENABLED,
+      false,
+    ),
+    MCP_TOOL_PROPOSE_LISTING_CONTENT_CHANGE_ENABLED: parseBoolean(
+      environment.MCP_TOOL_PROPOSE_LISTING_CONTENT_CHANGE_ENABLED,
+      false,
+    ),
+    MCP_TOOL_PROPOSE_PRICE_CHANGE_ENABLED: parseBoolean(
+      environment.MCP_TOOL_PROPOSE_PRICE_CHANGE_ENABLED,
+      false,
+    ),
+    MCP_TOOL_PROPOSE_INVENTORY_ADJUSTMENT_ENABLED: parseBoolean(
+      environment.MCP_TOOL_PROPOSE_INVENTORY_ADJUSTMENT_ENABLED,
+      false,
+    ),
+    MCP_TOOL_LIST_ORDER_EXCEPTION_QUEUE_ENABLED: parseBoolean(
+      environment.MCP_TOOL_LIST_ORDER_EXCEPTION_QUEUE_ENABLED,
+      false,
+    ),
+    MCP_TOOL_GET_ORDER_EXCEPTION_DETAIL_ENABLED: parseBoolean(
+      environment.MCP_TOOL_GET_ORDER_EXCEPTION_DETAIL_ENABLED,
+      false,
+    ),
+    MCP_TOOL_LIST_RETURN_QUEUE_ENABLED: parseBoolean(
+      environment.MCP_TOOL_LIST_RETURN_QUEUE_ENABLED,
+      false,
+    ),
+    MCP_TOOL_DRAFT_SUPPORT_MESSAGE_ENABLED: parseBoolean(
+      environment.MCP_TOOL_DRAFT_SUPPORT_MESSAGE_ENABLED,
+      false,
+    ),
+    MCP_TOOL_LIST_PROMOTION_CONFIGURATION_ENABLED: parseBoolean(
+      environment.MCP_TOOL_LIST_PROMOTION_CONFIGURATION_ENABLED,
+      false,
+    ),
+    MCP_TOOL_GET_PROMOTION_USAGE_SUMMARY_ENABLED: parseBoolean(
+      environment.MCP_TOOL_GET_PROMOTION_USAGE_SUMMARY_ENABLED,
+      false,
+    ),
+    MCP_TOOL_DRAFT_SELLER_REVIEW_RECOMMENDATION_ENABLED: parseBoolean(
+      environment.MCP_TOOL_DRAFT_SELLER_REVIEW_RECOMMENDATION_ENABLED,
+      false,
+    ),
+    MCP_TOOL_DRAFT_RETURN_REVIEW_RECOMMENDATION_ENABLED: parseBoolean(
+      environment.MCP_TOOL_DRAFT_RETURN_REVIEW_RECOMMENDATION_ENABLED,
+      false,
+    ),
+    MCP_TOOL_DRAFT_PROMOTION_RECOMMENDATION_ENABLED: parseBoolean(
+      environment.MCP_TOOL_DRAFT_PROMOTION_RECOMMENDATION_ENABLED,
       false,
     ),
   },

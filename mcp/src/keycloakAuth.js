@@ -8,6 +8,7 @@ export const createKeycloakMcpAuth = ({
   tokenEndpoint = `${issuer}/protocol/openid-connect/token`,
   introspectionEndpoint = `${issuer}/protocol/openid-connect/token/introspect`,
   audience,
+  resourceUrl,
   clientId,
   clientSecret,
   assistantAudience,
@@ -15,8 +16,20 @@ export const createKeycloakMcpAuth = ({
   jwks,
   fetchImpl = fetch,
 }) => {
-  if (!issuer || !audience || !clientId || !clientSecret || !assistantAudience) {
+  if (!issuer || !audience || !resourceUrl || !clientId || !clientSecret || !assistantAudience) {
     throw new Error("Complete Keycloak MCP configuration is required");
+  }
+  let resource;
+  try {
+    resource = new URL(resourceUrl);
+  } catch {
+    throw new Error("MCP_RESOURCE_URL must be the public MCP endpoint URL");
+  }
+  const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(resource.hostname);
+  if ((resource.protocol !== "https:" && !(resource.protocol === "http:" && loopback))
+    || resource.pathname !== "/mcp" || resource.search || resource.hash
+    || resource.username || resource.password) {
+    throw new Error("MCP_RESOURCE_URL must be the public MCP endpoint URL");
   }
   const keySet = jwks ?? createRemoteJWKSet(new URL(jwksUri), { timeoutDuration: 5_000 });
   const clientAuth = `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`;
@@ -107,7 +120,7 @@ export const createKeycloakMcpAuth = ({
     verify,
     exchange,
     protectedResourceMetadata: {
-      resource: audience,
+      resource: resource.href,
       authorization_servers: [issuer],
       bearer_methods_supported: ["header"],
     },
