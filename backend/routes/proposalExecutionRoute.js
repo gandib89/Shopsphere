@@ -28,6 +28,13 @@ import { generateId } from "../utils/generateId.js";
 import { listPriceWithOptions } from "../utils/productPricing.js";
 import { isDelegatedTokenShape } from "../utils/mcpOAuth.js";
 import { sanitizeVariants } from "../services/assistantCart.js";
+import {
+  LISTING_CONTENT_CHANGE_ACTION_KIND,
+  LISTING_CONTENT_CHANGE_DISCLOSURES,
+  LISTING_PUBLISH_ACTION_KIND,
+  LISTING_PUBLISH_DISCLOSURES,
+  listingProductVersionOf,
+} from "../services/assistantListingProposals.js";
 
 export const PROPOSAL_LIST_LIMIT = 20;
 
@@ -44,6 +51,10 @@ const DISCLOSURES = Object.freeze({
     "Removes the reviewed item from your cart",
     "No payment is taken",
   ]),
+  // Listing proposals (#26). The exact same fixed strings the MCP preview
+  // disclosed, so the browser review never shows a different story.
+  [LISTING_PUBLISH_ACTION_KIND]: LISTING_PUBLISH_DISCLOSURES,
+  [LISTING_CONTENT_CHANGE_ACTION_KIND]: LISTING_CONTENT_CHANGE_DISCLOSURES,
 });
 
 const PROPOSAL_SELECT = {
@@ -90,12 +101,14 @@ const reloadProposal = async (tx, id) =>
   tx.proposal.findUnique({ where: { id }, select: PROPOSAL_SELECT });
 
 // Deterministic outcome for any proposal that has already left pending.
+// cartVersion is a cart-flow concept (expectedVersion + 1, see the module
+// comment): listing proposals (#26) report the execution reference only.
 const resolveTerminal = (proposal) => {
   if (proposal.status === "executed") {
     return {
       kind: "executed",
       executionReference: proposal.executionReference ?? executionReferenceFor(proposal.id),
-      cartVersion: proposal.expectedVersion + 1,
+      ...(proposal.actionKind.startsWith("cart.") ? { cartVersion: proposal.expectedVersion + 1 } : {}),
     };
   }
   const reason = proposal.status === "expired"
@@ -110,6 +123,99 @@ const resolveTerminal = (proposal) => {
 
 const cartTotals = (cartRow) =>
   cartRow.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+// Applies the exact stored listing action (#26). Only server-side state and
+// the stored canonical payload are consulted — the HTTP request body of the
+// execute call carries nothing, so substituted content can never reach the
+// listing. Every recheck failure transitions the proposal to "stale" (the
+// target moved after the review), exactly once, with no mutation of the
+// draft or product.
+const executeListingProposal = async (tx, { proposal, userId, now }) => {
+  const payload = proposal.canonicalPayload;
+  const markStale = async () => {
+    const claimed = await transitionPending(tx, proposal.id, userId, { status: "stale" });
+    if (claimed.count === 1) await writeOutbox(tx, proposal.id, "stale", proposal.payloadHash);
+    return resolveTerminal(await reloadProposal(tx, proposal.id));
+  };
+
+  if (proposal.actionKind === LISTING_PUBLISH_ACTION_KIND) {
+    // Recheck: the draft must still be owned by the proposal subject under the
+    // grant that created it, still be an unpublished "Draft" (a later save
+    // supersedes it), and still sit at the version the proposal pinned.
+    const draft = await tx.listingDraft.findFirst({
+      where: { id: payload.draftId, sellerId: userId, grantId: proposal.grantId },
+      select: { id: true, status: true, version: true },
+    });
+    if (!draft || draft.status !== "Draft" || draft.version !== proposal.expectedVersion) {
+      return markStale();
+    }
+
+    // Exactly-once claim first: concurrent confirmations serialize here (see
+    // the module comment), so only one transaction ever creates the product.
+    const claimed = await transitionPending(tx, proposal.id, userId, {
+      status: "executed",
+      executedAt: now,
+      executionReference: executionReferenceFor(proposal.id),
+    });
+    if (claimed.count !== 1) return resolveTerminal(await reloadProposal(tx, proposal.id));
+
+    // Create the live product from the EXACT stored canonical payload — never
+    // re-reading draft text or trusting the HTTP body — using the storefront
+    // product-creation shape with the documented publish constants: no price
+    // and no stock (placeholders 0/0), no images, the storefront's own
+    // "Uncategorized" category default, live (not archived). The storefront
+    // createProduct notification fan-out is deliberately NOT part of these
+    // semantics: execution writes no notification and no broadcast.
+    await tx.product.create({
+      data: {
+        id: generateId(),
+        name: payload.title,
+        description: payload.description,
+        price: 0,
+        quantity: 0,
+        images: [],
+        category: "Uncategorized",
+        isArchived: false,
+        sellerId: userId,
+      },
+    });
+    await writeOutbox(tx, proposal.id, "executed", proposal.payloadHash);
+    return resolveTerminal(await reloadProposal(tx, proposal.id));
+  }
+
+  // listing.update_content: the product must still be owned by the subject
+  // and still sit at the previewed updatedAt-seconds version proxy (any
+  // concurrent mutation — price, stock, content — changes updatedAt and
+  // makes the proposal stale).
+  const product = await tx.product.findFirst({
+    where: { id: payload.productId, sellerId: userId },
+    select: { id: true, updatedAt: true },
+  });
+  if (!product || listingProductVersionOf(product.updatedAt) !== proposal.expectedVersion) {
+    return markStale();
+  }
+
+  // Optimistic compare-and-swap on the exact updatedAt the recheck saw (the
+  // closest Product has to a version column, since there is no version
+  // column): if a concurrent mutation commits between the read and this
+  // write, the row no longer matches and nothing is touched. The applied
+  // data is the stored allowlisted content verbatim — exact stored values,
+  // nothing else.
+  const applied = await tx.product.updateMany({
+    where: { id: payload.productId, sellerId: userId, updatedAt: product.updatedAt },
+    data: payload.content,
+  });
+  if (applied.count !== 1) return markStale();
+
+  const claimed = await transitionPending(tx, proposal.id, userId, {
+    status: "executed",
+    executedAt: now,
+    executionReference: executionReferenceFor(proposal.id),
+  });
+  if (claimed.count !== 1) return resolveTerminal(await reloadProposal(tx, proposal.id));
+  await writeOutbox(tx, proposal.id, "executed", proposal.payloadHash);
+  return resolveTerminal(await reloadProposal(tx, proposal.id));
+};
 
 // Applies the exact stored canonical action to the cart. Only server-side state
 // and the stored payload are consulted — the HTTP request body of the execute
@@ -201,6 +307,12 @@ export const listMyProposals = async (req, res, client = prisma) => {
       take: PROPOSAL_LIST_LIMIT,
       select: { id: true, actionKind: true, status: true, expiresAt: true, createdAt: true, preview: true },
     });
+    const displayNameOf = (preview) => {
+      if (typeof preview?.productName === "string") return preview.productName.slice(0, 200);
+      // Listing publish previews carry the draft title instead (#26).
+      if (typeof preview?.title === "string") return preview.title.slice(0, 200);
+      return null;
+    };
     return res.json({
       proposals: rows.map((row) => ({
         id: row.id,
@@ -208,7 +320,7 @@ export const listMyProposals = async (req, res, client = prisma) => {
         status: effectiveStatus(row, now),
         expiresAt: row.expiresAt.toISOString(),
         createdAt: row.createdAt.toISOString(),
-        productName: typeof row.preview?.productName === "string" ? row.preview.productName.slice(0, 200) : null,
+        productName: displayNameOf(row.preview),
       })),
     });
   } catch (error) {
@@ -240,13 +352,24 @@ export const executeProposal = async (req, res, client = prisma) => {
       //    the proposal subject with the role recorded at proposal time.
       const account = await tx.user.findUnique({
         where: { id: userId },
-        select: { id: true, role: true, email: true },
+        select: { id: true, role: true, email: true, isVerified: true },
       });
       if (!account) return { kind: "not_found" };
       if (account.role !== proposal.role) {
         const claimed = await transitionPending(tx, proposal.id, userId, { status: "rejected" });
         if (claimed.count === 1) await writeOutbox(tx, proposal.id, "rejected", proposal.payloadHash);
         return resolveTerminal(await reloadProposal(tx, proposal.id));
+      }
+
+      // 4b. Listing proposals (#26) additionally require the acting account to
+      //     be a VERIFIED seller right now (the same live-account requirement
+      //     the propose-time gate enforced). Unlike staleness this is not a
+      //     property of the proposal — verification can be granted later — so
+      //     the proposal stays pending and the caller gets the fixed
+      //     403 verification_required with no transition and no mutation.
+      if (proposal.actionKind.startsWith("listing.")) {
+        if (!account.isVerified) return { kind: "forbidden" };
+        return executeListingProposal(tx, { proposal, userId, now });
       }
 
       // 5. Stale check: the cart must still be at the previewed version.
@@ -310,8 +433,13 @@ export const executeProposal = async (req, res, client = prisma) => {
     if (outcome.kind === "not_found") {
       return res.status(404).json({ code: "not_found", message: "Resource not found" });
     }
+    if (outcome.kind === "forbidden") {
+      return res.status(403).json({ code: "verification_required", message: "Seller verification is required" });
+    }
     if (outcome.kind === "executed") {
-      return res.json({ status: "executed", executionReference: outcome.executionReference, cartVersion: outcome.cartVersion });
+      const body = { status: "executed", executionReference: outcome.executionReference };
+      if (outcome.cartVersion !== undefined) body.cartVersion = outcome.cartVersion;
+      return res.json(body);
     }
     return res.status(409).json({
       code: "proposal_not_executable",

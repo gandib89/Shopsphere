@@ -63,12 +63,15 @@ const auditedLimitDenial = async (req, res, status, code, message, operation = "
 };
 
 // Pending-proposal headroom is a database count inside the actor context (the
-// private runtime can SELECT only its own pending rows via RLS).
-export const countPendingProposals = async ({ subjectId, role, signal }, client = assistantPrisma) =>
+// private runtime can SELECT only its own pending rows via RLS). `operation`
+// selects the operation GUC the count runs under: the #22 cart routes use the
+// default, while the #26 listing proposal routes pass their own operation so
+// the RLS SELECT policy admits the seller-role count.
+export const countPendingProposals = async ({ subjectId, role, signal, operation = "proposals.proposeCartChange" }, client = assistantPrisma) =>
   withAssistantActor({
     actorId: subjectId,
     role,
-    operation: "proposals.proposeCartChange",
+    operation,
     signal,
   }, (tx) => tx.proposal.count({
     where: { subjectId, status: "pending", expiresAt: { gt: new Date() } },
@@ -78,28 +81,29 @@ export const enforceProposalCreationLimits = ({
   redisLoader = getAssistantRedis,
   storeFactory = createProposalLimitStore,
   client = assistantPrisma,
+  operation,
 } = {}) => async (req, res, next) => {
   try {
     const store = storeFactory({ redis: await redisLoader() });
     const result = await store.consume({ subject: req.delegation.sub, clientId: req.delegation.clientId });
     if (!result.allowed) {
       res.set("retry-after", "60");
-      return auditedLimitDenial(req, res, 429, "rate_limited", "Proposal rate limit exceeded");
+      return auditedLimitDenial(req, res, 429, "rate_limited", "Proposal rate limit exceeded", operation);
     }
   } catch {
-    return auditedLimitDenial(req, res, 503, "limit_unavailable", "Proposal limit state is unavailable");
+    return auditedLimitDenial(req, res, 503, "limit_unavailable", "Proposal limit state is unavailable", operation);
   }
   try {
     const pending = await countPendingProposals(
-      { subjectId: req.delegation.sub, role: req.delegation.role, signal: req.assistantSignal },
+      { subjectId: req.delegation.sub, role: req.delegation.role, signal: req.assistantSignal, operation },
       client,
     );
     if (pending >= MAX_PENDING_PROPOSALS) {
       res.set("retry-after", "60");
-      return auditedLimitDenial(req, res, 429, "rate_limited", "Pending proposal limit exceeded");
+      return auditedLimitDenial(req, res, 429, "rate_limited", "Pending proposal limit exceeded", operation);
     }
     return next();
   } catch {
-    return auditedLimitDenial(req, res, 503, "limit_unavailable", "Proposal limit state is unavailable");
+    return auditedLimitDenial(req, res, 503, "limit_unavailable", "Proposal limit state is unavailable", operation);
   }
 };
