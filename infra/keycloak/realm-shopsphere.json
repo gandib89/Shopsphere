@@ -94,7 +94,8 @@
     { "name": "support:draft", "description": "Draft support messages from your own orders", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Draft (never send) support messages about your own orders" }, "protocolMappers": [] },
 { "name": "promotions:read", "description": "Read promotion configuration and aggregate usage", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read promotion configuration and aggregate usage statistics (admin)" }, "protocolMappers": [] },
 { "name": "recommendations:draft", "description": "Draft admin recommendations", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Draft (never decide) seller, return, and promotion recommendations for human review" }, "protocolMappers": [] },
-{ "name": "orders:propose", "description": "Propose order cancellations for your review", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Propose cancellations of your own eligible orders that you review and confirm in ShopSphere before anything changes; refunds are never initiated here" }, "protocolMappers": [] }
+{ "name": "orders:propose", "description": "Propose order cancellations for your review", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Propose cancellations of your own eligible orders that you review and confirm in ShopSphere before anything changes; refunds are never initiated here" }, "protocolMappers": [] },
+{ "name": "pricing:propose", "description": "Propose price changes for your review", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Propose price or discount changes for your own products that you review and confirm in ShopSphere before anything changes; no order, payment, or promotion is affected" }, "protocolMappers": [] }
   ],
   "clients": [
     {
@@ -123,6 +124,7 @@
         "cart:propose",
         "orders:propose",
         "returns:propose",
+        "pricing:propose",
         "proposals:read",
         "sales:read",
         "revenue:read",
@@ -156,6 +158,7 @@
         "cart:propose",
         "orders:propose",
         "returns:propose",
+        "pricing:propose",
         "proposals:read",
         "sales:read",
         "revenue:read",

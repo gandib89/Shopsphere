@@ -36,6 +36,13 @@ type ProposalPreview = {
   cancelEligible?: boolean;
   stockToRestore?: number;
   paidAmount?: Money | null;
+  // Seller price proposals (#27): exact server-computed old/new value snapshot
+  productId?: string;
+  change?: 'set_price' | 'set_discount';
+  oldValue?: string;
+  newValue?: string;
+  effectiveDisplayPriceBefore?: Money;
+  effectiveDisplayPriceAfter?: Money;
 };
 type ProposalStatus = 'pending' | 'executed' | 'expired' | 'stale' | 'rejected';
 type Proposal = {
@@ -114,6 +121,34 @@ const actionDescriptors: Record<string, ActionDescriptor> = {
       rejected: 'This order can no longer be returned. Nothing was changed.',
     },
   },
+  // Seller price proposals (#27): confirming requires a password
+  // re-confirmation (step-up) on top of the browser session.
+  'product.set_price': {
+    title: 'Change listing price',
+    description: 'An AI assistant prepared this price change. Nothing has changed yet — review the exact values below, then confirm with your password.',
+    executedMessage: 'Confirmed. Your listing now uses exactly the reviewed value. No orders, payments, or promotions were affected.',
+    confirmToast: 'Confirmed. Your listing price was updated.',
+    backTarget: '/seller-products',
+    confirmLabel: 'Confirm — apply this price',
+    confirmCopy: 'I have reviewed the exact old and new values and the effects listed above. Confirming applies exactly this value to my live listing.',
+    blocked: {
+      stale: 'Your product changed after this proposal was created, so it can no longer be applied. Nothing was changed.',
+      rejected: 'This price change can no longer be applied to your product. Nothing was changed.',
+    },
+  },
+  'product.set_discount': {
+    title: 'Change listing discount',
+    description: 'An AI assistant prepared this discount change. Nothing has changed yet — review the exact values below, then confirm with your password.',
+    executedMessage: 'Confirmed. Your listing now uses exactly the reviewed value. No orders, payments, or promotions were affected.',
+    confirmToast: 'Confirmed. Your listing discount was updated.',
+    backTarget: '/seller-products',
+    confirmLabel: 'Confirm — apply this discount',
+    confirmCopy: 'I have reviewed the exact old and new values and the effects listed above. Confirming applies exactly this value to my live listing.',
+    blocked: {
+      stale: 'Your product changed after this proposal was created, so it can no longer be applied. Nothing was changed.',
+      rejected: 'This discount change can no longer be applied to your product. Nothing was changed.',
+    },
+  },
 };
 
 const actionLabels: Record<string, string> = {
@@ -122,6 +157,8 @@ const actionLabels: Record<string, string> = {
   'cart.remove_item': 'Remove from cart',
   'order.cancel': 'Cancel your order',
   'order.return_request': 'Request order return',
+  'product.set_price': 'Change listing price',
+  'product.set_discount': 'Change listing discount',
 };
 
 const statusLabels: Record<ProposalStatus, string> = {
@@ -162,6 +199,11 @@ export default function ProposalReview() {
   const [loadError, setLoadError] = useState('');
   const [busy, setBusy] = useState(false);
   const [blockReason, setBlockReason] = useState<string | null>(null);
+  const [stepUpError, setStepUpError] = useState<string | null>(null);
+  // Seller price proposals (#27) collect a password re-confirmation here. The
+  // field is a masked password input (never displayed or logged) and is sent
+  // only to ShopSphere's own execute endpoint, never to any AI client.
+  const [confirmPassword, setConfirmPassword] = useState('');
 
   const load = useCallback(async () => {
     if (!proposalId) {
@@ -191,20 +233,40 @@ export default function ProposalReview() {
 
   useEffect(() => { void load(); }, [load]);
 
+  const isPriceChange =
+    proposal?.actionKind === 'product.set_price' || proposal?.actionKind === 'product.set_discount';
+
   const confirm = async () => {
     if (!proposalId || busy) return;
+    if (isPriceChange && confirmPassword.length === 0) {
+      setStepUpError('Enter your ShopSphere password to confirm this change. Nothing was changed.');
+      return;
+    }
     setBusy(true);
     setBlockReason(null);
+    setStepUpError(null);
     try {
-      const response = await authFetch(`${API}/api/v1/proposals/${encodeURIComponent(proposalId)}/execute`, { method: 'POST' });
+      // Seller price proposals carry the password re-confirmation in the JSON
+      // body; every other kind POSTs an empty body, exactly as before.
+      const response = await authFetch(`${API}/api/v1/proposals/${encodeURIComponent(proposalId)}/execute`, {
+        method: 'POST',
+        headers: isPriceChange ? { 'content-type': 'application/json' } : undefined,
+        body: isPriceChange ? JSON.stringify({ confirmPassword }) : undefined,
+      });
       if (response.ok) {
         const body: ExecuteOutcome = await response.json().catch(() => ({}));
         setOutcome(body);
         setProposal((current) => (current ? { ...current, status: 'executed' } : current));
+        setConfirmPassword('');
         toast.success(actionDescriptors[proposal?.actionKind ?? '']?.confirmToast ?? 'Confirmed.');
       } else if (response.status === 404) {
         setNotFound(true);
         setProposal(null);
+      } else if (response.status === 403) {
+        // Stepped-up authentication failed (#27): wrong/missing password or a
+        // revoked seller verification. Nothing was changed server-side.
+        setStepUpError('Password confirmation failed. Nothing was changed.');
+        setConfirmPassword('');
       } else if (response.status === 409) {
         const body = await response.json().catch(() => ({}));
         const reason = typeof body.reason === 'string' ? body.reason : 'rejected';
@@ -331,6 +393,39 @@ export default function ProposalReview() {
               Expires at {formatExpiry(proposal.expiresAt)} — after that this proposal cannot be applied.
             </p>
           </section>
+        ) : isPriceChange ? (
+          <section aria-labelledby="proposal-target" className="border border-hairline bg-paper-raised p-6">
+            <h2 id="proposal-target" className="text-xl font-bold">{preview.productName}</h2>
+            <p className="mt-1 text-sm text-ink-muted">
+              Proposal status: {statusLabels[proposal.status]}
+            </p>
+            <dl className="mt-5 overflow-hidden border border-hairline text-sm">
+              <div className="grid grid-cols-3 gap-2 bg-paper px-4 py-2 font-semibold">
+                <span className="col-span-1">Value</span>
+                <span className="col-span-2">Exact old → new</span>
+              </div>
+              {([
+                [
+                  preview.change === 'set_price' ? 'Listing price (NPR)' : 'Discount percentage',
+                  preview.oldValue ?? '—',
+                  preview.newValue ?? '—',
+                ],
+                [
+                  'Effective display price',
+                  formatMoney(preview.effectiveDisplayPriceBefore ?? null),
+                  formatMoney(preview.effectiveDisplayPriceAfter ?? null),
+                ],
+              ] as const).map(([label, before, after]) => (
+                <div key={label} className="grid grid-cols-3 gap-2 border-t border-hairline px-4 py-2 tabular-nums">
+                  <span className="font-medium">{label}</span>
+                  <span className="col-span-2">{before} → {after}</span>
+                </div>
+              ))}
+            </dl>
+            <p className="mt-3 text-xs text-ink-muted">
+              All amounts in {preview.currency ?? 'NPR'}. Expires at {formatExpiry(proposal.expiresAt)} — after that this proposal cannot be applied.
+            </p>
+          </section>
         ) : (
           <section aria-labelledby="proposal-target" className="border border-hairline bg-paper-raised p-6">
             <h2 id="proposal-target" className="text-xl font-bold">{preview.productName}</h2>
@@ -407,8 +502,34 @@ export default function ProposalReview() {
                 <span>{blockedMessageFor(proposal.actionKind, blockReason)}</span>
               </div>
             )}
+            {isPriceChange && (
+              <div className="mt-5">
+                <label htmlFor="proposal-password" className="mb-2 block text-sm font-semibold">
+                  Current ShopSphere password
+                </label>
+                <input
+                  id="proposal-password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={confirmPassword}
+                  onChange={(event) => {
+                    setConfirmPassword(event.target.value);
+                    setStepUpError(null);
+                  }}
+                  disabled={busy}
+                  required
+                  className="min-h-11 w-full border border-hairline bg-paper px-3 focus:border-ink focus:outline-none"
+                />
+                <p className="mt-2 text-xs text-ink-muted">
+                  Required to confirm this listing change. It is used only by ShopSphere to verify it is you and is never displayed or shared.
+                </p>
+                {stepUpError && (
+                  <p role="alert" className="mt-2 text-sm text-red-700">{stepUpError}</p>
+                )}
+              </div>
+            )}
             <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-              <Button onClick={() => void confirm()} disabled={busy}>
+              <Button onClick={() => void confirm()} disabled={busy || (isPriceChange && confirmPassword.length === 0)}>
                 {busy ? 'Confirming…' : descriptor.confirmLabel ?? 'Confirm — apply exactly these changes'}
               </Button>
               <Button variant="quiet" onClick={() => navigate(backTarget)}>Not now</Button>

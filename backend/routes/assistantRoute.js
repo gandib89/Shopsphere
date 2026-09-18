@@ -46,6 +46,8 @@ import { getMyActionStatus, proposeCartChange } from "../services/assistantPropo
 import { proposeOrderCancellation } from "../services/assistantCancellationProposals.js";
 import { enforceProposalCreationLimits } from "../services/assistantProposalLimits.js";
 import { proposeOrderReturn } from "../services/assistantReturnProposals.js";
+import { proposePriceChange } from "../services/assistantPriceProposals.js";
+import { requireVerifiedSeller } from "../services/assistantVerifiedSellerPriceGate.js";
 import {
   getOrderExceptionDetail,
   listOrderExceptionQueue,
@@ -870,6 +872,49 @@ privateOperation({
   auditInput: returnProposalAuditInput,
   run: (input, ctx) => proposeOrderReturn(input, ctx),
   observe: (output) => ({ resourceIds: [output.proposalId, output.preview.orderId], rowCount: 1 }),
+});
+
+// Seller price proposals (#27), on the #22 proposal platform. The strict input
+// is exactly one owned product, one change kind, and one bounded decimal
+// value — there is NO optionId (options carry additive priceDelta deltas, not
+// absolute prices, so option-level targeting cannot produce an exact
+// old/new-value contract and is rejected at the schema), no caller-supplied
+// payable total, and no confirm/execute affordance: forged fields fail the
+// schema, not the listing. Verified-seller gating lives in the route-scoped
+// requireVerifiedSeller middleware (services/assistantVerifiedSellerPriceGate.js
+// — that file documents why the gate lives here and not in the service), and
+// the shared proposal-class rate limits apply on top (same caps as every other
+// proposal route). Creation persists only the proposal + outbox rows: the
+// service's fake-client guards and the RLS grants prove the live price,
+// discount, order, payment, and promotion surfaces are untouched. The input
+// carries no user-authored content, so the durable audit input projects
+// nothing at all.
+const priceChangeInput = z.object({
+  productId: z.string().min(1).max(100),
+  change: z.enum(["set_price", "set_discount"]),
+  // Money "12.50" for set_price; percent "0".."100" for set_discount. The
+  // semantic bounds ([1, 999999.99] NPR / [0, 100]%) and the differ-from-current
+  // rule live in the service (assistantPriceProposals.js) so creation and
+  // execution revalidation share one definition.
+  newValue: z.string().regex(/^\d{1,10}(\.\d{1,2})?$/),
+}).strict().superRefine((value, ctx) => {
+  if (value.change === "set_discount" && !/^\d{1,4}(\.\d{1,2})?$/.test(value.newValue)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["newValue"], message: "set_discount takes a percent between 0 and 100" });
+  }
+});
+
+privateOperation({
+  path: "/propose_price_change",
+  tool: "propose_price_change",
+  operation: "proposals.priceChange",
+  roles: ["seller"],
+  scope: "pricing:propose",
+  rolloutFlag: "MCP_TOOL_PROPOSE_PRICE_CHANGE_ENABLED",
+  inputSchema: priceChangeInput,
+  middlewares: [enforceProposalCreationLimits(), requireVerifiedSeller()],
+  auditInput: () => ({}),
+  run: (input, ctx) => proposePriceChange(input, ctx),
+  observe: (output) => ({ resourceIds: [output.proposalId, output.preview.productId], rowCount: 1 }),
 });
 
 // Admin support queues (#17). Membership is the fixed server rule encoded in
