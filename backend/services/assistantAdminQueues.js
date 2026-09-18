@@ -254,6 +254,57 @@ export const listOrderExceptionQueue = async (
   return { orders: page.rows, nextCursor: page.nextCursor };
 };
 
+// The return queue tracks orders still inside the return lifecycle.
+// "Refund Released" is a refund-ledger terminal state — the return is finished
+// and stays in the exception queue only. Membership is defined once here so
+// the #21 return-review recommendation draft resolves orders through the exact
+// same fixed rule as this queue.
+const returnMembership = () => ({
+  AND: [
+    { status: { in: [...RETURN_STATUSES] } },
+    { returnRequestedAt: { not: null } },
+  ],
+});
+
+// Internal-only helper for the #21 return-review recommendation draft.
+// Resolves one order through the exact fixed return-queue membership rule
+// (return lifecycle statuses + a requested return + the rolling 90-day window
+// + attribution quarantine) that listReturnQueue applies — a foreign, missing,
+// out-of-window, non-queued, or quarantined id all resolve to null. Only the
+// minimized return facts the draft restates are selected; the return-image
+// path is read solely to compute the hasReturnImage boolean and never leaves
+// the service. Not wired to any route itself.
+export const findReturnQueueOrder = async ({ orderId } = {}, { client, now = new Date() } = {}) => {
+  if (typeof orderId !== "string" || !orderId || orderId.length > 100) return null;
+  const row = await client.order.findFirst({
+    where: {
+      AND: [
+        { id: orderId },
+        { createdAt: { gte: new Date(now.getTime() - MAX_INTERVAL_MS), lte: now } },
+        returnMembership(),
+        attributionPresent(),
+      ],
+    },
+    select: {
+      id: true,
+      orderNumber: true,
+      status: true,
+      returnRequestedAt: true,
+      returnReason: true,
+      returnImage: true,
+    },
+  });
+  if (!row) return null;
+  return {
+    orderId: row.id,
+    orderNumber: boundedText(row.orderNumber, MAX_ORDER_NUMBER_CHARS),
+    status: row.status,
+    returnRequestedAt: iso(row.returnRequestedAt),
+    returnReason: boundedText(row.returnReason, MAX_RETURN_REASON_CHARS),
+    hasReturnImage: Boolean(row.returnImage),
+  };
+};
+
 // The purpose is admin-supplied bounded text and the explicit "why" of this
 // access. It is threaded through the route's observe() seam into the durable
 // audit event's redacted input metadata (never into the tool response).
@@ -296,12 +347,6 @@ export const listReturnQueue = async (
   { cursor, limit } = {},
   { client, principal, cursorSecret, now = new Date() },
 ) => {
-  const membership = () => ({
-    AND: [
-      { status: { in: [...RETURN_STATUSES] } },
-      { returnRequestedAt: { not: null } },
-    ],
-  });
   const page = await readQueuePage({
     input: { cursor, limit },
     client,
@@ -309,7 +354,7 @@ export const listReturnQueue = async (
     cursorSecret,
     now,
     codec: returnCursor,
-    membership,
+    membership: returnMembership,
     select: returnSelect,
     minimize: minimizeReturnRow,
   });

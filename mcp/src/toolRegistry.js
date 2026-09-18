@@ -1091,6 +1091,54 @@ const GetPromotionUsageSummaryOutputSchema = z
   .strict();
 
 
+// Admin recommendation drafts (#21): deterministic template composition from
+// the authorized minimized admin views plus approved, versioned policy
+// sources. Recommendations never decide — no approve/reject/refund/activation/
+// reset/notify affordance exists in any of these contracts. Inputs carry
+// opaque references only: raw user ids, emails, and decision or outcome fields
+// have no field at all. The recommendation text is bounded to 4000 characters
+// with an explicit truncation flag, and absent facts render as "unknown"
+// inside the text rather than being inferred.
+const RecommendationCitationSchema = z
+  .object({
+    sourceId: z.string().min(1).max(100),
+    sourceVersion: z.literal(POLICY_VERSION),
+  })
+  .strict();
+
+const RecommendationDraftOutputSchema = z
+  .object({
+    recommendation: z.string().min(1).max(4000),
+    truncated: z.boolean(),
+    citations: z.array(RecommendationCitationSchema).max(10),
+    generatedAt: z.iso.datetime(),
+  })
+  .strict();
+
+// The seller reference is the opaque digest emitted by list_seller_applications
+// (seller-<12 hex>); raw user ids and emails cannot be expressed.
+const DraftSellerReviewRecommendationInputSchema = z
+  .object({
+    sellerReference: z.string().regex(/^seller-[0-9a-f]{12}$/),
+  })
+  .strict();
+
+// The purpose mirrors get_order_exception_detail: bounded admin-supplied text
+// recording why this access happened, audited server-side and never returned.
+const DraftReturnReviewRecommendationInputSchema = z
+  .object({
+    orderId: z.string().min(1).max(100),
+    purpose: z.string().min(10).max(500),
+  })
+  .strict();
+
+const DraftPromotionRecommendationInputSchema = z
+  .object({
+    promoCodeId: z.string().min(1).max(100),
+  })
+  .strict();
+
+
 const definitions = [
   {
     name: "get_capabilities",
@@ -1898,6 +1946,75 @@ const definitions = [
       operationId: "promotions.usageSummary",
       method: "POST",
       path: "/api/v1/assistant/get_promotion_usage_summary",
+    },
+  },
+
+  {
+    name: "draft_seller_review_recommendation",
+    title: "Draft a ShopSphere seller review recommendation",
+    description:
+      "Composes a bounded seller-application review recommendation from the minimized application view and approved policy sources. It only drafts text for human reviewers: it never approves or rejects sellers and never notifies anyone.",
+    inputSchema: DraftSellerReviewRecommendationInputSchema,
+    outputSchema: RecommendationDraftOutputSchema,
+    operationClass: "draft",
+    roles: ["admin"],
+    scopes: ["recommendations:draft"],
+    rateClass: "draft",
+    rollout: {
+      flag: "MCP_TOOL_DRAFT_SELLER_REVIEW_RECOMMENDATION_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "recommendations.sellerReview",
+      method: "POST",
+      path: "/api/v1/assistant/draft_seller_review_recommendation",
+    },
+  },
+
+  {
+    name: "draft_return_review_recommendation",
+    title: "Draft a ShopSphere return review recommendation",
+    description:
+      "Composes a bounded return review recommendation from the minimized return-queue facts and the approved returns policy, for a stated audit purpose. It only drafts text for human reviewers: it never approves or rejects returns, releases refunds, or notifies anyone.",
+    inputSchema: DraftReturnReviewRecommendationInputSchema,
+    outputSchema: RecommendationDraftOutputSchema,
+    operationClass: "draft",
+    roles: ["admin"],
+    scopes: ["recommendations:draft"],
+    rateClass: "draft",
+    rollout: {
+      flag: "MCP_TOOL_DRAFT_RETURN_REVIEW_RECOMMENDATION_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "recommendations.returnReview",
+      method: "POST",
+      path: "/api/v1/assistant/draft_return_review_recommendation",
+    },
+  },
+
+  {
+    name: "draft_promotion_recommendation",
+    title: "Draft a ShopSphere promotion recommendation",
+    description:
+      "Composes a bounded promotion recommendation from the allowlisted configuration and aggregate usage counters. It only drafts text for human reviewers: it never activates or deactivates promotions, resets usage, or notifies anyone.",
+    inputSchema: DraftPromotionRecommendationInputSchema,
+    outputSchema: RecommendationDraftOutputSchema,
+    operationClass: "draft",
+    roles: ["admin"],
+    scopes: ["recommendations:draft"],
+    rateClass: "draft",
+    rollout: {
+      flag: "MCP_TOOL_DRAFT_PROMOTION_RECOMMENDATION_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "recommendations.promotionReview",
+      method: "POST",
+      path: "/api/v1/assistant/draft_promotion_recommendation",
     },
   },
 ];
