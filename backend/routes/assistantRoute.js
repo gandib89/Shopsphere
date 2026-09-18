@@ -43,6 +43,7 @@ import {
 } from "../services/assistantListingDrafts.js";
 import { enforceListingDraftLimit } from "../services/assistantListingDraftLimits.js";
 import { getMyActionStatus, proposeCartChange } from "../services/assistantProposals.js";
+import { proposeOrderCancellation } from "../services/assistantCancellationProposals.js";
 import { enforceProposalCreationLimits } from "../services/assistantProposalLimits.js";
 import {
   getOrderExceptionDetail,
@@ -802,6 +803,33 @@ privateOperation({
   inputSchema: z.object({ proposalId: z.string().min(1).max(100) }).strict(),
   run: (input, ctx) => getMyActionStatus(input, ctx),
   observe: (output) => ({ resourceIds: [output.proposalId], rowCount: 1 }),
+});
+
+// Buyer order-cancellation proposals (#24), on the #22 proposal platform. The
+// strict input is exactly one order id — no confirm flag, no execute flag, no
+// refund affordance: forged confirmation fields fail the schema, not the
+// order. The shared proposal-class rate limits apply on top of the delegation
+// chain (same caps as propose_cart_change, incl. the combined pending cap).
+// Creation persists only the proposal + outbox rows: the service's fake-client
+// guards and the RLS grants prove the order/stock/payment/refund surfaces are
+// untouched. The input carries no user-authored content (a single bounded
+// order id), so the durable audit input projects nothing at all.
+const orderCancellationInput = z.object({
+  orderId: z.string().regex(/^[A-Za-z0-9]{1,24}$/),
+}).strict();
+
+privateOperation({
+  path: "/propose_order_cancellation",
+  tool: "propose_order_cancellation",
+  operation: "proposals.orderCancel",
+  roles: ["user"],
+  scope: "orders:propose",
+  rolloutFlag: "MCP_TOOL_PROPOSE_ORDER_CANCELLATION_ENABLED",
+  inputSchema: orderCancellationInput,
+  middlewares: [enforceProposalCreationLimits()],
+  auditInput: () => ({}),
+  run: (input, ctx) => proposeOrderCancellation(input, ctx),
+  observe: (output) => ({ resourceIds: [output.proposalId, output.preview.orderId], rowCount: 1 }),
 });
 
 // Admin support queues (#17). Membership is the fixed server rule encoded in

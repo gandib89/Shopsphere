@@ -1,4 +1,4 @@
-// First-party proposal review + execution API (#22).
+// First-party proposal review + execution API (#22, extended by #24).
 //
 // Mounted at /api/v1/proposals in app.js — deliberately AFTER the global
 // rejectDelegatedTokens middleware, so delegated assistant tokens are rejected
@@ -6,20 +6,31 @@
 // (the same short-lived JWT access token the storefront routes use; refresh
 // tokens are never accepted and there is no delegated fallback). The MCP
 // surface can only create and read proposals; moving a proposal out of pending
-// and mutating the cart happens exclusively through this browser-session path.
+// and mutating the cart or order happens exclusively through this
+// browser-session path.
 //
 // Exactly-once design: every terminal transition is a conditional
 //   UPDATE proposals SET status=... WHERE id=? AND subject_id=? AND status='pending'
-// inside the same transaction as the cart mutation and the outbox insert.
+// inside the same transaction as the cart/order mutation and the outbox insert.
 // Concurrent confirmations serialize on that row update: the winner's
-// transaction commits (one cart mutation, one outbox row), the loser's UPDATE
+// transaction commits (one mutation, one outbox row), the loser's UPDATE
 // re-evaluates status after the winner commits and counts 0, so the loser
 // simply replays the winner's stored deterministic outcome. The execution
 // reference is the deterministic string proposal-exec-<proposalId> (never a
-// credential) and the reported cart version is expectedVersion + 1, because
-// execution only proceeds when cart.version === expectedVersion and every
-// mutation bumps the version by exactly one — so retries after success return
-// the identical response.
+// credential). Cart responses report expectedVersion + 1 (every cart mutation
+// bumps the version by exactly one); order.cancel responses report the stored
+// target and the cancelled status, which are immutable on the proposal row.
+//
+// order.cancel (#24): execution reauthorizes the owner, rechecks the current
+// eligibility and the orderVersionOf(order) proxy against expectedVersion
+// (mismatch ⇒ stale, 409, no mutation), and performs the cancellation inline
+// with the SAME semantics as cancelOrderCore — owner-conditional, optimistic
+// status-conditional update, stock restored ONLY from "Confirmed". It NEVER
+// invokes releaseRefund, any payment/refund provider, or any refund/revenue/
+// payment/notification write: refund release remains a separate manual admin
+// action. Orders carry no version column, so expectedVersion is the
+// orderVersionOf(order.updatedAt) epoch-seconds proxy documented in
+// services/assistantCancellationProposals.js.
 import express from "express";
 
 import { verifyToken } from "../middlewares/authMiddleware.js";
@@ -27,6 +38,8 @@ import { prisma } from "../database/prismaClient.js";
 import { generateId } from "../utils/generateId.js";
 import { listPriceWithOptions } from "../utils/productPricing.js";
 import { isDelegatedTokenShape } from "../utils/mcpOAuth.js";
+import { adjustStock, isCancelEligible } from "../controller/order.js";
+import { orderVersionOf } from "../services/assistantCancellationProposals.js";
 import { sanitizeVariants } from "../services/assistantCart.js";
 
 export const PROPOSAL_LIST_LIMIT = 20;
@@ -89,13 +102,30 @@ const writeOutbox = (tx, proposalId, eventType, payloadHash) =>
 const reloadProposal = async (tx, id) =>
   tx.proposal.findUnique({ where: { id }, select: PROPOSAL_SELECT });
 
+// Deterministic executed response per action kind, built only from stored
+// proposal fields so a retry after success replays it byte-identically.
+const executedResponseFor = (proposal) => {
+  if (proposal.actionKind === "order.cancel") {
+    return {
+      status: "executed",
+      executionReference: proposal.executionReference ?? executionReferenceFor(proposal.id),
+      orderId: proposal.targetId,
+      orderStatus: "Cancelled",
+    };
+  }
+  return {
+    status: "executed",
+    executionReference: proposal.executionReference ?? executionReferenceFor(proposal.id),
+    cartVersion: proposal.expectedVersion + 1,
+  };
+};
+
 // Deterministic outcome for any proposal that has already left pending.
 const resolveTerminal = (proposal) => {
   if (proposal.status === "executed") {
     return {
       kind: "executed",
-      executionReference: proposal.executionReference ?? executionReferenceFor(proposal.id),
-      cartVersion: proposal.expectedVersion + 1,
+      response: executedResponseFor(proposal),
     };
   }
   const reason = proposal.status === "expired"
@@ -162,6 +192,46 @@ const applyStoredAction = async (tx, { payload, cart, account, product, item }) 
   });
 };
 
+// Applies the stored cancellation with cancelOrderCore semantics inside the
+// same transaction as the proposal claim (#24): owner- and status-conditional
+// optimistic claim (Cancelled + cancelledAt), then stock restored ONLY when
+// the previewed status was "Confirmed" (Pending orders never had stock
+// deducted), via the shared adjustStock helper so the restore is atomically
+// identical to the storefront path. It NEVER touches payments, refunds,
+// revenue, bills, notifications, or any provider: refund release stays a
+// separate manual admin action. The conditional claim re-evaluates against the
+// latest committed row, so a concurrent storefront cancellation between the
+// fresh read and this update counts 0 and rolls the whole transaction back
+// (the proposal stays pending and a retry resolves deterministically).
+const applyOrderCancel = async (tx, { order, account, now }) => {
+  const claim = await tx.order.updateMany({
+    where: { id: order.id, userId: account.id, status: order.status },
+    data: { status: "Cancelled", cancelledAt: now },
+  });
+  if (claim.count !== 1) {
+    throw Object.assign(
+      new Error("Order state changed; the cancellation was not applied"),
+      { statusCode: 409, code: "order_state_changed" },
+    );
+  }
+  if (order.status === "Confirmed") {
+    await adjustStock(order.productId, order.quantity, order.variantColor, order.variantStorage, 1, tx);
+  }
+};
+
+// Side-effect disclosures shown on the review screen. Cart kinds carry static
+// lists; order.cancel replays the proposal's own immutable stored
+// disclosedConsequences so the review list matches the preview exactly.
+const disclosuresFor = (proposal) => {
+  if (proposal.actionKind === "order.cancel") {
+    const disclosed = proposal.preview?.disclosedConsequences;
+    return Array.isArray(disclosed)
+      ? disclosed.filter((entry) => typeof entry === "string").slice(0, 10)
+      : [];
+  }
+  return DISCLOSURES[proposal.actionKind] ?? [];
+};
+
 export const getProposalReview = async (req, res, client = prisma) => {
   try {
     const now = new Date();
@@ -183,7 +253,7 @@ export const getProposalReview = async (req, res, client = prisma) => {
         expiresAt: proposal.expiresAt.toISOString(),
         createdAt: proposal.createdAt.toISOString(),
         preview: proposal.preview,
-        disclosures: DISCLOSURES[proposal.actionKind] ?? [],
+        disclosures: disclosuresFor(proposal),
       },
     });
   } catch (error) {
@@ -249,6 +319,59 @@ export const executeProposal = async (req, res, client = prisma) => {
         return resolveTerminal(await reloadProposal(tx, proposal.id));
       }
 
+      // 4b. order.cancel (#24): reauthorize the owned order, recheck the
+      //     version proxy and current eligibility, then cancel inline with
+      //     cancelOrderCore semantics and NO refund/payment interaction.
+      if (proposal.actionKind === "order.cancel") {
+        const payload = proposal.canonicalPayload;
+        const order = await tx.order.findFirst({
+          where: { id: typeof payload?.orderId === "string" ? payload.orderId : "", userId: account.id },
+          select: {
+            id: true,
+            status: true,
+            quantity: true,
+            productId: true,
+            variantColor: true,
+            variantStorage: true,
+            updatedAt: true,
+          },
+        });
+        if (!order) {
+          // The stored target no longer resolves to this owner under the
+          // immutable attribution: the proposal can never be applied.
+          const claimed = await transitionPending(tx, proposal.id, userId, { status: "rejected" });
+          if (claimed.count === 1) await writeOutbox(tx, proposal.id, "rejected", proposal.payloadHash);
+          return resolveTerminal(await reloadProposal(tx, proposal.id));
+        }
+        // Stale check: any committed change to the order since the preview
+        // (status, money, anything touching the row) moves updatedAt.
+        if (orderVersionOf(order) !== proposal.expectedVersion) {
+          const claimed = await transitionPending(tx, proposal.id, userId, { status: "stale" });
+          if (claimed.count === 1) await writeOutbox(tx, proposal.id, "stale", proposal.payloadHash);
+          return resolveTerminal(await reloadProposal(tx, proposal.id));
+        }
+        // Business-rule revalidation on fresh state (defense in depth for
+        // same-second version collisions).
+        if (!isCancelEligible(order)) {
+          const claimed = await transitionPending(tx, proposal.id, userId, { status: "rejected" });
+          if (claimed.count === 1) await writeOutbox(tx, proposal.id, "rejected", proposal.payloadHash);
+          return resolveTerminal(await reloadProposal(tx, proposal.id));
+        }
+
+        // Exactly-once claim (same as the cart path), then the inline
+        // cancellation inside this same transaction.
+        const claimed = await transitionPending(tx, proposal.id, userId, {
+          status: "executed",
+          executedAt: now,
+          executionReference: executionReferenceFor(proposal.id),
+        });
+        if (claimed.count !== 1) return resolveTerminal(await reloadProposal(tx, proposal.id));
+
+        await applyOrderCancel(tx, { order, account, now });
+        await writeOutbox(tx, proposal.id, "executed", proposal.payloadHash);
+        return { kind: "executed", response: executedResponseFor(proposal) };
+      }
+
       // 5. Stale check: the cart must still be at the previewed version.
       const cart = await tx.cart.findFirst({
         where: { userId },
@@ -300,18 +423,14 @@ export const executeProposal = async (req, res, client = prisma) => {
       //    outbox event — all inside this same transaction.
       await applyStoredAction(tx, { payload, cart, account, product, item });
       await writeOutbox(tx, proposal.id, "executed", proposal.payloadHash);
-      return {
-        kind: "executed",
-        executionReference: executionReferenceFor(proposal.id),
-        cartVersion: proposal.expectedVersion + 1,
-      };
+      return { kind: "executed", response: executedResponseFor(proposal) };
     });
 
     if (outcome.kind === "not_found") {
       return res.status(404).json({ code: "not_found", message: "Resource not found" });
     }
     if (outcome.kind === "executed") {
-      return res.json({ status: "executed", executionReference: outcome.executionReference, cartVersion: outcome.cartVersion });
+      return res.json(outcome.response);
     }
     return res.status(409).json({
       code: "proposal_not_executable",
@@ -319,6 +438,15 @@ export const executeProposal = async (req, res, client = prisma) => {
       message: "Proposal is no longer executable",
     });
   } catch (error) {
+    if (error?.code === "order_state_changed") {
+      // The transaction (including the proposal claim) rolled back: the
+      // proposal is still pending and a retry re-runs every check against the
+      // current order state. Never a partial cancellation.
+      return res.status(409).json({
+        code: "order_state_changed",
+        message: "Order state changed; the cancellation was not applied",
+      });
+    }
     console.error("Error executing proposal:", error);
     return res.status(500).json({ code: "execution_failed", message: "Proposal execution failed" });
   }
