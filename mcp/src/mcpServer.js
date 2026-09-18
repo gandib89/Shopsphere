@@ -48,6 +48,8 @@ export const createShopSphereMcpServer = ({
     save_listing_draft: (args, requestId) => backendClient.call("save_listing_draft", args, requestId),
     list_my_listing_drafts: (args, requestId) => backendClient.call("list_my_listing_drafts", args, requestId),
     get_my_listing_draft: (args, requestId) => backendClient.call("get_my_listing_draft", args, requestId),
+    propose_cart_change: (args, requestId) => backendClient.call("propose_cart_change", args, requestId),
+    get_my_action_status: (args, requestId) => backendClient.call("get_my_action_status", args, requestId),
     get_store_policy: (args, requestId) => backendClient.call("get_store_policy", args, requestId),
     search_products: (args, requestId) => backendClient.call("search_products", args, requestId),
     compare_products: (args, requestId) => backendClient.call("compare_products", args, requestId),
@@ -60,6 +62,8 @@ export const createShopSphereMcpServer = ({
     const handle = handlers[tool.name];
     if (!handle) continue;
 
+    // propose-class tools create durable records, so they must not advertise
+    // themselves as read-only (clients may auto-approve on that hint).
     server.registerTool(
       tool.name,
       {

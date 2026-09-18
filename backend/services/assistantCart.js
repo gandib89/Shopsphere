@@ -59,6 +59,10 @@ const listUnitCents = (product, variants) => {
   return Math.max(0, base + delta);
 };
 
+// Exported for the #22 proposal platform: proposal previews must use the exact
+// same server pricing math as the cart reads (single shared implementation).
+export { sanitizeVariants, listUnitCents };
+
 const buildItems = (rows) => {
   let subtotalCents = 0;
   let totalCents = 0;
@@ -95,6 +99,10 @@ const buildItems = (rows) => {
   });
   return { items, subtotalCents, totalCents };
 };
+
+// Exported for the #22 proposal platform (same rationale as above): the
+// proposal before/after cart subtotals reuse this exact line builder.
+export { buildItems };
 
 export const getMyCart = async (_input, { client, principal }) => {
   const cart = await client.cart.findFirst({ where: { userId: principal.subject }, select: cartSelect });

@@ -803,6 +803,95 @@ const GetMyListingDraftOutputSchema = z
   .strict();
 
 
+// Cart-change proposals (#22). The input is one action at a time with no
+// confirmation flag, no execute field, and no caller-supplied totals: forged
+// confirmation fields fail the schema, and the proposal never mutates the cart.
+// The preview is the exact server-computed before/after (integer-paisa math,
+// NPR decimal strings); the caller cannot influence it.
+const ProposalPreviewSideSchema = z
+  .object({
+    quantity: z.number().int().min(1).nullable(),
+    unitPrice: MoneySchema.nullable(),
+    lineTotal: MoneySchema.nullable(),
+    cartSubtotal: MoneySchema,
+  })
+  .strict();
+
+const ProposalPreviewSchema = z
+  .object({
+    actionKind: z.enum(["cart.add_item", "cart.update_quantity", "cart.remove_item"]),
+    currency: z.literal("NPR"),
+    productName: z.string().min(1).max(200),
+    availability: z.enum(["In stock", "Sold out", "Unavailable"]),
+    before: ProposalPreviewSideSchema,
+    after: ProposalPreviewSideSchema,
+  })
+  .strict();
+
+const ProposalOptionsSchema = z
+  .record(z.string().min(1).max(50), z.string().min(1).max(50))
+  .refine((value) => Object.keys(value).length <= 5, { message: "options accepts at most 5 entries" })
+  .optional();
+
+const ProposeCartChangeInputSchema = z
+  .object({
+    action: z.enum(["add_item", "update_quantity", "remove_item"]),
+    productId: z.string().min(1).max(100).optional(),
+    options: ProposalOptionsSchema,
+    quantity: z.number().int().min(1).max(20).optional(),
+    cartItemId: z.string().min(1).max(100).optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const issue = (path, message) => ctx.addIssue({ code: "custom", path, message });
+    if (value.action === "add_item") {
+      if (value.productId === undefined) issue(["productId"], "add_item requires productId");
+      if (value.quantity === undefined) issue(["quantity"], "add_item requires quantity");
+      if (value.cartItemId !== undefined) issue(["cartItemId"], "add_item must not target an existing cart item");
+    } else if (value.action === "update_quantity") {
+      if (value.cartItemId === undefined) issue(["cartItemId"], "update_quantity requires cartItemId");
+      if (value.quantity === undefined) issue(["quantity"], "update_quantity requires quantity");
+      if (value.productId !== undefined) issue(["productId"], "update_quantity must not restate the product");
+    } else {
+      if (value.cartItemId === undefined) issue(["cartItemId"], "remove_item requires cartItemId");
+      if (value.quantity !== undefined) issue(["quantity"], "remove_item must not carry a quantity");
+      if (value.productId !== undefined) issue(["productId"], "remove_item must not carry a product");
+    }
+    if (value.action !== "add_item" && value.options !== undefined) {
+      issue(["options"], "options only apply to add_item");
+    }
+  });
+
+const ProposeCartChangeOutputSchema = z
+  .object({
+    proposalId: z.string().min(1).max(100),
+    status: z.literal("pending"),
+    expiresAt: z.iso.datetime().max(100),
+    preview: ProposalPreviewSchema,
+  })
+  .strict();
+
+const ProposalActionKindSchema = z.enum(["cart.add_item", "cart.update_quantity", "cart.remove_item"]);
+
+const GetMyActionStatusInputSchema = z
+  .object({
+    proposalId: z.string().min(1).max(100),
+  })
+  .strict();
+
+const GetMyActionStatusOutputSchema = z
+  .object({
+    proposalId: z.string().min(1).max(100),
+    actionKind: ProposalActionKindSchema,
+    status: z.enum(["pending", "executed", "expired", "stale", "rejected"]),
+    createdAt: z.iso.datetime().max(100),
+    expiresAt: z.iso.datetime().max(100),
+    executedAt: z.iso.datetime().max(100).nullable(),
+    outcomeReason: z.string().min(1).max(50).nullable(),
+  })
+  .strict();
+
+
 const definitions = [
   {
     name: "get_capabilities",
@@ -1334,7 +1423,8 @@ const definitions = [
       method: "POST",
       path: "/api/v1/assistant/list_seller_applications",
     },
-  },
+  },
+
 
   {
     name: "draft_listing_copy",
@@ -1425,6 +1515,52 @@ const definitions = [
       operationId: "listings.getDraft",
       method: "POST",
       path: "/api/v1/assistant/get_my_listing_draft",
+    },
+  },
+
+  {
+    name: "propose_cart_change",
+    title: "Propose a ShopSphere cart change",
+    description:
+      "Records one pending cart-change proposal for the buyer to review and confirm in ShopSphere. It never changes the cart and never takes payment.",
+    inputSchema: ProposeCartChangeInputSchema,
+    outputSchema: ProposeCartChangeOutputSchema,
+    operationClass: "propose",
+    roles: ["user"],
+    scopes: ["cart:propose"],
+    rateClass: "proposal",
+    rollout: {
+      flag: "MCP_TOOL_PROPOSE_CART_CHANGE_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "proposals.proposeCartChange",
+      method: "POST",
+      path: "/api/v1/assistant/propose_cart_change",
+    },
+  },
+
+  {
+    name: "get_my_action_status",
+    title: "Get my ShopSphere proposal status",
+    description:
+      "Reads the current status of one cart-change proposal owned by the caller. It never returns approval secrets, previews, or execution methods.",
+    inputSchema: GetMyActionStatusInputSchema,
+    outputSchema: GetMyActionStatusOutputSchema,
+    operationClass: "read",
+    roles: ["user"],
+    scopes: ["proposals:read"],
+    rateClass: "authenticated-read",
+    rollout: {
+      flag: "MCP_TOOL_GET_MY_ACTION_STATUS_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "proposals.actionStatus",
+      method: "POST",
+      path: "/api/v1/assistant/get_my_action_status",
     },
   },
 ];

@@ -42,6 +42,8 @@ import {
   saveListingDraft,
 } from "../services/assistantListingDrafts.js";
 import { enforceListingDraftLimit } from "../services/assistantListingDraftLimits.js";
+import { getMyActionStatus, proposeCartChange } from "../services/assistantProposals.js";
+import { enforceProposalCreationLimits } from "../services/assistantProposalLimits.js";
 import { auditContext, recordAssistantAudit } from "../services/assistantAudit.js";
 import { withAssistantActor } from "../database/assistantTransaction.js";
 import {
@@ -664,6 +666,112 @@ privateOperation({
   middlewares: [enforceListingDraftLimit()],
   run: (input, ctx) => getMyListingDraft(input, ctx),
   observe: (output) => ({ resourceIds: [output.draftId], rowCount: 1 }),
+});
+
+// Proposal platform (#22). propose_cart_change persists a canonical pending
+// proposal (never a cart mutation) and therefore runs the proposal-class rate
+// limits in addition to the shared delegation chain. The strict input accepts
+// exactly one action with no confirmation flag, no execute flag, and no
+// caller-supplied totals: forged confirmation fields fail the schema, not the cart.
+const proposalOptions = z
+  .record(z.string().min(1).max(50), z.string().min(1).max(50))
+  .refine((value) => Object.keys(value).length <= 5, { message: "options accepts at most 5 entries" })
+  .optional();
+const proposeCartChangeInput = z.object({
+  action: z.enum(["add_item", "update_quantity", "remove_item"]),
+  productId: z.string().min(1).max(100).optional(),
+  options: proposalOptions,
+  quantity: z.number().int().min(1).max(20).optional(),
+  cartItemId: z.string().min(1).max(100).optional(),
+}).strict().superRefine((value, ctx) => {
+  const issue = (path, message) => ctx.addIssue({ code: z.ZodIssueCode.custom, path, message });
+  if (value.action === "add_item") {
+    if (value.productId === undefined) issue(["productId"], "add_item requires productId");
+    if (value.quantity === undefined) issue(["quantity"], "add_item requires quantity");
+    if (value.cartItemId !== undefined) issue(["cartItemId"], "add_item must not target an existing cart item");
+  } else if (value.action === "update_quantity") {
+    if (value.cartItemId === undefined) issue(["cartItemId"], "update_quantity requires cartItemId");
+    if (value.quantity === undefined) issue(["quantity"], "update_quantity requires quantity");
+    if (value.productId !== undefined) issue(["productId"], "update_quantity must not restate the product");
+  } else {
+    if (value.cartItemId === undefined) issue(["cartItemId"], "remove_item requires cartItemId");
+    if (value.quantity !== undefined) issue(["quantity"], "remove_item must not carry a quantity");
+    if (value.productId !== undefined) issue(["productId"], "remove_item must not carry a product");
+  }
+  if (value.action !== "add_item" && value.options !== undefined) {
+    issue(["options"], "options only apply to add_item");
+  }
+});
+
+router.post(
+  "/propose_cart_change",
+  authenticateAssistantWorkload,
+  authenticateAssistantDelegation,
+  enforceAssistantDistributedLimit(),
+  authorizeAssistantOperation({
+    operation: "proposals.proposeCartChange",
+    roles: ["user"],
+    scope: "cart:propose",
+    rolloutFlag: "MCP_TOOL_PROPOSE_CART_CHANGE_ENABLED",
+  }),
+  enforceProposalCreationLimits(),
+  async (req, res) => {
+    const startedAt = Date.now();
+    const operation = "proposals.proposeCartChange";
+    const tool = "propose_cart_change";
+    const parsed = proposeCartChangeInput.safeParse(req.body);
+    if (!parsed.success) {
+      return auditedError(req, res, { operation, tool, input: {}, status: 400, code: "invalid_input", startedAt });
+    }
+    try {
+      const output = await withAssistantActor({
+        actorId: req.delegation.sub,
+        role: req.delegation.role,
+        operation,
+        signal: req.assistantSignal,
+      }, (tx) => proposeCartChange(parsed.data, {
+        client: tx,
+        principal: {
+          subject: req.delegation.sub,
+          role: req.delegation.role,
+          clientId: req.delegation.clientId,
+          grantId: req.delegation.grantId,
+        },
+        now: new Date(),
+      }));
+      return auditedJson(req, res, {
+        operation,
+        tool,
+        input: parsed.data,
+        output,
+        startedAt,
+        resourceIds: [output.proposalId],
+        rowCount: 1,
+      });
+    } catch (error) {
+      const status = error?.statusCode === 404 ? 404 : error?.statusCode === 400 ? 400 : error?.statusCode === 503 ? 503 : 500;
+      return auditedError(req, res, {
+        operation,
+        tool,
+        input: parsed.data,
+        status,
+        code: status === 404 ? "not_found" : status === 400 ? "invalid_input" : "operation_unavailable",
+        startedAt,
+      });
+    }
+  },
+);
+
+privateOperation({
+  path: "/get_my_action_status",
+  tool: "get_my_action_status",
+  operation: "proposals.actionStatus",
+  roles: ["user"],
+  scope: "proposals:read",
+  rolloutFlag: "MCP_TOOL_GET_MY_ACTION_STATUS_ENABLED",
+  inputSchema: z.object({ proposalId: z.string().min(1).max(100) }).strict(),
+  run: (input, ctx) => getMyActionStatus(input, ctx),
+  observe: (output) => ({ resourceIds: [output.proposalId], rowCount: 1 }),
 });
 
 router.use(authenticatePublicWorkload);

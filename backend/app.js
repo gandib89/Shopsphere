@@ -23,6 +23,7 @@ import assistantRouter from "./routes/assistantRoute.js";
 import mcpOAuthRouter from "./routes/mcpOAuthRoute.js";
 import { rejectDelegatedTokens } from "./middlewares/assistantDelegation.js";
 import aiConnectionRouter from "./routes/aiConnectionRoute.js";
+import proposalExecutionRouter from "./routes/proposalExecutionRoute.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -77,6 +78,9 @@ app.use(healthRouter);
 app.use(mcpOAuthRouter);
 app.use('/api/v1/assistant', assistantRouter);
 app.use('/api/', rejectDelegatedTokens);
+// Mounted after rejectDelegatedTokens: delegated MCP tokens never reach the
+// first-party proposal review/execution surface (#22).
+app.use('/api/v1/proposals', proposalExecutionRouter);
 
 // General backstop against scripted abuse on any endpoint — the auth routes layer a much
 // tighter limiter on top of this for login/register/refresh specifically (see authRoute.js).
