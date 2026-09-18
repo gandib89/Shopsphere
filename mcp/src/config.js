@@ -161,5 +161,9 @@ export const readConfig = (environment = process.env) => ({
       environment.MCP_TOOL_GET_MY_REVENUE_SUMMARY_ENABLED,
       false,
     ),
+    MCP_TOOL_DRAFT_SUPPORT_MESSAGE_ENABLED: parseBoolean(
+      environment.MCP_TOOL_DRAFT_SUPPORT_MESSAGE_ENABLED,
+      false,
+    ),
   },
 });

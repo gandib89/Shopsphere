@@ -42,6 +42,7 @@ export const createShopSphereMcpServer = ({
     list_my_seller_orders: (args, requestId) => backendClient.call("list_my_seller_orders", args, requestId),
     get_my_seller_order: (args, requestId) => backendClient.call("get_my_seller_order", args, requestId),
     get_my_revenue_summary: (args, requestId) => backendClient.call("get_my_revenue_summary", args, requestId),
+    draft_support_message: (args, requestId) => backendClient.call("draft_support_message", args, requestId),
     get_store_policy: (args, requestId) => backendClient.call("get_store_policy", args, requestId),
     search_products: (args, requestId) => backendClient.call("search_products", args, requestId),
     compare_products: (args, requestId) => backendClient.call("compare_products", args, requestId),

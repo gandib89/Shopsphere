@@ -31,6 +31,8 @@ import {
   getMyRevenueSummary,
   listMySales,
 } from "../services/assistantSellerOrders.js";
+import { draftSupportMessage } from "../services/assistantSupportDrafts.js";
+import { createDraftSupportLimit } from "../services/assistantSupportDraftLimits.js";
 import { auditContext, recordAssistantAudit } from "../services/assistantAudit.js";
 import { withAssistantActor } from "../database/assistantTransaction.js";
 import {
@@ -303,13 +305,20 @@ router.post(
 // and per-call role/scope/rollout authorization. Inputs are strict schemas
 // (unknown fields rejected, no caller totals/identity/owner fields); reads run
 // inside a transaction-local actor context; success and failure both audit.
-const privateOperation = ({ path, tool, operation, roles, scope, rolloutFlag, inputSchema, run, observe }) => {
+// `middlewares` (optional): extra route-scoped middleware appended after
+// authorization and before input parsing, without touching the shared chain
+// order. `auditInput` (optional): projection of the parsed input stored in the
+// audit rows — used by routes whose input carries user-authored content that
+// must never be echoed into audits or logs.
+const privateOperation = ({ path, tool, operation, roles, scope, rolloutFlag, inputSchema, run, observe, middlewares = [], auditInput }) => {
+  const auditEventInput = (data) => (auditInput ? auditInput(data) : data);
   router.post(
     path,
     authenticateAssistantWorkload,
     authenticateAssistantDelegation,
     enforceAssistantDistributedLimit(),
     authorizeAssistantOperation({ operation, roles, scope, rolloutFlag }),
+    ...middlewares,
     async (req, res) => {
       const startedAt = Date.now();
       const parsed = inputSchema.safeParse(req.body);
@@ -339,13 +348,13 @@ const privateOperation = ({ path, tool, operation, roles, scope, rolloutFlag, in
           now: new Date(),
         }));
         const { resourceIds = [], rowCount = null } = observe?.(output) ?? {};
-        return auditedJson(req, res, { operation, tool, input: parsed.data, output, startedAt, resourceIds, rowCount });
+        return auditedJson(req, res, { operation, tool, input: auditEventInput(parsed.data), output, startedAt, resourceIds, rowCount });
       } catch (error) {
         const status = error?.statusCode === 404 ? 404 : error?.statusCode === 400 ? 400 : error?.statusCode === 503 ? 503 : 500;
         return auditedError(req, res, {
           operation,
           tool,
-          input: parsed.data,
+          input: auditEventInput(parsed.data),
           status,
           code: status === 404 ? "not_found" : status === 400 ? "invalid_input" : "operation_unavailable",
           startedAt,
@@ -529,6 +538,36 @@ privateOperation({
   inputSchema: z.object({ year: z.number().int().min(2000).max(2100).optional() }).strict(),
   run: (input, ctx) => getMyRevenueSummary(input, ctx),
   observe: (output) => ({ resourceIds: [], rowCount: output.buckets.length }),
+});
+
+// Buyer support-message drafting (#19). DETERMINISTIC template composition
+// from the buyer's own minimized order facts plus approved, versioned policy
+// answers — no LLM. ZERO DELIVERY SIDE EFFECTS: nothing on this path sends
+// email or chat, creates a ticket or notification, or calls a webhook — the
+// tool only returns draft text for the buyer to review. The buyer picks the
+// owned order and the bounded topic; no recipient, channel, or send affordance
+// exists in the contract. The draft rate class carries stricter route-scoped
+// limits (10/minute, 100/day per subject+client, fail-closed) on top of the
+// shared distributed limit, and the user-authored `notes` field is excluded
+// from audit rows and logs.
+const draftSupportInput = z.object({
+  orderId: z.string().regex(/^[A-Za-z0-9]{1,24}$/),
+  topic: z.enum(["order_status", "delivery_issue", "return_question", "refund_question", "other"]),
+  notes: z.string().min(1).max(500).optional(),
+}).strict();
+
+privateOperation({
+  path: "/draft_support_message",
+  tool: "draft_support_message",
+  operation: "support.draftMessage",
+  roles: ["user"],
+  scope: "support:draft",
+  rolloutFlag: "MCP_TOOL_DRAFT_SUPPORT_MESSAGE_ENABLED",
+  inputSchema: draftSupportInput,
+  middlewares: [createDraftSupportLimit()],
+  auditInput: ({ orderId, topic }) => ({ orderId, topic }),
+  run: (input, ctx) => draftSupportMessage(input, ctx),
+  observe: (output) => ({ resourceIds: [output.orderId], rowCount: 1 }),
 });
 
 router.use(authenticatePublicWorkload);
