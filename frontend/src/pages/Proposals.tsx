@@ -22,6 +22,7 @@ const actionLabels: Record<string, string> = {
   'cart.add_item': 'Add to cart',
   'cart.update_quantity': 'Change cart quantity',
   'cart.remove_item': 'Remove from cart',
+  'order.cancel': 'Order cancellation',
 };
 
 const statusLabels: Record<string, string> = {
