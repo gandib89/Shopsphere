@@ -48,6 +48,7 @@ import { enforceProposalCreationLimits } from "../services/assistantProposalLimi
 import { proposeOrderReturn } from "../services/assistantReturnProposals.js";
 import { proposePriceChange } from "../services/assistantPriceProposals.js";
 import { requireVerifiedSeller as requireVerifiedSellerPrice } from "../services/assistantVerifiedSellerPriceGate.js";
+import { proposeInventoryAdjustment, proposeInventoryAdjustmentInputSchema } from "../services/assistantInventoryProposals.js";
 import {
   proposeListingContentChange,
   proposeListingContentChangeInputSchema,
@@ -977,6 +978,53 @@ privateOperation({
   middlewares: [enforceProposalCreationLimits(), requireVerifiedSellerPrice()],
   auditInput: () => ({}),
   run: (input, ctx) => proposePriceChange(input, ctx),
+  observe: (output) => ({ resourceIds: [output.proposalId, output.preview.productId], rowCount: 1 }),
+});
+
+// Seller inventory proposals (#28), on the #22 proposal platform. The strict
+// input is exactly one owned product, at most one optionId (that option must
+// track its own stock — stock != null — else 400; a product-level quantity
+// target is allowed only when NO option tracks stock, else 400
+// option_required), exactly one of adjustment [-10000, 10000] or setTo
+// [0, 100000], and a REQUIRED user-authored reason (20..500). There is NO
+// confirm/execute affordance and no other overwrite semantics: forged fields
+// fail the schema, not the stock. Verified-seller gating lives in the
+// route-scoped requireVerifiedSeller middleware (the SHARED
+// services/assistantVerifiedSellerGate.js gate established by #26/#27 — not a
+// new gate), on top of the shared proposal-class rate limits, whose
+// pending-count read runs under this route's own operation GUC so the RLS
+// seller-role SELECT policy admits it. Creation persists only the proposal +
+// outbox rows: the service's fake-client guards and the RLS grants prove
+// stock, orders, availability, and notifications are untouched. The reason is
+// user-authored content shown to the human reviewer, so the durable audit
+// input projects it OUT — audits keep only productId/optionId and the change
+// numbers.
+// Durable-audit input projection for inventory proposals (#28): keeps only the
+// target ids and the change numbers. The user-authored reason is shown to the
+// human reviewer from the stored preview but must never be echoed into audit
+// rows or logs. Exported so the tests exercise the identical object the route
+// uses.
+export const inventoryProposalAuditInput = ({ productId, optionId, adjustment, setTo }) => ({
+  productId,
+  ...(optionId !== undefined ? { optionId } : {}),
+  ...(adjustment !== undefined ? { adjustment } : {}),
+  ...(setTo !== undefined ? { setTo } : {}),
+});
+
+privateOperation({
+  path: "/propose_inventory_adjustment",
+  tool: "propose_inventory_adjustment",
+  operation: "proposals.inventoryAdjust",
+  roles: ["seller"],
+  scope: "inventory:propose",
+  rolloutFlag: "MCP_TOOL_PROPOSE_INVENTORY_ADJUSTMENT_ENABLED",
+  inputSchema: proposeInventoryAdjustmentInputSchema,
+  middlewares: [
+    enforceProposalCreationLimits({ operation: "proposals.inventoryAdjust" }),
+    requireVerifiedSeller({ operation: "proposals.inventoryAdjust" }),
+  ],
+  auditInput: inventoryProposalAuditInput,
+  run: (input, ctx) => proposeInventoryAdjustment(input, ctx),
   observe: (output) => ({ resourceIds: [output.proposalId, output.preview.productId], rowCount: 1 }),
 });
 
