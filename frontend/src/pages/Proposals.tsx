@@ -24,6 +24,8 @@ const actionLabels: Record<string, string> = {
   'cart.remove_item': 'Remove from cart',
   'order.cancel': 'Order cancellation',
   'order.return_request': 'Request order return',
+  'listing.publish_draft': 'Publish draft as live listing',
+  'listing.update_content': 'Update listing content',
 };
 
 const statusLabels: Record<string, string> = {

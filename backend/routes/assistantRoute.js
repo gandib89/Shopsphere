@@ -47,6 +47,13 @@ import { proposeOrderCancellation } from "../services/assistantCancellationPropo
 import { enforceProposalCreationLimits } from "../services/assistantProposalLimits.js";
 import { proposeOrderReturn } from "../services/assistantReturnProposals.js";
 import {
+  proposeListingContentChange,
+  proposeListingContentChangeInputSchema,
+  proposeListingPublish,
+  proposeListingPublishInputSchema,
+} from "../services/assistantListingProposals.js";
+import { requireVerifiedSeller } from "../services/assistantVerifiedSellerGate.js";
+import {
   getOrderExceptionDetail,
   listOrderExceptionQueue,
   listReturnQueue,
@@ -870,6 +877,62 @@ privateOperation({
   auditInput: returnProposalAuditInput,
   run: (input, ctx) => proposeOrderReturn(input, ctx),
   observe: (output) => ({ resourceIds: [output.proposalId, output.preview.orderId], rowCount: 1 }),
+});
+
+// Seller listing proposals (#26). Two propose-class tools for VERIFIED sellers
+// only: propose_listing_publish persists a proposal to publish one owned
+// listing draft, propose_listing_content_change persists a proposal to change
+// allowlisted content (name/description/images) on one owned live listing.
+// Neither can publish, update, archive, unpublish, broadcast, or notify — the
+// services touch only proposals + the platform's "created" outbox event, and
+// the live mutation happens solely through the first-party browser execution
+// endpoint. Verification is enforced twice over: the delegated token's
+// shopsphere_verified claim AND the live account must both be verified
+// (requireVerifiedSeller, attached via the seam's middlewares after
+// authorization), on top of the proposal-class rate limits shared with #22.
+// The content-change input is a closed allowlist — seller identity, price,
+// stock, quantity, discount, visibility, and deletion fields all fail the
+// strict schema (exported from the service for shared testing) — and its long
+// free text (description, image urls) is projected out of the durable audit
+// rows: auditInput keeps only the product id, the bounded name, and the counts.
+privateOperation({
+  path: "/propose_listing_publish",
+  tool: "propose_listing_publish",
+  operation: "proposals.listingPublish",
+  roles: ["seller"],
+  scope: "listings:propose",
+  rolloutFlag: "MCP_TOOL_PROPOSE_LISTING_PUBLISH_ENABLED",
+  inputSchema: proposeListingPublishInputSchema,
+  middlewares: [
+    enforceProposalCreationLimits({ operation: "proposals.listingPublish" }),
+    requireVerifiedSeller({ operation: "proposals.listingPublish" }),
+  ],
+  run: (input, ctx) => proposeListingPublish(input, ctx),
+  observe: (output) => ({ resourceIds: [output.proposalId], rowCount: 1 }),
+});
+
+privateOperation({
+  path: "/propose_listing_content_change",
+  tool: "propose_listing_content_change",
+  operation: "proposals.listingContentChange",
+  roles: ["seller"],
+  scope: "listings:propose",
+  rolloutFlag: "MCP_TOOL_PROPOSE_LISTING_CONTENT_CHANGE_ENABLED",
+  inputSchema: proposeListingContentChangeInputSchema,
+  middlewares: [
+    enforceProposalCreationLimits({ operation: "proposals.listingContentChange" }),
+    requireVerifiedSeller({ operation: "proposals.listingContentChange" }),
+  ],
+  auditInput: ({ productId, content }) => ({
+    productId,
+    content: {
+      ...(content.name !== undefined ? { name: content.name.slice(0, 140) } : {}),
+      ...(content.description !== undefined ? { descriptionChars: content.description.length } : {}),
+      ...(content.images !== undefined ? { imagesCount: content.images.length } : {}),
+    },
+  }),
+  run: (input, ctx) => proposeListingContentChange(input, ctx),
+  observe: (output) => ({ resourceIds: [output.proposalId], rowCount: 1 }),
 });
 
 // Admin support queues (#17). Membership is the fixed server rule encoded in

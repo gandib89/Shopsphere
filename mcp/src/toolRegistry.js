@@ -897,6 +897,86 @@ const GetMyActionStatusOutputSchema = z
   })
   .strict();
 
+// Seller listing proposals (#26). Closed allowlist content only: seller
+// identity, price, stock, quantity, discount, visibility, and deletion fields
+// are not part of the schema and therefore fail strict parsing. Money is not
+// involved anywhere in the listing content contract.
+const ListingDraftIdSchema = z.string().regex(/^[a-f0-9]{24}$/);
+
+const ListingDisclosuresSchema = z.array(z.string().min(1).max(200)).max(5);
+
+const ProposeListingPublishInputSchema = z
+  .object({
+    draftId: ListingDraftIdSchema,
+  })
+  .strict();
+
+const ProposeListingPublishOutputSchema = z
+  .object({
+    proposalId: z.string().min(1).max(100),
+    status: z.literal("pending"),
+    expiresAt: z.iso.datetime().max(100),
+    preview: z
+      .object({
+        actionKind: z.literal("listing.publish_draft"),
+        draftId: z.string().min(1).max(100),
+        title: z.string().min(1).max(140),
+        description: z.string().max(4000),
+        highlights: z.array(z.string().min(1).max(200)).max(10),
+        sourceProductId: z.string().min(1).max(100).nullable(),
+        disclosedConsequences: ListingDisclosuresSchema,
+      })
+      .strict(),
+  })
+  .strict();
+
+const ListingContentSchema = z
+  .object({
+    name: z.string().min(1).max(140).optional(),
+    description: z.string().min(1).max(4000).optional(),
+    images: z.array(z.string().min(1).max(500)).max(6).optional(),
+  })
+  .strict();
+
+const ProposeListingContentChangeInputSchema = z
+  .object({
+    productId: z.string().min(1).max(100),
+    content: ListingContentSchema,
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.content.name === undefined && value.content.description === undefined && value.content.images === undefined) {
+      ctx.addIssue({ code: "custom", path: ["content"], message: "content requires at least one allowlisted field" });
+    }
+  });
+
+const ListingContentSideSchema = z
+  .object({
+    name: z.string().min(1).max(140).optional(),
+    description: z.string().max(4000).optional(),
+    images: z.array(z.string().max(500)).max(50).optional(),
+  })
+  .strict();
+
+const ProposeListingContentChangeOutputSchema = z
+  .object({
+    proposalId: z.string().min(1).max(100),
+    status: z.literal("pending"),
+    expiresAt: z.iso.datetime().max(100),
+    preview: z
+      .object({
+        actionKind: z.literal("listing.update_content"),
+        productId: z.string().min(1).max(100),
+        productName: z.string().min(1).max(140),
+        before: ListingContentSideSchema,
+        after: ListingContentSideSchema,
+        disclosedConsequences: ListingDisclosuresSchema,
+      })
+      .strict(),
+  })
+  .strict();
+
+
 // Buyer order-cancellation proposals (#24). The preview is the exact
 // server-computed snapshot of the owned order at propose time: only an
 // eligible order (Pending|Confirmed — the server's fixed cancellable set)
@@ -936,7 +1016,6 @@ const ProposeOrderCancellationOutputSchema = z
   })
   .strict();
 
-
 // Buyer return proposals (#25). The input is exactly one owned order plus a
 // bounded free-text reason — there is no evidence URL, attachment path, or
 // image field (evidence upload stays in ShopSphere's trusted flows), and no
@@ -970,7 +1049,6 @@ const ProposeOrderReturnOutputSchema = z
     preview: ProposeOrderReturnPreviewSchema,
   })
   .strict();
-
 
 // Admin support queues (#17): membership is a fixed server rule — the exact
 // stored return/refund exception status strings inside a rolling 90-day window —
@@ -1170,7 +1248,6 @@ const GetPromotionUsageSummaryOutputSchema = z
   })
   .strict();
 
-
 // Admin recommendation drafts (#21): deterministic template composition from
 // the authorized minimized admin views plus approved, versioned policy
 // sources. Recommendations never decide — no approve/reject/refund/activation/
@@ -1217,7 +1294,6 @@ const DraftPromotionRecommendationInputSchema = z
     promoCodeId: z.string().min(1).max(100),
   })
   .strict();
-
 
 const definitions = [
   {
@@ -2141,6 +2217,52 @@ const definitions = [
       operationId: "recommendations.promotionReview",
       method: "POST",
       path: "/api/v1/assistant/draft_promotion_recommendation",
+    },
+  },
+
+  {
+    name: "propose_listing_publish",
+    title: "Propose publishing my ShopSphere listing draft",
+    description:
+      "Records one pending proposal to publish one owned, unpublished listing draft as a live product. It never publishes, mutates the draft or catalog, broadcasts, or notifies; the seller reviews and confirms in ShopSphere.",
+    inputSchema: ProposeListingPublishInputSchema,
+    outputSchema: ProposeListingPublishOutputSchema,
+    operationClass: "propose",
+    roles: ["seller"],
+    scopes: ["listings:propose"],
+    rateClass: "proposal",
+    rollout: {
+      flag: "MCP_TOOL_PROPOSE_LISTING_PUBLISH_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "proposals.listingPublish",
+      method: "POST",
+      path: "/api/v1/assistant/propose_listing_publish",
+    },
+  },
+
+  {
+    name: "propose_listing_content_change",
+    title: "Propose a ShopSphere listing content change",
+    description:
+      "Records one pending proposal to change allowlisted content (name, description, images) on one owned live listing. Price, stock, seller identity, visibility, and deletion are not part of the contract; nothing changes until the seller confirms in ShopSphere.",
+    inputSchema: ProposeListingContentChangeInputSchema,
+    outputSchema: ProposeListingContentChangeOutputSchema,
+    operationClass: "propose",
+    roles: ["seller"],
+    scopes: ["listings:propose"],
+    rateClass: "proposal",
+    rollout: {
+      flag: "MCP_TOOL_PROPOSE_LISTING_CONTENT_CHANGE_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "proposals.listingContentChange",
+      method: "POST",
+      path: "/api/v1/assistant/propose_listing_content_change",
     },
   },
 ];

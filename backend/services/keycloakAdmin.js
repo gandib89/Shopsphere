@@ -12,7 +12,7 @@ export const AI_CLIENTS = Object.freeze({
 
 export const ROLE_SCOPES = Object.freeze({
   user: Object.freeze(["profile:read", "notifications:read", "orders:read", "cart:read", "cart:propose", "orders:propose", "returns:propose", "proposals:read", "support:draft"]),
-  seller: Object.freeze(["profile:read", "notifications:read", "catalog:read", "orders:read", "sales:read", "revenue:read", "listings:draft"]),
+  seller: Object.freeze(["profile:read", "notifications:read", "catalog:read", "orders:read", "sales:read", "revenue:read", "listings:draft", "listings:propose"]),
   admin: Object.freeze(["profile:read", "notifications:read", "platform:read", "sellers:read", "support:read", "promotions:read", "recommendations:draft"]),
 });
 

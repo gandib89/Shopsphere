@@ -36,6 +36,14 @@ type ProposalPreview = {
   cancelEligible?: boolean;
   stockToRestore?: number;
   paidAmount?: Money | null;
+  // Listing proposals (#26): publish previews the exact draft content a live
+  // product would be created from; content changes preview exact before/after
+  // of the changed allowlisted fields only. No money fields exist anywhere.
+  draftId?: string;
+  title?: string;
+  description?: string;
+  highlights?: string[];
+  sourceProductId?: string | null;
 };
 type ProposalStatus = 'pending' | 'executed' | 'expired' | 'stale' | 'rejected';
 type Proposal = {
@@ -103,6 +111,30 @@ const actionDescriptors: Record<string, ActionDescriptor> = {
       rejected: 'This order can no longer be cancelled. Nothing was changed.',
     },
   },
+  'listing.publish_draft': {
+    title: 'Publish your draft as a live listing',
+    description: 'An AI assistant prepared this listing publication. Nothing has changed yet — review the exact content below, then confirm.',
+    executedMessage: 'Confirmed. Your listing now reflects exactly the reviewed content. These changes were reviewed on this screen before they were applied.',
+    confirmToast: 'Confirmed. Your listing now matches this reviewed change.',
+    backTarget: '/seller-products',
+    confirmCopy: 'I have reviewed the exact content and the effects listed above. Confirming publishes this listing with my own ShopSphere session.',
+    blocked: {
+      stale: 'The listing changed after this proposal was created, so it can no longer be applied. Nothing was changed.',
+      rejected: 'This proposal can no longer be applied to your listing. Nothing was changed.',
+    },
+  },
+  'listing.update_content': {
+    title: 'Update your listing content',
+    description: 'An AI assistant prepared this listing content change. Nothing has changed yet — review the exact before and after values below, then confirm.',
+    executedMessage: 'Confirmed. Your listing now reflects exactly the reviewed content. These changes were reviewed on this screen before they were applied.',
+    confirmToast: 'Confirmed. Your listing now matches this reviewed change.',
+    backTarget: '/seller-products',
+    confirmCopy: 'I have reviewed the exact before and after values and the effects listed above. Confirming applies exactly these values to my listing with my own ShopSphere session.',
+    blocked: {
+      stale: 'The listing changed after this proposal was created, so it can no longer be applied. Nothing was changed.',
+      rejected: 'This proposal can no longer be applied to your listing. Nothing was changed.',
+    },
+  },
   'order.return_request': {
     title: 'Request order return',
     description: 'An AI assistant prepared this return request. Nothing has changed yet — review the exact details below, then confirm.',
@@ -122,6 +154,8 @@ const actionLabels: Record<string, string> = {
   'cart.remove_item': 'Remove from cart',
   'order.cancel': 'Cancel your order',
   'order.return_request': 'Request order return',
+  'listing.publish_draft': 'Publish draft as live listing',
+  'listing.update_content': 'Update listing content',
 };
 
 const statusLabels: Record<ProposalStatus, string> = {
@@ -257,6 +291,7 @@ export default function ProposalReview() {
   const isPending = proposal.status === 'pending';
   const isReturn = proposal.actionKind === 'order.return_request';
   const isCancel = proposal.actionKind === 'order.cancel';
+  const isListing = proposal.actionKind.startsWith('listing.');
   const backTarget = descriptor.backTarget;
 
   return (
@@ -267,7 +302,48 @@ export default function ProposalReview() {
         description={descriptor.description}
       />
       <div className="container mx-auto max-w-3xl space-y-6 px-4 py-8 sm:px-6">
-        {isCancel ? (
+        {isListing && proposal.actionKind === 'listing.publish_draft' ? (
+          <section aria-labelledby="proposal-target" className="border border-hairline bg-paper-raised p-6">
+            <h2 id="proposal-target" className="text-xl font-bold">{preview.title}</h2>
+            <p className="mt-1 text-sm text-ink-muted">Proposal status: {statusLabels[proposal.status]}</p>
+            <pre className="mt-4 whitespace-pre-wrap border-t border-hairline pt-4 text-sm leading-6">{preview.description}</pre>
+            {(preview.highlights?.length ?? 0) > 0 && (
+              <ul className="mt-3 list-disc space-y-1 pl-5 text-sm leading-6">
+                {preview.highlights!.map((highlight) => (
+                  <li key={highlight}>{highlight}</li>
+                ))}
+              </ul>
+            )}
+            <p className="mt-3 text-xs text-ink-muted">
+              Expires at {formatExpiry(proposal.expiresAt)} — after that this proposal cannot be applied.
+            </p>
+          </section>
+        ) : isListing ? (
+          <section aria-labelledby="proposal-target" className="border border-hairline bg-paper-raised p-6">
+            <h2 id="proposal-target" className="text-xl font-bold">{preview.productName}</h2>
+            <p className="mt-1 text-sm text-ink-muted">Proposal status: {statusLabels[proposal.status]}</p>
+            <dl className="mt-5 overflow-hidden border border-hairline text-sm">
+              <div className="grid grid-cols-3 gap-2 bg-paper px-4 py-2 font-semibold">
+                <span>Field</span>
+                <span>Before</span>
+                <span>After</span>
+              </div>
+              {([
+                ['Name', (preview.before as { name?: string } | undefined)?.name ?? '—', (preview.after as { name?: string } | undefined)?.name ?? '—'],
+                ['Description', (preview.before as { description?: string } | undefined)?.description ?? '—', (preview.after as { description?: string } | undefined)?.description ?? '—'],
+              ] as const).map(([label, before, after]) => (
+                <div key={label} className="grid grid-cols-3 gap-2 border-t border-hairline px-4 py-2">
+                  <span className="font-medium">{label}</span>
+                  <span className="whitespace-pre-wrap">{before}</span>
+                  <span className="whitespace-pre-wrap">{after}</span>
+                </div>
+              ))}
+            </dl>
+            <p className="mt-3 text-xs text-ink-muted">
+              Expires at {formatExpiry(proposal.expiresAt)} — after that this proposal cannot be applied.
+            </p>
+          </section>
+        ) : isCancel ? (
           <section aria-labelledby="proposal-target" className="border border-hairline bg-paper-raised p-6">
             <h2 id="proposal-target" className="text-xl font-bold">
               Order {preview.orderNumber ?? preview.orderId ?? '—'}
