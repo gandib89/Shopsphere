@@ -90,6 +90,7 @@
     { "name": "sellers:read", "description": "Read minimized seller application summaries", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read seller application status and approved shop display metadata" }, "protocolMappers": [] }
     { "name": "listings:draft", "description": "Draft and version your listing copy", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Draft and version your unpublished listing copy" }, "protocolMappers": [] }
     { "name": "support:read", "description": "Read ShopSphere support queues", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Read minimized order-exception and return support queues" }, "protocolMappers": [] }
+    { "name": "support:draft", "description": "Draft support messages from your own orders", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Draft (never send) support messages about your own orders" }, "protocolMappers": [] }
   ],
   "clients": [
     {
@@ -123,6 +124,7 @@
         "sellers:read"
         "listings:draft"
         "support:read"
+        "support:draft"
       ]
     },
     {
@@ -151,6 +153,7 @@
         "sellers:read"
         "listings:draft"
         "support:read"
+        "support:draft"
       ]
     },
     {

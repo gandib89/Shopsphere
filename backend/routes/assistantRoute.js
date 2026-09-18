@@ -50,6 +50,8 @@ import {
   listReturnQueue,
   orderExceptionDetailObserve,
 } from "../services/assistantAdminQueues.js";
+import { draftSupportMessage } from "../services/assistantSupportDrafts.js";
+import { createDraftSupportLimit } from "../services/assistantSupportDraftLimits.js";
 import { auditContext, recordAssistantAudit } from "../services/assistantAudit.js";
 import { withAssistantActor } from "../database/assistantTransaction.js";
 import {
@@ -316,25 +318,29 @@ router.post(
   },
 );
 
-// Shared private-operation seam for buyer/seller reads (#12/#13/#14) and
 // Shared private-operation seam for buyer/seller reads (#12/#13/#14), seller
-// listing drafts (#20), and admin support queues (#17). Every operation crosses
-// the same chain: workload authentication, delegated credential verification
-// (no browser-JWT fallback), distributed limits, and per-call role/scope/
-// rollout authorization. Inputs are strict schemas (unknown fields rejected,
-// no caller totals/identity/owner fields); reads run inside a transaction-
-// local actor context; success and failure both audit. `middlewares` lets a
-// route insert extra route-scoped controls (e.g. draft/proposal rate
-// limiters) after delegation, and observe(output, input) may return
-// auditMetadata merged into the audited redacted input.
-const privateOperation = ({ path, tool, operation, roles, scope, rolloutFlag, inputSchema, run, observe, middlewares = [] }) => {
+// listing drafts (#20), admin support queues (#17), and buyer support drafts
+// (#19). Every operation crosses the same chain: workload authentication,
+// delegated credential verification (no browser-JWT fallback), distributed
+// limits, and per-call role/scope/rollout authorization. Inputs are strict
+// schemas (unknown fields rejected, no caller totals/identity/owner fields);
+// reads run inside a transaction-local actor context; success and failure
+// both audit. `middlewares` (optional): route-scoped controls such as draft
+// and proposal rate limiters, appended after authorization without touching
+// the shared chain order. `auditInput` (optional): projection of the parsed
+// input stored in audit rows — used by routes whose input carries
+// user-authored content that must never be echoed into audits or logs.
+// observe(output, input) may return auditMetadata merged into the audited
+// redacted input.
+const privateOperation = ({ path, tool, operation, roles, scope, rolloutFlag, inputSchema, run, observe, middlewares = [], auditInput }) => {
+  const auditEventInput = (data) => (auditInput ? auditInput(data) : data);
   router.post(
     path,
     authenticateAssistantWorkload,
     authenticateAssistantDelegation,
-    ...middlewares,
     enforceAssistantDistributedLimit(),
     authorizeAssistantOperation({ operation, roles, scope, rolloutFlag }),
+    ...middlewares,
     async (req, res) => {
       const startedAt = Date.now();
       const parsed = inputSchema.safeParse(req.body);
@@ -366,12 +372,13 @@ const privateOperation = ({ path, tool, operation, roles, scope, rolloutFlag, in
         const observed = observe?.(output, parsed.data) ?? {};
         const { resourceIds = [], rowCount = null, auditMetadata = null } = observed;
         // Observe-provided audit metadata (e.g. the detail tool's support
-        // purpose) rides through the established audited-input path, so it
-        // lands in the durable event's redacted input after sanitization.
+        // purpose) rides through the established audited-input path, and
+        // routes with user-authored inputs project them out via auditInput
+        // before anything durable is written.
         return auditedJson(req, res, {
           operation,
           tool,
-          input: auditMetadata ? { ...parsed.data, ...auditMetadata } : parsed.data,
+          input: auditEventInput(auditMetadata ? { ...parsed.data, ...auditMetadata } : parsed.data),
           output,
           startedAt,
           resourceIds,
@@ -382,7 +389,7 @@ const privateOperation = ({ path, tool, operation, roles, scope, rolloutFlag, in
         return auditedError(req, res, {
           operation,
           tool,
-          input: parsed.data,
+          input: auditEventInput(parsed.data),
           status,
           code: status === 404 ? "not_found" : status === 400 ? "invalid_input" : "operation_unavailable",
           startedAt,
@@ -568,7 +575,6 @@ privateOperation({
   observe: (output) => ({ resourceIds: [], rowCount: output.buckets.length }),
 });
 
-// Admin platform reads (#16). The delegated token must carry the exact
 // consented scope (platform:read / sellers:read) and the live account must be
 // an admin — a promoted user with an older narrower grant gains no authority
 // without renewed consent, because the scope check reads the token's grant,
@@ -834,6 +840,36 @@ privateOperation({
   inputSchema: z.object({ cursor, limit: z.number().int().min(1).max(50).optional() }).strict(),
   run: (input, ctx) => listReturnQueue(input, ctx),
   observe: (output) => ({ resourceIds: output.returns.map(({ orderId }) => orderId), rowCount: output.returns.length }),
+});
+
+// Buyer support-message drafting (#19). DETERMINISTIC template composition
+// from the buyer's own minimized order facts plus approved, versioned policy
+// answers — no LLM. ZERO DELIVERY SIDE EFFECTS: nothing on this path sends
+// email or chat, creates a ticket or notification, or calls a webhook — the
+// tool only returns draft text for the buyer to review. The buyer picks the
+// owned order and the bounded topic; no recipient, channel, or send affordance
+// exists in the contract. The draft rate class carries stricter route-scoped
+// limits (10/minute, 100/day per subject+client, fail-closed) on top of the
+// shared distributed limit, and the user-authored `notes` field is excluded
+// from audit rows and logs.
+const draftSupportInput = z.object({
+  orderId: z.string().regex(/^[A-Za-z0-9]{1,24}$/),
+  topic: z.enum(["order_status", "delivery_issue", "return_question", "refund_question", "other"]),
+  notes: z.string().min(1).max(500).optional(),
+}).strict();
+
+privateOperation({
+  path: "/draft_support_message",
+  tool: "draft_support_message",
+  operation: "support.draftMessage",
+  roles: ["user"],
+  scope: "support:draft",
+  rolloutFlag: "MCP_TOOL_DRAFT_SUPPORT_MESSAGE_ENABLED",
+  inputSchema: draftSupportInput,
+  middlewares: [createDraftSupportLimit()],
+  auditInput: ({ orderId, topic }) => ({ orderId, topic }),
+  run: (input, ctx) => draftSupportMessage(input, ctx),
+  observe: (output) => ({ resourceIds: [output.orderId], rowCount: 1 }),
 });
 
 router.use(authenticatePublicWorkload);

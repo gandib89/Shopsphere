@@ -205,5 +205,9 @@ export const readConfig = (environment = process.env) => ({
       environment.MCP_TOOL_LIST_RETURN_QUEUE_ENABLED,
       false,
     ),
+    MCP_TOOL_DRAFT_SUPPORT_MESSAGE_ENABLED: parseBoolean(
+      environment.MCP_TOOL_DRAFT_SUPPORT_MESSAGE_ENABLED,
+      false,
+    ),
   },
 });

@@ -989,6 +989,46 @@ const ListReturnQueueOutputSchema = z
   .strict();
 
 
+// Buyer support-message drafting (#19): deterministic template composition
+// from the buyer's own minimized order facts plus approved, versioned policy
+// answers. The buyer picks the owned order and a bounded topic; no recipient,
+// channel, or send/submit affordance exists in the contract, and the composed
+// draft is bounded to 4000 characters.
+const SUPPORT_DRAFT_TOPICS = Object.freeze([
+  "order_status",
+  "delivery_issue",
+  "return_question",
+  "refund_question",
+  "other",
+]);
+
+const DraftSupportMessageInputSchema = z
+  .object({
+    orderId: z.string().regex(/^[A-Za-z0-9]{1,24}$/),
+    topic: z.enum(SUPPORT_DRAFT_TOPICS),
+    notes: z.string().min(1).max(500).optional(),
+  })
+  .strict();
+
+const SupportDraftCitationSchema = z
+  .object({
+    sourceId: z.string().min(1).max(100),
+    sourceVersion: z.literal(POLICY_VERSION),
+  })
+  .strict();
+
+const DraftSupportMessageOutputSchema = z
+  .object({
+    orderId: z.string().min(1).max(24),
+    topic: z.enum(SUPPORT_DRAFT_TOPICS),
+    draft: z.string().min(1).max(4000),
+    truncated: z.boolean(),
+    citations: z.array(SupportDraftCitationSchema).max(10),
+    generatedAt: z.iso.datetime(),
+  })
+  .strict();
+
+
 const definitions = [
   {
     name: "get_capabilities",
@@ -1727,6 +1767,29 @@ const definitions = [
       operationId: "support.returnQueue",
       method: "POST",
       path: "/api/v1/assistant/list_return_queue",
+    },
+  },
+
+  {
+    name: "draft_support_message",
+    title: "Draft my ShopSphere support message",
+    description:
+      "Composes a bounded support-inquiry draft for one of the buyer's own orders from approved ShopSphere policy sources. It only drafts text: it never sends messages, creates tickets, or triggers notifications.",
+    inputSchema: DraftSupportMessageInputSchema,
+    outputSchema: DraftSupportMessageOutputSchema,
+    operationClass: "draft",
+    roles: ["user"],
+    scopes: ["support:draft"],
+    rateClass: "draft",
+    rollout: {
+      flag: "MCP_TOOL_DRAFT_SUPPORT_MESSAGE_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "support.draftMessage",
+      method: "POST",
+      path: "/api/v1/assistant/draft_support_message",
     },
   },
 ];
