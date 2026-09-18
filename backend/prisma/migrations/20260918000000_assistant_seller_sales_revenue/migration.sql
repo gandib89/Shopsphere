@@ -6,11 +6,12 @@
 -- transaction-local actor context resolves to no rows.
 
 -- Revenue projection: ledger amounts and bucket keys only — no admin identity.
--- sellerId, createdAt, and id are granted because the operation predicates and
--- ordering reference them; productId, quantity, transactionDate, and adminId
--- stay unread.
+-- sellerId and id are granted because the operation predicates and ordering
+-- reference them; productId, quantity, transactionDate, and adminId stay
+-- unread. (revenues has no createdAt column — the ledger timestamps via
+-- transactionDate — so it must not appear in this grant.)
 GRANT SELECT (id, "orderId", "sellerId", "totalSalePrice", "adminCommission",
-              "sellerRevenue", status, month, year, "createdAt")
+              "sellerRevenue", status, month, year)
   ON TABLE revenues TO shopsphere_assistant_private_runtime;
 
 -- Refund bucket projection adds the completion timestamp to the already
