@@ -123,6 +123,13 @@ const executedResponseFor = (proposal) => {
       orderStatus: "Cancelled",
     };
   }
+  if (proposal.actionKind === RETURN_ACTION_KIND) {
+    return {
+      status: "executed",
+      executionReference: proposal.executionReference ?? executionReferenceFor(proposal.id),
+      nextSteps: [...RETURN_NEXT_STEPS],
+    };
+  }
   return {
     status: "executed",
     executionReference: proposal.executionReference ?? executionReferenceFor(proposal.id),
