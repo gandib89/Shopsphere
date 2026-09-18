@@ -626,6 +626,102 @@ const GetMyRevenueSummaryOutputSchema = z
   })
   .strict();
 
+// Admin support queues (#17): membership is a fixed server rule — the exact
+// stored return/refund exception status strings inside a rolling 90-day window —
+// never a caller-supplied filter. Inputs therefore carry pagination only, plus
+// an explicit purpose for the detail audit trail. Statuses are the exact
+// stored server strings (with spaces); the MCP-fictional "ReturnRequested" and
+// "Returned" names used by earlier buyer/seller enums are deliberately absent.
+// Refunds are only created against "Return Approved" or "Cancelled" orders and
+// a failed refund leaves that status untouched, so "Cancelled" is part of the
+// exception queue's closed status set — the output never misrepresents rows.
+const AdminQueueStatusSchema = z.enum([
+  "Return Requested",
+  "Return Approved",
+  "Return Rejected",
+  "Refund Released",
+  "Cancelled",
+]);
+
+const AdminReturnStatusSchema = z.enum([
+  "Return Requested",
+  "Return Approved",
+  "Return Rejected",
+]);
+
+const RefundStateSchema = z.enum(["Processing", "Succeeded", "Failed"]);
+
+const AdminQueuePageInputSchema = z.object({
+  cursor: z.string().min(1).max(2048).optional(),
+  limit: z.number().int().min(1).max(50).optional(),
+}).strict();
+
+const AdminQueueOrderSchema = z
+  .object({
+    orderId: z.string().min(1).max(100),
+    orderNumber: z.string().min(1).max(100).nullable(),
+    status: AdminQueueStatusSchema,
+    returnRequestedAt: z.iso.datetime().max(100).nullable(),
+    refundStatus: RefundStateSchema.nullable(),
+    refundAmount: MoneySchema.nullable(),
+    buyerReference: z.string().min(1).max(100).nullable(),
+    sellerReference: z.string().min(1).max(100).nullable(),
+    lastTransitionAt: z.iso.datetime().max(100),
+  })
+  .strict();
+
+const ListOrderExceptionQueueOutputSchema = z
+  .object({
+    orders: z.array(AdminQueueOrderSchema).max(50),
+    nextCursor: z.string().min(1).max(2048).nullable(),
+  })
+  .strict();
+
+const GetOrderExceptionDetailInputSchema = z
+  .object({
+    orderId: z.string().min(1).max(100),
+    purpose: z.string().min(10).max(500),
+  })
+  .strict();
+
+const GetOrderExceptionDetailOutputSchema = z
+  .object({
+    order: AdminQueueOrderSchema.extend({
+      quantity: z.number().int().min(1),
+      totalPrice: MoneySchema,
+      adminCommission: MoneySchema.nullable(),
+      confirmedAt: z.iso.datetime().max(100).nullable(),
+      processingAt: z.iso.datetime().max(100).nullable(),
+      shippedAt: z.iso.datetime().max(100).nullable(),
+      deliveredAt: z.iso.datetime().max(100).nullable(),
+      cancelledAt: z.iso.datetime().max(100).nullable(),
+      returnReason: z.string().max(1000).nullable(),
+      refundReleasedAt: z.iso.datetime().max(100).nullable(),
+    }).strict(),
+  })
+  .strict();
+
+const AdminReturnQueueRowSchema = z
+  .object({
+    orderId: z.string().min(1).max(100),
+    orderNumber: z.string().min(1).max(100).nullable(),
+    status: AdminReturnStatusSchema,
+    returnRequestedAt: z.iso.datetime().max(100),
+    returnReason: z.string().max(1000).nullable(),
+    buyerReference: z.string().min(1).max(100).nullable(),
+    sellerReference: z.string().min(1).max(100).nullable(),
+    hasReturnImage: z.boolean(),
+    refundStatus: RefundStateSchema.nullable(),
+  })
+  .strict();
+
+const ListReturnQueueOutputSchema = z
+  .object({
+    returns: z.array(AdminReturnQueueRowSchema).max(50),
+    nextCursor: z.string().min(1).max(2048).nullable(),
+  })
+  .strict();
+
 const definitions = [
   {
     name: "get_capabilities",
@@ -1112,6 +1208,72 @@ const definitions = [
       operationId: "sales.revenueSummary",
       method: "POST",
       path: "/api/v1/assistant/get_my_revenue_summary",
+    },
+  },
+  {
+    name: "list_order_exception_queue",
+    title: "List ShopSphere order exceptions",
+    description:
+      "Lists one bounded page of orders in the fixed support exception queue: return and refund exception states or failed refunds within the last 90 days.",
+    inputSchema: AdminQueuePageInputSchema,
+    outputSchema: ListOrderExceptionQueueOutputSchema,
+    operationClass: "read",
+    roles: ["admin"],
+    scopes: ["support:read"],
+    rateClass: "authenticated-read",
+    rollout: {
+      flag: "MCP_TOOL_LIST_ORDER_EXCEPTION_QUEUE_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "support.orderExceptionQueue",
+      method: "POST",
+      path: "/api/v1/assistant/list_order_exception_queue",
+    },
+  },
+  {
+    name: "get_order_exception_detail",
+    title: "Get ShopSphere order exception detail",
+    description:
+      "Inspects one minimized queued order for a stated support purpose; foreign, non-queued, and unknown ids are indistinguishable.",
+    inputSchema: GetOrderExceptionDetailInputSchema,
+    outputSchema: GetOrderExceptionDetailOutputSchema,
+    operationClass: "read",
+    roles: ["admin"],
+    scopes: ["support:read"],
+    rateClass: "authenticated-read",
+    rollout: {
+      flag: "MCP_TOOL_GET_ORDER_EXCEPTION_DETAIL_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "support.orderExceptionDetail",
+      method: "POST",
+      path: "/api/v1/assistant/get_order_exception_detail",
+    },
+  },
+  {
+    name: "list_return_queue",
+    title: "List ShopSphere returns",
+    description:
+      "Lists one bounded page of orders with a requested return still inside the return lifecycle, newest first, within the last 90 days.",
+    inputSchema: AdminQueuePageInputSchema,
+    outputSchema: ListReturnQueueOutputSchema,
+    operationClass: "read",
+    roles: ["admin"],
+    scopes: ["support:read"],
+    rateClass: "authenticated-read",
+    rollout: {
+      flag: "MCP_TOOL_LIST_RETURN_QUEUE_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "support.returnQueue",
+      method: "POST",
+      path: "/api/v1/assistant/list_return_queue",
     },
   },
 ];

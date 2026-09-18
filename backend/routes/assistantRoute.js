@@ -31,6 +31,12 @@ import {
   getMyRevenueSummary,
   listMySales,
 } from "../services/assistantSellerOrders.js";
+import {
+  getOrderExceptionDetail,
+  listOrderExceptionQueue,
+  listReturnQueue,
+  orderExceptionDetailObserve,
+} from "../services/assistantAdminQueues.js";
 import { auditContext, recordAssistantAudit } from "../services/assistantAudit.js";
 import { withAssistantActor } from "../database/assistantTransaction.js";
 import {
@@ -297,7 +303,8 @@ router.post(
   },
 );
 
-// Shared private-operation seam for buyer/seller reads (#12/#13/#14).
+// Shared private-operation seam for buyer/seller reads (#12/#13/#14) and
+// admin support queues (#17).
 // Every operation crosses the same chain: workload authentication, delegated
 // credential verification (no browser-JWT fallback), distributed limits,
 // and per-call role/scope/rollout authorization. Inputs are strict schemas
@@ -338,8 +345,20 @@ const privateOperation = ({ path, tool, operation, roles, scope, rolloutFlag, in
           cursorSecret: process.env.ASSISTANT_CURSOR_SECRET,
           now: new Date(),
         }));
-        const { resourceIds = [], rowCount = null } = observe?.(output) ?? {};
-        return auditedJson(req, res, { operation, tool, input: parsed.data, output, startedAt, resourceIds, rowCount });
+        const observed = observe?.(output, parsed.data) ?? {};
+        const { resourceIds = [], rowCount = null, auditMetadata = null } = observed;
+        // Observe-provided audit metadata (e.g. the detail tool's support
+        // purpose) rides through the established audited-input path, so it
+        // lands in the durable event's redacted input after sanitization.
+        return auditedJson(req, res, {
+          operation,
+          tool,
+          input: auditMetadata ? { ...parsed.data, ...auditMetadata } : parsed.data,
+          output,
+          startedAt,
+          resourceIds,
+          rowCount,
+        });
       } catch (error) {
         const status = error?.statusCode === 404 ? 404 : error?.statusCode === 400 ? 400 : error?.statusCode === 503 ? 503 : 500;
         return auditedError(req, res, {
@@ -529,6 +548,48 @@ privateOperation({
   inputSchema: z.object({ year: z.number().int().min(2000).max(2100).optional() }).strict(),
   run: (input, ctx) => getMyRevenueSummary(input, ctx),
   observe: (output) => ({ resourceIds: [], rowCount: output.buckets.length }),
+});
+
+// Admin support queues (#17). Membership is the fixed server rule encoded in
+// the service — exact stored exception/return status strings plus failed
+// refunds inside a rolling 90-day window — with no caller-supplied filters.
+// The detail view requires an explicit bounded purpose, which observe() threads
+// into the durable audit metadata; foreign, missing, non-queued, and
+// quarantined rows all resolve to the identical generic 404.
+privateOperation({
+  path: "/list_order_exception_queue",
+  tool: "list_order_exception_queue",
+  operation: "support.orderExceptionQueue",
+  roles: ["admin"],
+  scope: "support:read",
+  rolloutFlag: "MCP_TOOL_LIST_ORDER_EXCEPTION_QUEUE_ENABLED",
+  inputSchema: z.object({ cursor, limit: z.number().int().min(1).max(50).optional() }).strict(),
+  run: (input, ctx) => listOrderExceptionQueue(input, ctx),
+  observe: (output) => ({ resourceIds: output.orders.map(({ orderId }) => orderId), rowCount: output.orders.length }),
+});
+
+privateOperation({
+  path: "/get_order_exception_detail",
+  tool: "get_order_exception_detail",
+  operation: "support.orderExceptionDetail",
+  roles: ["admin"],
+  scope: "support:read",
+  rolloutFlag: "MCP_TOOL_GET_ORDER_EXCEPTION_DETAIL_ENABLED",
+  inputSchema: z.object({ orderId, purpose: z.string().min(10).max(500) }).strict(),
+  run: (input, ctx) => getOrderExceptionDetail(input, ctx),
+  observe: (output, input) => orderExceptionDetailObserve(output, input),
+});
+
+privateOperation({
+  path: "/list_return_queue",
+  tool: "list_return_queue",
+  operation: "support.returnQueue",
+  roles: ["admin"],
+  scope: "support:read",
+  rolloutFlag: "MCP_TOOL_LIST_RETURN_QUEUE_ENABLED",
+  inputSchema: z.object({ cursor, limit: z.number().int().min(1).max(50).optional() }).strict(),
+  run: (input, ctx) => listReturnQueue(input, ctx),
+  observe: (output) => ({ resourceIds: output.returns.map(({ orderId }) => orderId), rowCount: output.returns.length }),
 });
 
 router.use(authenticatePublicWorkload);

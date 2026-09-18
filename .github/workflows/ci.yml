@@ -129,7 +129,7 @@ jobs:
       - run: npx prisma migrate deploy --schema=prisma/schema.prisma
       - run: node scripts/provisionAssistantRole.js
       - run: node scripts/seedAssistantRlsTest.js
-      - run: node --test database/assistantRls.integration.test.js
+      - run: node --test database/assistantRls.integration.test.js database/assistantAdminQueues.integration.test.js
       - run: node --test services/assistantRedis.integration.test.js
       - name: Verify MCP session isolation against Redis
         working-directory: mcp

@@ -21,6 +21,9 @@ const OPERATIONS = Object.freeze({
   list_my_seller_orders: "/api/v1/assistant/list_my_seller_orders",
   get_my_seller_order: "/api/v1/assistant/get_my_seller_order",
   get_my_revenue_summary: "/api/v1/assistant/get_my_revenue_summary",
+  list_order_exception_queue: "/api/v1/assistant/list_order_exception_queue",
+  get_order_exception_detail: "/api/v1/assistant/get_order_exception_detail",
+  list_return_queue: "/api/v1/assistant/list_return_queue",
 });
 
 const PRIVATE_SCOPES = Object.freeze({
@@ -40,6 +43,9 @@ const PRIVATE_SCOPES = Object.freeze({
   list_my_seller_orders: Object.freeze(["sales:read"]),
   get_my_seller_order: Object.freeze(["sales:read"]),
   get_my_revenue_summary: Object.freeze(["revenue:read"]),
+  list_order_exception_queue: Object.freeze(["support:read"]),
+  get_order_exception_detail: Object.freeze(["support:read"]),
+  list_return_queue: Object.freeze(["support:read"]),
 });
 
 export const createBackendClient = ({ origin, token, exchangeToken, timeoutMs = 10_000, fetchImpl = fetch }) => {
