@@ -626,6 +626,114 @@ const GetMyRevenueSummaryOutputSchema = z
   })
   .strict();
 
+// Seller listing drafts (#20): deterministic, template-based composition from
+// supplied facts or one seller-owned product. The templates restate supplied
+// facts only and point at the approved store policy — no condition, warranty,
+// or policy claims are ever invented. Saving touches only owned draft rows and
+// never creates, modifies, publishes, or broadcasts a live listing. grantId
+// isolation (a draft is readable/writable only through the grant that made it)
+// is enforced by the backend service; these schemas bound every string/array.
+const DraftPolicySourceSchema = z
+  .object({
+    sourceId: z.string().min(1).max(100),
+    sourceVersion: z.literal(POLICY_VERSION),
+  })
+  .strict();
+
+const DraftListingCopyInputSchema = z
+  .object({
+    sourceProductId: z.string().min(1).max(100).optional(),
+    facts: z
+      .object({
+        productName: z.string().min(1).max(140).optional(),
+        keyFeatures: z.array(z.string().min(1).max(200)).max(10).optional(),
+        audienceNote: z.string().min(1).max(300).optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict()
+  .refine((input) => input.sourceProductId !== undefined || input.facts !== undefined, {
+    message: "sourceProductId or facts is required",
+  });
+
+const DraftListingCopyOutputSchema = z
+  .object({
+    title: z.string().min(1).max(140),
+    description: z.string().min(1).max(4000),
+    highlights: z.array(z.string().min(1).max(200)).max(10),
+    citations: z.array(DraftPolicySourceSchema).max(10),
+    generatedAt: z.iso.datetime(),
+  })
+  .strict();
+
+const SaveListingDraftInputSchema = z
+  .object({
+    draftId: z.string().min(1).max(100).optional(),
+    title: z.string().min(1).max(140),
+    description: z.string().min(1).max(4000),
+    highlights: z.array(z.string().min(1).max(200)).max(10).optional(),
+    sourceProductId: z.string().min(1).max(100).optional(),
+  })
+  .strict();
+
+const SaveListingDraftOutputSchema = z
+  .object({
+    draftId: z.string().min(1).max(100),
+    version: z.number().int().min(1),
+    status: z.enum(["Draft", "Superseded"]),
+    savedAt: z.iso.datetime(),
+  })
+  .strict();
+
+const ListMyListingDraftsInputSchema = z
+  .object({
+    cursor: z.string().min(1).max(2048).optional(),
+    limit: z.number().int().min(1).max(50).optional(),
+    includeSuperseded: z.boolean().optional(),
+  })
+  .strict();
+
+const ListingDraftSummarySchema = z
+  .object({
+    draftId: z.string().min(1).max(100),
+    title: z.string().min(1).max(140),
+    status: z.enum(["Draft", "Superseded"]),
+    version: z.number().int().min(1),
+    sourceProductId: z.string().min(1).max(100).nullable(),
+    createdAt: z.iso.datetime(),
+    updatedAt: z.iso.datetime(),
+  })
+  .strict();
+
+const ListMyListingDraftsOutputSchema = z
+  .object({
+    drafts: z.array(ListingDraftSummarySchema).max(50),
+    nextCursor: z.string().min(1).max(2048).nullable(),
+  })
+  .strict();
+
+const GetMyListingDraftInputSchema = z
+  .object({
+    draftId: z.string().min(1).max(100),
+  })
+  .strict();
+
+const GetMyListingDraftOutputSchema = z
+  .object({
+    draftId: z.string().min(1).max(100),
+    title: z.string().min(1).max(140),
+    description: z.string().min(1).max(4000),
+    highlights: z.array(z.string().min(1).max(200)).max(10),
+    status: z.enum(["Draft", "Superseded"]),
+    version: z.number().int().min(1),
+    supersedesId: z.string().min(1).max(100).nullable(),
+    sourceProductId: z.string().min(1).max(100).nullable(),
+    createdAt: z.iso.datetime(),
+    updatedAt: z.iso.datetime(),
+  })
+  .strict();
+
 const definitions = [
   {
     name: "get_capabilities",
@@ -1112,6 +1220,94 @@ const definitions = [
       operationId: "sales.revenueSummary",
       method: "POST",
       path: "/api/v1/assistant/get_my_revenue_summary",
+    },
+  },
+  {
+    name: "draft_listing_copy",
+    title: "Draft ShopSphere listing copy",
+    description:
+      "Composes bounded listing copy from supplied facts or one seller-owned product using fixed templates; invents no condition, warranty, or policy claims and never publishes anything.",
+    inputSchema: DraftListingCopyInputSchema,
+    outputSchema: DraftListingCopyOutputSchema,
+    operationClass: "draft",
+    roles: ["seller"],
+    scopes: ["listings:draft"],
+    rateClass: "draft",
+    rollout: {
+      flag: "MCP_TOOL_DRAFT_LISTING_COPY_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "listings.draftCopy",
+      method: "POST",
+      path: "/api/v1/assistant/draft_listing_copy",
+    },
+  },
+  {
+    name: "save_listing_draft",
+    title: "Save my ShopSphere listing draft",
+    description:
+      "Creates or versions an unpublished listing draft owned by the authenticated seller and grant; saving never creates, modifies, publishes, or broadcasts a live listing.",
+    inputSchema: SaveListingDraftInputSchema,
+    outputSchema: SaveListingDraftOutputSchema,
+    operationClass: "draft",
+    roles: ["seller"],
+    scopes: ["listings:draft"],
+    rateClass: "draft",
+    rollout: {
+      flag: "MCP_TOOL_SAVE_LISTING_DRAFT_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "listings.saveDraft",
+      method: "POST",
+      path: "/api/v1/assistant/save_listing_draft",
+    },
+  },
+  {
+    name: "list_my_listing_drafts",
+    title: "List my ShopSphere listing drafts",
+    description:
+      "Lists one bounded page of unpublished listing drafts owned by the authenticated seller and grant, optionally including superseded versions.",
+    inputSchema: ListMyListingDraftsInputSchema,
+    outputSchema: ListMyListingDraftsOutputSchema,
+    operationClass: "draft",
+    roles: ["seller"],
+    scopes: ["listings:draft"],
+    rateClass: "draft",
+    rollout: {
+      flag: "MCP_TOOL_LIST_MY_LISTING_DRAFTS_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "listings.listDrafts",
+      method: "POST",
+      path: "/api/v1/assistant/list_my_listing_drafts",
+    },
+  },
+  {
+    name: "get_my_listing_draft",
+    title: "Get my ShopSphere listing draft",
+    description:
+      "Reads one full listing draft owned by the authenticated seller and grant, including its description, highlights, status, and version lineage.",
+    inputSchema: GetMyListingDraftInputSchema,
+    outputSchema: GetMyListingDraftOutputSchema,
+    operationClass: "draft",
+    roles: ["seller"],
+    scopes: ["listings:draft"],
+    rateClass: "draft",
+    rollout: {
+      flag: "MCP_TOOL_GET_MY_LISTING_DRAFT_ENABLED",
+      defaultEnabled: false,
+    },
+    backendOperation: {
+      kind: "http",
+      operationId: "listings.getDraft",
+      method: "POST",
+      path: "/api/v1/assistant/get_my_listing_draft",
     },
   },
 ];
