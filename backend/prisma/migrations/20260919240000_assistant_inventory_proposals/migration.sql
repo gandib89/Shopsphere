@@ -26,7 +26,7 @@
 -- Column grants: NONE are added. Every column the preview reads was already
 -- granted to shopsphere_assistant_private_runtime by earlier migrations —
 -- products (id, name, quantity, "sellerId", …) by 20260916000000 and
--- products."updatedAt" by 20260919220000_product_updated_at; product_options
+-- products."updatedAt" by 20260919215959_product_updated_at; product_options
 -- (id, "productId", kind, value, "priceDelta", stock) by 20260916000000;
 -- proposals/proposal_outbox_events projections by 20260919050000 and the #26
 -- outbox INSERT grant. No UPDATE/DELETE/INSERT grant beyond the existing

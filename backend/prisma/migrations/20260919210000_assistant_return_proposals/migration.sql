@@ -4,7 +4,7 @@
 -- role; this migration only admits the new operation to the existing policies
 -- (all other predicates preserved verbatim) and grants the one new orders
 -- column the preview reads (the mutation marker added by migration
--- 20260919200000_order_updated_at, used as the proposal's version proxy).
+-- 20260919195959_order_updated_at, used as the proposal's version proxy).
 --
 -- Preview reads on orders: id, "orderNumber", status, "totalPrice",
 -- "deliveredAt", "returnRequestedAt" were already granted by

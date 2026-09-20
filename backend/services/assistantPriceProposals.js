@@ -30,7 +30,7 @@
 // that single enforcement point is deliberate and documented there.
 //
 // Version semantics: products had no mutation marker, so migration
-// 20260919220000_product_updated_at added products."updatedAt" (Prisma
+// 20260919215959_product_updated_at added products."updatedAt" (Prisma
 // @updatedAt). expectedVersion stores Math.floor(updatedAt.getTime() / 1000) —
 // epoch SECONDS, because proposals."expectedVersion" is an int4 column and
 // epoch milliseconds overflow it (same proxy convention as orderVersionOf for

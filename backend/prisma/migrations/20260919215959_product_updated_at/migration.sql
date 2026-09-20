@@ -1,11 +1,13 @@
--- Mutation marker for products (#27).
+-- Mutation marker for products (#27). This migration intentionally sorts
+-- before 20260919220000_assistant_listing_proposals, which grants SELECT on
+-- the new column.
 --
 -- Products previously had no "last modified" column (only the discount-specific
 -- "discountUpdatedAt"), so no optimistic version proxy existed for first-party
 -- proposal execution. Seller price proposals snapshot products."updatedAt"
 -- (epoch seconds, int4-safe) as the proposal's expectedVersion and require it
 -- unchanged at execution — mirroring the orders mutation marker added for #25
--- (migration 20260919200000_order_updated_at). Prisma's @updatedAt maintains
+-- (migration 20260919195959_order_updated_at). Prisma's @updatedAt maintains
 -- the column client-side on every update; the database default below covers
 -- rows written outside the Prisma client and backfills existing rows. This is
 -- the storefront price-mutation invariant too: updateProduct/updateSellerProduct

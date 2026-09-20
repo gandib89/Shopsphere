@@ -56,7 +56,7 @@ CREATE POLICY shopsphere_assistant_product_seller ON products
   );
 
 -- The version proxy read: proposal creation snapshots products."updatedAt"
--- (added by migration 20260919220000_product_updated_at). GRANT is additive;
+-- (added by migration 20260919215959_product_updated_at). GRANT is additive;
 -- every other projected product column (id, name, price, discount, "sellerId")
 -- was already granted by 20260916000000_assistant_buyer_seller_reads.
 GRANT SELECT ("updatedAt")

@@ -19,7 +19,7 @@
 // 404 via the immutable buyer predicate (buildBuyerOrderWhere).
 //
 // Version proxy: Order had no mutation marker, so migration
-// 20260919200000_order_updated_at added orders."updatedAt" (maintained by
+// 20260919195959_order_updated_at added orders."updatedAt" (maintained by
 // Prisma @updatedAt). Proposal.expectedVersion stores Math.floor(
 // order.updatedAt.getTime() / 1000) — epoch SECONDS, because expectedVersion is
 // an int4 column and epoch milliseconds (1.7e12) overflow its 2^31-1 bound.
