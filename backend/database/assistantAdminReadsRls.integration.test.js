@@ -174,14 +174,15 @@ test("admin platform reads are RLS-scoped with minimized projections", { skip: !
   assert.equal(ben.shopName, "");
 
   // The pre-existing self policy is unchanged: a seller under this operation
-  // still sees exactly its own row and nothing else.
+  // still sees exactly its own row and nothing else. Query the restricted
+  // transaction directly: listSellerApplications is intentionally admin-only
+  // and its defense-in-depth role check must continue rejecting sellers.
   const benApplications = await withAssistantActor(
     { actorId: BEN_ID, role: "seller", operation: "sellers.listApplications" },
-    (tx) => listSellerApplications({}, {
-      client: tx,
-      principal: { subject: BEN_ID, role: "seller", clientId: "client-1", grantId: "grant-1" },
-      cursorSecret: SECRET,
+    (tx) => tx.user.findMany({
+      select: { id: true, role: true },
+      orderBy: { id: "asc" },
     }),
   );
-  assert.deepEqual(benApplications.applications.map(({ sellerReference }) => sellerReference), [benReference]);
+  assert.deepEqual(benApplications, [{ id: BEN_ID, role: "seller" }]);
 });
