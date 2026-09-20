@@ -33,21 +33,27 @@ CREATE POLICY shopsphere_assistant_order_admin ON orders
     )
   );
 
--- Refund rows carry no admin-scoped column, so they are scoped through the
--- parent order. The orders policy above admits rows under the same support
--- operations, which is what makes this EXISTS resolvable.
+-- Preserve #16's platform-wide aggregate operation while adding #17's
+-- order-scoped support operations. PostgreSQL policy names are table-wide, so
+-- replacing shopsphere_assistant_refund_admin with a support-only predicate
+-- would silently remove platform.revenueSummary access.
 DROP POLICY IF EXISTS shopsphere_assistant_refund_admin ON refunds;
 CREATE POLICY shopsphere_assistant_refund_admin ON refunds
   FOR SELECT TO shopsphere_assistant_private_runtime
   USING (
-    EXISTS (
-      SELECT 1 FROM orders
-      WHERE orders.id = refunds."orderId"
+    current_setting('shopsphere.actor_role', true) = 'admin'
+    AND (
+      current_setting('shopsphere.operation', true) = 'platform.revenueSummary'
+      OR (
+        current_setting('shopsphere.operation', true) IN (
+          'support.orderExceptionQueue', 'support.orderExceptionDetail', 'support.returnQueue'
+        )
         AND current_setting('shopsphere.actor_id', true) IS NOT NULL
         AND current_setting('shopsphere.actor_id', true) <> ''
-    )
-    AND current_setting('shopsphere.actor_role', true) = 'admin'
-    AND current_setting('shopsphere.operation', true) IN (
-      'support.orderExceptionQueue', 'support.orderExceptionDetail', 'support.returnQueue'
+        AND EXISTS (
+          SELECT 1 FROM orders
+          WHERE orders.id = refunds."orderId"
+        )
+      )
     )
   );
