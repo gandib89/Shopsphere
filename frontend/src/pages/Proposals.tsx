@@ -29,6 +29,7 @@ const actionLabels: Record<string, string> = {
   'product.set_price': 'Price change',
   'product.set_discount': 'Discount change',
   'inventory.adjust': 'Adjust inventory',
+  'sale.advance_fulfillment': 'Advance fulfillment',
 };
 
 const statusLabels: Record<string, string> = {

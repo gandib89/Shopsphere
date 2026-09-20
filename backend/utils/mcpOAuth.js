@@ -18,6 +18,7 @@ export const OAUTH_SCOPES = Object.freeze([
   "proposals:read",
   "pricing:propose",
   "inventory:propose",
+  "fulfillment:propose",
   "sales:read",
   "revenue:read",
   "platform:read",

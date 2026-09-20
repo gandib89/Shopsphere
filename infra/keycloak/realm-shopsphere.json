@@ -97,7 +97,8 @@
 { "name": "orders:propose", "description": "Propose order cancellations for your review", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Propose cancellations of your own eligible orders that you review and confirm in ShopSphere before anything changes; refunds are never initiated here" }, "protocolMappers": [] },
 { "name": "listings:propose", "description": "Propose listing publishes and content changes for your review", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Propose listing publishes and content changes that you review and confirm in ShopSphere before anything changes" }, "protocolMappers": [] },
 { "name": "pricing:propose", "description": "Propose price changes for your review", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Propose price or discount changes for your own products that you review and confirm in ShopSphere before anything changes; no order, payment, or promotion is affected" }, "protocolMappers": [] },
-{ "name": "inventory:propose", "description": "Propose inventory adjustments for your review", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Propose stock adjustments for your own products that you review and confirm in ShopSphere before anything changes; no order or notification is affected" }, "protocolMappers": [] }
+{ "name": "inventory:propose", "description": "Propose inventory adjustments for your review", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Propose stock adjustments for your own products that you review and confirm in ShopSphere before anything changes; no order or notification is affected" }, "protocolMappers": [] },
+{ "name": "fulfillment:propose", "description": "Propose fulfillment steps for your sale lines", "protocol": "openid-connect", "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Propose forward-only fulfillment steps on your own sale lines that you review and confirm in ShopSphere before anything changes; no payment, stock, or buyer notification is affected" }, "protocolMappers": [] }
   ],
   "clients": [
     {
@@ -128,6 +129,7 @@
         "returns:propose",
         "pricing:propose",
         "inventory:propose",
+        "fulfillment:propose",
         "proposals:read",
         "sales:read",
         "revenue:read",
@@ -164,6 +166,7 @@
         "returns:propose",
         "pricing:propose",
         "inventory:propose",
+        "fulfillment:propose",
         "proposals:read",
         "sales:read",
         "revenue:read",

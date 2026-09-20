@@ -50,6 +50,10 @@ import { proposePriceChange } from "../services/assistantPriceProposals.js";
 import { requireVerifiedSeller as requireVerifiedSellerPrice } from "../services/assistantVerifiedSellerPriceGate.js";
 import { proposeInventoryAdjustment, proposeInventoryAdjustmentInputSchema } from "../services/assistantInventoryProposals.js";
 import {
+  proposeFulfillmentTransition,
+  proposeFulfillmentTransitionInputSchema,
+} from "../services/assistantFulfillmentProposals.js";
+import {
   proposeListingContentChange,
   proposeListingContentChangeInputSchema,
   proposeListingPublish,
@@ -1026,6 +1030,30 @@ privateOperation({
   auditInput: inventoryProposalAuditInput,
   run: (input, ctx) => proposeInventoryAdjustment(input, ctx),
   observe: (output) => ({ resourceIds: [output.proposalId, output.preview.productId], rowCount: 1 }),
+});
+
+// Seller fulfillment proposals (#29), on the #22 proposal platform. The strict
+// input is exactly one owned sale line (the seller's own Order row id) and the
+// requested next stage — there is NO currentStatus input (the server derives
+// the exact stored status) and NO confirm/execute affordance: forged fields
+// fail the schema, not the order. The service resolves the sale line through
+// the immutable sellerIdAtPurchase attribution only and permits only the exact
+// one-step-forward seller transition out of Confirmed/Processing/Shipped.
+privateOperation({
+  path: "/propose_fulfillment_transition",
+  tool: "propose_fulfillment_transition",
+  operation: "proposals.fulfillmentTransition",
+  roles: ["seller"],
+  scope: "fulfillment:propose",
+  rolloutFlag: "MCP_TOOL_PROPOSE_FULFILLMENT_TRANSITION_ENABLED",
+  inputSchema: proposeFulfillmentTransitionInputSchema,
+  middlewares: [
+    enforceProposalCreationLimits({ operation: "proposals.fulfillmentTransition" }),
+    requireVerifiedSeller({ operation: "proposals.fulfillmentTransition" }),
+  ],
+  auditInput: () => ({}),
+  run: (input, ctx) => proposeFulfillmentTransition(input, ctx),
+  observe: (output) => ({ resourceIds: [output.proposalId, output.preview.saleLineId], rowCount: 1 }),
 });
 
 // Admin support queues (#17). Membership is the fixed server rule encoded in

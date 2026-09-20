@@ -1,4 +1,6 @@
--- Mutation marker for orders (#25).
+-- Mutation marker for orders (#25). This migration intentionally sorts before
+-- 20260919200000_assistant_order_cancel_proposals, which grants SELECT on the
+-- new column.
 --
 -- Orders previously had no "last modified" column, so no optimistic version
 -- proxy existed for first-party proposal execution. Assistant return proposals

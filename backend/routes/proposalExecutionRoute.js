@@ -108,6 +108,11 @@ import {
   requestedCountFor,
   resolveInventoryTarget,
 } from "../services/assistantInventoryProposals.js";
+import {
+  FULFILLMENT_ACTION_KIND,
+  applyFulfillmentTransition,
+  revalidateFulfillmentForExecution,
+} from "../services/assistantFulfillmentProposals.js";
 
 export const PROPOSAL_LIST_LIMIT = 20;
 
@@ -223,6 +228,16 @@ const executedResponseFor = (proposal) => {
       productId: typeof payload?.productId === "string" ? payload.productId : proposal.targetId,
       ...(typeof payload?.optionId === "string" ? { optionId: payload.optionId } : {}),
       appliedStock: payload?.requestedCount,
+    };
+  }
+  // Seller fulfillment proposals (#29): replay from the immutable stored
+  // target and next status so concurrent retries receive the same response.
+  if (proposal.actionKind === FULFILLMENT_ACTION_KIND) {
+    return {
+      status: "executed",
+      executionReference: proposal.executionReference ?? executionReferenceFor(proposal.id),
+      saleLineId: proposal.targetId,
+      appliedStatus: proposal.canonicalPayload?.nextStatus,
     };
   }
   return {
@@ -552,7 +567,7 @@ const applyPriceChange = async (tx, { product, account, payload, now }) => {
 // lists; order.cancel replays the proposal's own immutable stored
 // disclosedConsequences so the review list matches the preview exactly.
 const disclosuresFor = (proposal) => {
-  if (proposal.actionKind === "order.cancel") {
+  if (proposal.actionKind === "order.cancel" || proposal.actionKind === FULFILLMENT_ACTION_KIND) {
     const disclosed = proposal.preview?.disclosedConsequences;
     return Array.isArray(disclosed)
       ? disclosed.filter((entry) => typeof entry === "string").slice(0, 10)
@@ -804,6 +819,35 @@ export const executeProposal = async (req, res, client = prisma) => {
         console.error("DEBUG_LISTING", proposal.actionKind, JSON.stringify(account), userId === account.id);
         if (!account.isVerified) return { kind: "forbidden" };
         return executeListingProposal(tx, { proposal, userId, now });
+      }
+
+      // Seller fulfillment proposals (#29): reauthorize live verification,
+      // revalidate immutable seller-at-purchase ownership and the exact next
+      // state, then claim and apply one compare-and-swap transition inside the
+      // same transaction. No payment, stock, email, or notification side
+      // effect is permitted on this path.
+      if (proposal.actionKind === FULFILLMENT_ACTION_KIND) {
+        if (!account.isVerified) return { kind: "forbidden" };
+        const revalidation = await revalidateFulfillmentForExecution(tx, { proposal, account });
+        if (!revalidation.ok) {
+          const claimed = await transitionPending(tx, proposal.id, userId, { status: revalidation.terminal });
+          if (claimed.count === 1) await writeOutbox(tx, proposal.id, revalidation.terminal, proposal.payloadHash);
+          return resolveTerminal(await reloadProposal(tx, proposal.id));
+        }
+        const claimed = await transitionPending(tx, proposal.id, userId, {
+          status: "executed",
+          executedAt: now,
+          executionReference: executionReferenceFor(proposal.id),
+        });
+        if (claimed.count !== 1) return resolveTerminal(await reloadProposal(tx, proposal.id));
+        await applyFulfillmentTransition(tx, {
+          order: revalidation.order,
+          nextStatus: revalidation.nextStatus,
+          accountId: account.id,
+          now,
+        });
+        await writeOutbox(tx, proposal.id, "executed", proposal.payloadHash);
+        return { kind: "executed", response: executedResponseFor(proposal) };
       }
 
       // 4c. product.set_price / product.set_discount (#27): reauthorize the
