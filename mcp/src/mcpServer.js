@@ -39,6 +39,33 @@ export const createShopSphereMcpServer = ({
     list_my_products: (args, requestId) => backendClient.call("list_my_products", args, requestId),
     get_my_product: (args, requestId) => backendClient.call("get_my_product", args, requestId),
     get_my_inventory_summary: (args, requestId) => backendClient.call("get_my_inventory_summary", args, requestId),
+    list_my_seller_orders: (args, requestId) => backendClient.call("list_my_seller_orders", args, requestId),
+    get_my_seller_order: (args, requestId) => backendClient.call("get_my_seller_order", args, requestId),
+    get_my_revenue_summary: (args, requestId) => backendClient.call("get_my_revenue_summary", args, requestId),
+    get_platform_revenue_summary: (args, requestId) => backendClient.call("get_platform_revenue_summary", args, requestId),
+    list_seller_applications: (args, requestId) => backendClient.call("list_seller_applications", args, requestId),
+    draft_listing_copy: (args, requestId) => backendClient.call("draft_listing_copy", args, requestId),
+    save_listing_draft: (args, requestId) => backendClient.call("save_listing_draft", args, requestId),
+    list_my_listing_drafts: (args, requestId) => backendClient.call("list_my_listing_drafts", args, requestId),
+    get_my_listing_draft: (args, requestId) => backendClient.call("get_my_listing_draft", args, requestId),
+    propose_cart_change: (args, requestId) => backendClient.call("propose_cart_change", args, requestId),
+    propose_order_return: (args, requestId) => backendClient.call("propose_order_return", args, requestId),
+    get_my_action_status: (args, requestId) => backendClient.call("get_my_action_status", args, requestId),
+    propose_order_cancellation: (args, requestId) => backendClient.call("propose_order_cancellation", args, requestId),
+    propose_listing_publish: (args, requestId) => backendClient.call("propose_listing_publish", args, requestId),
+    propose_listing_content_change: (args, requestId) => backendClient.call("propose_listing_content_change", args, requestId),
+    propose_price_change: (args, requestId) => backendClient.call("propose_price_change", args, requestId),
+    propose_inventory_adjustment: (args, requestId) => backendClient.call("propose_inventory_adjustment", args, requestId),
+    propose_fulfillment_transition: (args, requestId) => backendClient.call("propose_fulfillment_transition", args, requestId),
+    list_order_exception_queue: (args, requestId) => backendClient.call("list_order_exception_queue", args, requestId),
+    get_order_exception_detail: (args, requestId) => backendClient.call("get_order_exception_detail", args, requestId),
+    list_return_queue: (args, requestId) => backendClient.call("list_return_queue", args, requestId),
+    draft_support_message: (args, requestId) => backendClient.call("draft_support_message", args, requestId),
+    list_promotion_configuration: (args, requestId) => backendClient.call("list_promotion_configuration", args, requestId),
+    get_promotion_usage_summary: (args, requestId) => backendClient.call("get_promotion_usage_summary", args, requestId),
+    draft_seller_review_recommendation: (args, requestId) => backendClient.call("draft_seller_review_recommendation", args, requestId),
+    draft_return_review_recommendation: (args, requestId) => backendClient.call("draft_return_review_recommendation", args, requestId),
+    draft_promotion_recommendation: (args, requestId) => backendClient.call("draft_promotion_recommendation", args, requestId),
     get_store_policy: (args, requestId) => backendClient.call("get_store_policy", args, requestId),
     search_products: (args, requestId) => backendClient.call("search_products", args, requestId),
     compare_products: (args, requestId) => backendClient.call("compare_products", args, requestId),
@@ -51,6 +78,8 @@ export const createShopSphereMcpServer = ({
     const handle = handlers[tool.name];
     if (!handle) continue;
 
+    // propose-class tools create durable records, so they must not advertise
+    // themselves as read-only (clients may auto-approve on that hint).
     server.registerTool(
       tool.name,
       {
@@ -58,7 +87,8 @@ export const createShopSphereMcpServer = ({
         description: tool.description,
         inputSchema: tool.inputSchema,
         outputSchema: tool.outputSchema,
-        annotations: { readOnlyHint: true },
+        // Draft-class tools persist draft rows, so they are not read-only.
+        annotations: { readOnlyHint: tool.operationClass === "read" },
       },
       async (args, extra) => {
         const startedAt = Date.now();

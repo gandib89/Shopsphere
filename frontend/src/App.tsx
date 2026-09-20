@@ -44,6 +44,8 @@ const SellerOrders = lazy(() => import('./pages/SellerOrders'));
 const SellerRevenueDashboard = lazy(() => import('./pages/SellerRevenueDashboard'));
 const Profile = lazy(() => import('./pages/Profile'));
 const AiConnections = lazy(() => import('./pages/AiConnections'));
+const ProposalReview = lazy(() => import('./pages/ProposalReview'));
+const Proposals = lazy(() => import('./pages/Proposals'));
 const TrackOrder = lazy(() => import('./pages/TrackOrder'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 const ChatWidget = lazy(() => import('./components/ChatWidget'));
@@ -144,6 +146,8 @@ function App() {
             <Route path="/order/:orderId" element={<OrderDetails />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/track-order/:orderId" element={<TrackOrder />} />
+            <Route path="/proposals" element={<Proposals />} />
+            <Route path="/proposals/:proposalId" element={<ProposalReview />} />
             <Route path="/success/:orderId" element={<Success />} />
             <Route path="/failure/:orderId" element={<Failure />} />
             <Route path="/buy-product" element={<Navigate to="/cart-checkout" replace />} />

@@ -26,6 +26,59 @@ import {
   getMyProduct,
   listMyProducts,
 } from "../services/assistantSellerCatalog.js";
+import {
+  getMySale,
+  getMyRevenueSummary,
+  listMySales,
+} from "../services/assistantSellerOrders.js";
+import {
+  getPlatformRevenueSummary,
+  listSellerApplications,
+} from "../services/assistantAdminReads.js";
+import {
+  draftListingCopy,
+  getMyListingDraft,
+  listMyListingDrafts,
+  saveListingDraft,
+} from "../services/assistantListingDrafts.js";
+import { enforceListingDraftLimit } from "../services/assistantListingDraftLimits.js";
+import { getMyActionStatus, proposeCartChange } from "../services/assistantProposals.js";
+import { proposeOrderCancellation } from "../services/assistantCancellationProposals.js";
+import { enforceProposalCreationLimits } from "../services/assistantProposalLimits.js";
+import { proposeOrderReturn } from "../services/assistantReturnProposals.js";
+import { proposePriceChange } from "../services/assistantPriceProposals.js";
+import { requireVerifiedSeller as requireVerifiedSellerPrice } from "../services/assistantVerifiedSellerPriceGate.js";
+import { proposeInventoryAdjustment, proposeInventoryAdjustmentInputSchema } from "../services/assistantInventoryProposals.js";
+import {
+  proposeFulfillmentTransition,
+  proposeFulfillmentTransitionInputSchema,
+} from "../services/assistantFulfillmentProposals.js";
+import {
+  proposeListingContentChange,
+  proposeListingContentChangeInputSchema,
+  proposeListingPublish,
+  proposeListingPublishInputSchema,
+} from "../services/assistantListingProposals.js";
+import { requireVerifiedSeller } from "../services/assistantVerifiedSellerGate.js";
+import {
+  getOrderExceptionDetail,
+  listOrderExceptionQueue,
+  listReturnQueue,
+  orderExceptionDetailObserve,
+} from "../services/assistantAdminQueues.js";
+import { draftSupportMessage } from "../services/assistantSupportDrafts.js";
+import { createDraftSupportLimit } from "../services/assistantSupportDraftLimits.js";
+import {
+  getPromotionUsageSummary,
+  listPromotionConfiguration,
+} from "../services/assistantAdminPromotions.js";
+import {
+  draftPromotionRecommendation,
+  draftReturnReviewRecommendation,
+  draftSellerReviewRecommendation,
+  returnReviewObserve,
+} from "../services/assistantAdminRecommendations.js";
+import { createRecommendationLimit } from "../services/assistantRecommendationLimits.js";
 import { auditContext, recordAssistantAudit } from "../services/assistantAudit.js";
 import { withAssistantActor } from "../database/assistantTransaction.js";
 import {
@@ -165,7 +218,9 @@ const auditedError = async (req, res, { operation, tool, input = {}, status, cod
       operation,
       tool,
       input,
-      authorizationOutcome: status === 400 ? "allowed" : "denied",
+      // 400 and 409 are post-authorization denials (bad input, business-state
+      // conflict), not authorization failures.
+      authorizationOutcome: status === 400 || status === 409 ? "allowed" : "denied",
       outcome: code,
       failureReason: code,
       latencyMs: Date.now() - startedAt,
@@ -176,7 +231,9 @@ const auditedError = async (req, res, { operation, tool, input = {}, status, cod
         ? "Resource not found"
         : status === 400
           ? "Invalid operation input"
-          : "Assistant operation is unavailable",
+          : status === 409
+            ? "Request conflicts with the current state"
+            : "Assistant operation is unavailable",
     });
   } catch {
     return res.status(503).json({ code: "audit_unavailable", message: "Audit service is unavailable" });
@@ -292,19 +349,29 @@ router.post(
   },
 );
 
-// Shared private-operation seam for buyer/seller reads (#12/#13/#14).
-// Every operation crosses the same chain: workload authentication, delegated
-// credential verification (no browser-JWT fallback), distributed limits,
-// and per-call role/scope/rollout authorization. Inputs are strict schemas
-// (unknown fields rejected, no caller totals/identity/owner fields); reads run
-// inside a transaction-local actor context; success and failure both audit.
-const privateOperation = ({ path, tool, operation, roles, scope, rolloutFlag, inputSchema, run, observe }) => {
+// Shared private-operation seam for buyer/seller reads (#12/#13/#14), seller
+// listing drafts (#20), admin support queues (#17), and buyer support drafts
+// (#19). Every operation crosses the same chain: workload authentication,
+// delegated credential verification (no browser-JWT fallback), distributed
+// limits, and per-call role/scope/rollout authorization. Inputs are strict
+// schemas (unknown fields rejected, no caller totals/identity/owner fields);
+// reads run inside a transaction-local actor context; success and failure
+// both audit. `middlewares` (optional): route-scoped controls such as draft
+// and proposal rate limiters, appended after authorization without touching
+// the shared chain order. `auditInput` (optional): projection of the parsed
+// input stored in audit rows — used by routes whose input carries
+// user-authored content that must never be echoed into audits or logs.
+// observe(output, input) may return auditMetadata merged into the audited
+// redacted input.
+const privateOperation = ({ path, tool, operation, roles, scope, rolloutFlag, inputSchema, run, observe, middlewares = [], auditInput }) => {
+  const auditEventInput = (data) => (auditInput ? auditInput(data) : data);
   router.post(
     path,
     authenticateAssistantWorkload,
     authenticateAssistantDelegation,
     enforceAssistantDistributedLimit(),
     authorizeAssistantOperation({ operation, roles, scope, rolloutFlag }),
+    ...middlewares,
     async (req, res) => {
       const startedAt = Date.now();
       const parsed = inputSchema.safeParse(req.body);
@@ -333,16 +400,29 @@ const privateOperation = ({ path, tool, operation, roles, scope, rolloutFlag, in
           cursorSecret: process.env.ASSISTANT_CURSOR_SECRET,
           now: new Date(),
         }));
-        const { resourceIds = [], rowCount = null } = observe?.(output) ?? {};
-        return auditedJson(req, res, { operation, tool, input: parsed.data, output, startedAt, resourceIds, rowCount });
+        const observed = observe?.(output, parsed.data) ?? {};
+        const { resourceIds = [], rowCount = null, auditMetadata = null } = observed;
+        // Observe-provided audit metadata (e.g. the detail tool's support
+        // purpose) rides through the established audited-input path, and
+        // routes with user-authored inputs project them out via auditInput
+        // before anything durable is written.
+        return auditedJson(req, res, {
+          operation,
+          tool,
+          input: auditEventInput(auditMetadata ? { ...parsed.data, ...auditMetadata } : parsed.data),
+          output,
+          startedAt,
+          resourceIds,
+          rowCount,
+        });
       } catch (error) {
-        const status = error?.statusCode === 404 ? 404 : error?.statusCode === 400 ? 400 : error?.statusCode === 503 ? 503 : 500;
+        const status = error?.statusCode === 404 ? 404 : error?.statusCode === 400 ? 400 : error?.statusCode === 409 ? 409 : error?.statusCode === 503 ? 503 : 500;
         return auditedError(req, res, {
           operation,
           tool,
-          input: parsed.data,
+          input: auditEventInput(parsed.data),
           status,
-          code: status === 404 ? "not_found" : status === 400 ? "invalid_input" : "operation_unavailable",
+          code: status === 404 ? "not_found" : status === 400 ? "invalid_input" : status === 409 ? (error?.code ?? "conflict") : "operation_unavailable",
           startedAt,
         });
       }
@@ -352,6 +432,7 @@ const privateOperation = ({ path, tool, operation, roles, scope, rolloutFlag, in
 
 const isoDateTime = z.string().min(1).max(100).optional();
 const orderStatus = z.enum(["Pending", "Confirmed", "Processing", "Shipped", "Delivered", "Cancelled", "ReturnRequested", "Returned"]).optional();
+const sellerSaleStatus = z.enum(["Pending", "Confirmed", "Processing", "Shipped", "Delivered", "Cancelled", "ReturnRequested", "Returned", "Refund Released"]).optional();
 
 privateOperation({
   path: "/get_my_cart",
@@ -483,6 +564,660 @@ privateOperation({
   inputSchema: z.object({ threshold: z.number().int().min(1).max(50).optional() }).strict(),
   run: (input, ctx) => getMyInventorySummary(input, ctx),
   observe: (output) => ({ resourceIds: output.lowStock.map(({ productId }) => productId), rowCount: output.lowStockCount }),
+});
+
+// Seller sale lines and revenue (#15). Sale-line authorization is the immutable
+// seller-at-purchase attribution resolved server-side from the delegated token;
+// no sellerId input field exists. Revenue buckets are fixed month/year ledger
+// aggregates with explicit refund semantics.
+privateOperation({
+  path: "/list_my_seller_orders",
+  tool: "list_my_seller_orders",
+  operation: "sales.listMine",
+  roles: ["seller"],
+  scope: "sales:read",
+  rolloutFlag: "MCP_TOOL_LIST_MY_SELLER_ORDERS_ENABLED",
+  inputSchema: z.object({ status: sellerSaleStatus, from: isoDateTime, to: isoDateTime, cursor, limit: z.number().int().min(1).max(50).optional() }).strict(),
+  run: (input, ctx) => listMySales(input, ctx),
+  observe: (output) => ({ resourceIds: output.sales.map(({ id }) => id), rowCount: output.sales.length }),
+});
+
+privateOperation({
+  path: "/get_my_seller_order",
+  tool: "get_my_seller_order",
+  operation: "sales.getMine",
+  roles: ["seller"],
+  scope: "sales:read",
+  rolloutFlag: "MCP_TOOL_GET_MY_SELLER_ORDER_ENABLED",
+  inputSchema: z.object({ orderId }).strict(),
+  run: (input, ctx) => getMySale(input, ctx),
+  observe: (output) => ({ resourceIds: [output.sale.id, ...output.groupSales.map(({ id }) => id)], rowCount: 1 + output.groupSales.length }),
+});
+
+privateOperation({
+  path: "/get_my_revenue_summary",
+  tool: "get_my_revenue_summary",
+  operation: "sales.revenueSummary",
+  roles: ["seller"],
+  scope: "revenue:read",
+  rolloutFlag: "MCP_TOOL_GET_MY_REVENUE_SUMMARY_ENABLED",
+  inputSchema: z.object({ year: z.number().int().min(2000).max(2100).optional() }).strict(),
+  run: (input, ctx) => getMyRevenueSummary(input, ctx),
+  observe: (output) => ({ resourceIds: [], rowCount: output.buckets.length }),
+});
+
+// consented scope (platform:read / sellers:read) and the live account must be
+// an admin — a promoted user with an older narrower grant gains no authority
+// without renewed consent, because the scope check reads the token's grant,
+// not the current role. Outputs are fixed bounded aggregates and minimized
+// application metadata: no raw ledger, payment-event, bank, or customer rows;
+// no identity evidence or private contacts.
+privateOperation({
+  path: "/get_platform_revenue_summary",
+  tool: "get_platform_revenue_summary",
+  operation: "platform.revenueSummary",
+  roles: ["admin"],
+  scope: "platform:read",
+  rolloutFlag: "MCP_TOOL_GET_PLATFORM_REVENUE_SUMMARY_ENABLED",
+  inputSchema: z.object({ year: z.number().int().min(2000).max(2100).optional() }).strict(),
+  run: (input, ctx) => getPlatformRevenueSummary(input, ctx),
+  observe: (output) => ({ resourceIds: [], rowCount: output.buckets.length }),
+});
+
+privateOperation({
+  path: "/list_seller_applications",
+  tool: "list_seller_applications",
+  operation: "sellers.listApplications",
+  roles: ["admin"],
+  scope: "sellers:read",
+  rolloutFlag: "MCP_TOOL_LIST_SELLER_APPLICATIONS_ENABLED",
+  inputSchema: z.object({
+    status: z.enum(["pending", "approved", "rejected"]).optional(),
+    cursor,
+    limit: z.number().int().min(1).max(50).optional(),
+  }).strict(),
+  run: (input, ctx) => listSellerApplications(input, ctx),
+  observe: (output) => ({
+    resourceIds: output.applications.map(({ sellerReference }) => sellerReference),
+    rowCount: output.applications.length,
+  }),
+});
+
+// Seller listing drafts (#20). Copy is composed only from supplied facts or
+// one owned product, and saving touches only owned listing_drafts rows —
+// never a live Product, notification, or storefront route. Isolation carries
+// BOTH sellerId and grantId in every service predicate (RLS is defense in
+// depth), unverified sellers may draft, and the draft limiter bounds this
+// heavier operation class to 10/minute and 100/day per subject+client.
+const draftCopyInput = z.object({
+  sourceProductId: z.string().min(1).max(100).optional(),
+  facts: z.object({
+    productName: z.string().min(1).max(140).optional(),
+    keyFeatures: z.array(z.string().min(1).max(200)).max(10).optional(),
+    audienceNote: z.string().min(1).max(300).optional(),
+  }).strict().optional(),
+}).strict().refine(
+  ({ sourceProductId, facts }) => sourceProductId !== undefined || facts !== undefined,
+  "sourceProductId or facts is required",
+);
+const draftHighlights = z.array(z.string().min(1).max(200)).max(10).optional();
+const draftId = z.string().min(1).max(100);
+
+privateOperation({
+  path: "/draft_listing_copy",
+  tool: "draft_listing_copy",
+  operation: "listings.draftCopy",
+  roles: ["seller"],
+  scope: "listings:draft",
+  rolloutFlag: "MCP_TOOL_DRAFT_LISTING_COPY_ENABLED",
+  inputSchema: draftCopyInput,
+  middlewares: [enforceListingDraftLimit()],
+  run: (input, ctx) => draftListingCopy(input, ctx),
+  observe: () => ({ resourceIds: [], rowCount: 1 }),
+});
+
+privateOperation({
+  path: "/save_listing_draft",
+  tool: "save_listing_draft",
+  operation: "listings.saveDraft",
+  roles: ["seller"],
+  scope: "listings:draft",
+  rolloutFlag: "MCP_TOOL_SAVE_LISTING_DRAFT_ENABLED",
+  inputSchema: z.object({
+    draftId: z.string().min(1).max(100).optional(),
+    title: z.string().min(1).max(140),
+    description: z.string().min(1).max(4000),
+    highlights: draftHighlights,
+    sourceProductId: z.string().min(1).max(100).optional(),
+  }).strict(),
+  middlewares: [enforceListingDraftLimit()],
+  run: (input, ctx) => saveListingDraft(input, ctx),
+  observe: (output) => ({ resourceIds: [output.draftId], rowCount: output.version > 1 ? 2 : 1 }),
+});
+
+privateOperation({
+  path: "/list_my_listing_drafts",
+  tool: "list_my_listing_drafts",
+  operation: "listings.listDrafts",
+  roles: ["seller"],
+  scope: "listings:draft",
+  rolloutFlag: "MCP_TOOL_LIST_MY_LISTING_DRAFTS_ENABLED",
+  inputSchema: z.object({
+    cursor,
+    limit: z.number().int().min(1).max(50).optional(),
+    includeSuperseded: z.boolean().optional(),
+  }).strict(),
+  middlewares: [enforceListingDraftLimit()],
+  run: (input, ctx) => listMyListingDrafts(input, ctx),
+  observe: (output) => ({ resourceIds: output.drafts.map(({ draftId }) => draftId), rowCount: output.drafts.length }),
+});
+
+privateOperation({
+  path: "/get_my_listing_draft",
+  tool: "get_my_listing_draft",
+  operation: "listings.getDraft",
+  roles: ["seller"],
+  scope: "listings:draft",
+  rolloutFlag: "MCP_TOOL_GET_MY_LISTING_DRAFT_ENABLED",
+  inputSchema: z.object({ draftId: draftId }).strict(),
+  middlewares: [enforceListingDraftLimit()],
+  run: (input, ctx) => getMyListingDraft(input, ctx),
+  observe: (output) => ({ resourceIds: [output.draftId], rowCount: 1 }),
+});
+
+// Proposal platform (#22). propose_cart_change persists a canonical pending
+// proposal (never a cart mutation) and therefore runs the proposal-class rate
+// limits in addition to the shared delegation chain. The strict input accepts
+// exactly one action with no confirmation flag, no execute flag, and no
+// caller-supplied totals: forged confirmation fields fail the schema, not the cart.
+const proposalOptions = z
+  .record(z.string().min(1).max(50), z.string().min(1).max(50))
+  .refine((value) => Object.keys(value).length <= 5, { message: "options accepts at most 5 entries" })
+  .optional();
+const proposeCartChangeInput = z.object({
+  action: z.enum(["add_item", "update_quantity", "remove_item"]),
+  productId: z.string().min(1).max(100).optional(),
+  options: proposalOptions,
+  quantity: z.number().int().min(1).max(20).optional(),
+  cartItemId: z.string().min(1).max(100).optional(),
+}).strict().superRefine((value, ctx) => {
+  const issue = (path, message) => ctx.addIssue({ code: z.ZodIssueCode.custom, path, message });
+  if (value.action === "add_item") {
+    if (value.productId === undefined) issue(["productId"], "add_item requires productId");
+    if (value.quantity === undefined) issue(["quantity"], "add_item requires quantity");
+    if (value.cartItemId !== undefined) issue(["cartItemId"], "add_item must not target an existing cart item");
+  } else if (value.action === "update_quantity") {
+    if (value.cartItemId === undefined) issue(["cartItemId"], "update_quantity requires cartItemId");
+    if (value.quantity === undefined) issue(["quantity"], "update_quantity requires quantity");
+    if (value.productId !== undefined) issue(["productId"], "update_quantity must not restate the product");
+  } else {
+    if (value.cartItemId === undefined) issue(["cartItemId"], "remove_item requires cartItemId");
+    if (value.quantity !== undefined) issue(["quantity"], "remove_item must not carry a quantity");
+    if (value.productId !== undefined) issue(["productId"], "remove_item must not carry a product");
+  }
+  if (value.action !== "add_item" && value.options !== undefined) {
+    issue(["options"], "options only apply to add_item");
+  }
+});
+
+router.post(
+  "/propose_cart_change",
+  authenticateAssistantWorkload,
+  authenticateAssistantDelegation,
+  enforceAssistantDistributedLimit(),
+  authorizeAssistantOperation({
+    operation: "proposals.proposeCartChange",
+    roles: ["user"],
+    scope: "cart:propose",
+    rolloutFlag: "MCP_TOOL_PROPOSE_CART_CHANGE_ENABLED",
+  }),
+  enforceProposalCreationLimits(),
+  async (req, res) => {
+    const startedAt = Date.now();
+    const operation = "proposals.proposeCartChange";
+    const tool = "propose_cart_change";
+    const parsed = proposeCartChangeInput.safeParse(req.body);
+    if (!parsed.success) {
+      return auditedError(req, res, { operation, tool, input: {}, status: 400, code: "invalid_input", startedAt });
+    }
+    try {
+      const output = await withAssistantActor({
+        actorId: req.delegation.sub,
+        role: req.delegation.role,
+        operation,
+        signal: req.assistantSignal,
+      }, (tx) => proposeCartChange(parsed.data, {
+        client: tx,
+        principal: {
+          subject: req.delegation.sub,
+          role: req.delegation.role,
+          clientId: req.delegation.clientId,
+          grantId: req.delegation.grantId,
+        },
+        now: new Date(),
+      }));
+      return auditedJson(req, res, {
+        operation,
+        tool,
+        input: parsed.data,
+        output,
+        startedAt,
+        resourceIds: [output.proposalId],
+        rowCount: 1,
+      });
+    } catch (error) {
+      const status = error?.statusCode === 404 ? 404 : error?.statusCode === 400 ? 400 : error?.statusCode === 503 ? 503 : 500;
+      return auditedError(req, res, {
+        operation,
+        tool,
+        input: parsed.data,
+        status,
+        code: status === 404 ? "not_found" : status === 400 ? "invalid_input" : "operation_unavailable",
+        startedAt,
+      });
+    }
+  },
+);
+
+privateOperation({
+  path: "/get_my_action_status",
+  tool: "get_my_action_status",
+  operation: "proposals.actionStatus",
+  roles: ["user"],
+  scope: "proposals:read",
+  rolloutFlag: "MCP_TOOL_GET_MY_ACTION_STATUS_ENABLED",
+  inputSchema: z.object({ proposalId: z.string().min(1).max(100) }).strict(),
+  run: (input, ctx) => getMyActionStatus(input, ctx),
+  observe: (output) => ({ resourceIds: [output.proposalId], rowCount: 1 }),
+});
+
+// Buyer order-cancellation proposals (#24), on the #22 proposal platform. The
+// strict input is exactly one order id — no confirm flag, no execute flag, no
+// refund affordance: forged confirmation fields fail the schema, not the
+// order. The shared proposal-class rate limits apply on top of the delegation
+// chain (same caps as propose_cart_change, incl. the combined pending cap).
+// Creation persists only the proposal + outbox rows: the service's fake-client
+// guards and the RLS grants prove the order/stock/payment/refund surfaces are
+// untouched. The input carries no user-authored content (a single bounded
+// order id), so the durable audit input projects nothing at all.
+const orderCancellationInput = z.object({
+  orderId: z.string().regex(/^[A-Za-z0-9]{1,24}$/),
+}).strict();
+
+privateOperation({
+  path: "/propose_order_cancellation",
+  tool: "propose_order_cancellation",
+  operation: "proposals.orderCancel",
+  roles: ["user"],
+  scope: "orders:propose",
+  rolloutFlag: "MCP_TOOL_PROPOSE_ORDER_CANCELLATION_ENABLED",
+  inputSchema: orderCancellationInput,
+  middlewares: [enforceProposalCreationLimits()],
+  auditInput: () => ({}),
+  run: (input, ctx) => proposeOrderCancellation(input, ctx),
+  observe: (output) => ({ resourceIds: [output.proposalId, output.preview.orderId], rowCount: 1 }),
+});
+
+// Buyer return proposals (#25), on the #22 proposal platform. The strict input
+// carries exactly { orderId, reason } — there is no evidence URL, attachment
+// path, or image field, and no confirm/execute affordance: forged evidence or
+// confirmation fields fail the schema, not the order. proposeOrderReturn
+// persists ONLY a proposal row (never a live return request, notification, or
+// refund) and therefore runs the proposal-class rate limits in addition to the
+// shared delegation chain. The free-text `reason` is user-authored content and
+// is projected OUT of every audited input (success, failure, and rate-limit
+// denials alike) — it is never echoed into audits or logs.
+export const returnProposalAuditInput = ({ orderId }) => ({ orderId });
+
+privateOperation({
+  path: "/propose_order_return",
+  tool: "propose_order_return",
+  operation: "proposals.orderReturn",
+  roles: ["user"],
+  scope: "returns:propose",
+  rolloutFlag: "MCP_TOOL_PROPOSE_ORDER_RETURN_ENABLED",
+  inputSchema: z.object({
+    orderId: z.string().regex(/^[A-Za-z0-9]{1,24}$/),
+    reason: z.string().trim().min(10).max(1000),
+  }).strict(),
+  middlewares: [enforceProposalCreationLimits()],
+  auditInput: returnProposalAuditInput,
+  run: (input, ctx) => proposeOrderReturn(input, ctx),
+  observe: (output) => ({ resourceIds: [output.proposalId, output.preview.orderId], rowCount: 1 }),
+});
+
+// Seller listing proposals (#26). Two propose-class tools for VERIFIED sellers
+// only: propose_listing_publish persists a proposal to publish one owned
+// listing draft, propose_listing_content_change persists a proposal to change
+// allowlisted content (name/description/images) on one owned live listing.
+// Neither can publish, update, archive, unpublish, broadcast, or notify — the
+// services touch only proposals + the platform's "created" outbox event, and
+// the live mutation happens solely through the first-party browser execution
+// endpoint. Verification is enforced twice over: the delegated token's
+// shopsphere_verified claim AND the live account must both be verified
+// (requireVerifiedSeller, attached via the seam's middlewares after
+// authorization), on top of the proposal-class rate limits shared with #22.
+// The content-change input is a closed allowlist — seller identity, price,
+// stock, quantity, discount, visibility, and deletion fields all fail the
+// strict schema (exported from the service for shared testing) — and its long
+// free text (description, image urls) is projected out of the durable audit
+// rows: auditInput keeps only the product id, the bounded name, and the counts.
+privateOperation({
+  path: "/propose_listing_publish",
+  tool: "propose_listing_publish",
+  operation: "proposals.listingPublish",
+  roles: ["seller"],
+  scope: "listings:propose",
+  rolloutFlag: "MCP_TOOL_PROPOSE_LISTING_PUBLISH_ENABLED",
+  inputSchema: proposeListingPublishInputSchema,
+  middlewares: [
+    enforceProposalCreationLimits({ operation: "proposals.listingPublish" }),
+    requireVerifiedSeller({ operation: "proposals.listingPublish" }),
+  ],
+  run: (input, ctx) => proposeListingPublish(input, ctx),
+  observe: (output) => ({ resourceIds: [output.proposalId], rowCount: 1 }),
+});
+
+privateOperation({
+  path: "/propose_listing_content_change",
+  tool: "propose_listing_content_change",
+  operation: "proposals.listingContentChange",
+  roles: ["seller"],
+  scope: "listings:propose",
+  rolloutFlag: "MCP_TOOL_PROPOSE_LISTING_CONTENT_CHANGE_ENABLED",
+  inputSchema: proposeListingContentChangeInputSchema,
+  middlewares: [
+    enforceProposalCreationLimits({ operation: "proposals.listingContentChange" }),
+    requireVerifiedSeller({ operation: "proposals.listingContentChange" }),
+  ],
+  auditInput: ({ productId, content }) => ({
+    productId,
+    content: {
+      ...(content.name !== undefined ? { name: content.name.slice(0, 140) } : {}),
+      ...(content.description !== undefined ? { descriptionChars: content.description.length } : {}),
+      ...(content.images !== undefined ? { imagesCount: content.images.length } : {}),
+    },
+  }),
+  run: (input, ctx) => proposeListingContentChange(input, ctx),
+  observe: (output) => ({ resourceIds: [output.proposalId], rowCount: 1 }),
+});
+
+// Seller price proposals (#27), on the #22 proposal platform. The strict input
+// is exactly one owned product, one change kind, and one bounded decimal
+// value — there is NO optionId (options carry additive priceDelta deltas, not
+// absolute prices, so option-level targeting cannot produce an exact
+// old/new-value contract and is rejected at the schema), no caller-supplied
+// payable total, and no confirm/execute affordance: forged fields fail the
+// schema, not the listing. Verified-seller gating lives in the route-scoped
+// requireVerifiedSeller middleware (services/assistantVerifiedSellerPriceGate.js
+// — that file documents why the gate lives here and not in the service), and
+// the shared proposal-class rate limits apply on top (same caps as every other
+// proposal route). Creation persists only the proposal + outbox rows: the
+// service's fake-client guards and the RLS grants prove the live price,
+// discount, order, payment, and promotion surfaces are untouched. The input
+// carries no user-authored content, so the durable audit input projects
+// nothing at all.
+const priceChangeInput = z.object({
+  productId: z.string().min(1).max(100),
+  change: z.enum(["set_price", "set_discount"]),
+  // Money "12.50" for set_price; percent "0".."100" for set_discount. The
+  // semantic bounds ([1, 999999.99] NPR / [0, 100]%) and the differ-from-current
+  // rule live in the service (assistantPriceProposals.js) so creation and
+  // execution revalidation share one definition.
+  newValue: z.string().regex(/^\d{1,10}(\.\d{1,2})?$/),
+}).strict().superRefine((value, ctx) => {
+  if (value.change === "set_discount" && !/^\d{1,4}(\.\d{1,2})?$/.test(value.newValue)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["newValue"], message: "set_discount takes a percent between 0 and 100" });
+  }
+});
+
+privateOperation({
+  path: "/propose_price_change",
+  tool: "propose_price_change",
+  operation: "proposals.priceChange",
+  roles: ["seller"],
+  scope: "pricing:propose",
+  rolloutFlag: "MCP_TOOL_PROPOSE_PRICE_CHANGE_ENABLED",
+  inputSchema: priceChangeInput,
+  middlewares: [enforceProposalCreationLimits(), requireVerifiedSellerPrice()],
+  auditInput: () => ({}),
+  run: (input, ctx) => proposePriceChange(input, ctx),
+  observe: (output) => ({ resourceIds: [output.proposalId, output.preview.productId], rowCount: 1 }),
+});
+
+// Seller inventory proposals (#28), on the #22 proposal platform. The strict
+// input is exactly one owned product, at most one optionId (that option must
+// track its own stock — stock != null — else 400; a product-level quantity
+// target is allowed only when NO option tracks stock, else 400
+// option_required), exactly one of adjustment [-10000, 10000] or setTo
+// [0, 100000], and a REQUIRED user-authored reason (20..500). There is NO
+// confirm/execute affordance and no other overwrite semantics: forged fields
+// fail the schema, not the stock. Verified-seller gating lives in the
+// route-scoped requireVerifiedSeller middleware (the SHARED
+// services/assistantVerifiedSellerGate.js gate established by #26/#27 — not a
+// new gate), on top of the shared proposal-class rate limits, whose
+// pending-count read runs under this route's own operation GUC so the RLS
+// seller-role SELECT policy admits it. Creation persists only the proposal +
+// outbox rows: the service's fake-client guards and the RLS grants prove
+// stock, orders, availability, and notifications are untouched. The reason is
+// user-authored content shown to the human reviewer, so the durable audit
+// input projects it OUT — audits keep only productId/optionId and the change
+// numbers.
+// Durable-audit input projection for inventory proposals (#28): keeps only the
+// target ids and the change numbers. The user-authored reason is shown to the
+// human reviewer from the stored preview but must never be echoed into audit
+// rows or logs. Exported so the tests exercise the identical object the route
+// uses.
+export const inventoryProposalAuditInput = ({ productId, optionId, adjustment, setTo }) => ({
+  productId,
+  ...(optionId !== undefined ? { optionId } : {}),
+  ...(adjustment !== undefined ? { adjustment } : {}),
+  ...(setTo !== undefined ? { setTo } : {}),
+});
+
+privateOperation({
+  path: "/propose_inventory_adjustment",
+  tool: "propose_inventory_adjustment",
+  operation: "proposals.inventoryAdjust",
+  roles: ["seller"],
+  scope: "inventory:propose",
+  rolloutFlag: "MCP_TOOL_PROPOSE_INVENTORY_ADJUSTMENT_ENABLED",
+  inputSchema: proposeInventoryAdjustmentInputSchema,
+  middlewares: [
+    enforceProposalCreationLimits({ operation: "proposals.inventoryAdjust" }),
+    requireVerifiedSeller({ operation: "proposals.inventoryAdjust" }),
+  ],
+  auditInput: inventoryProposalAuditInput,
+  run: (input, ctx) => proposeInventoryAdjustment(input, ctx),
+  observe: (output) => ({ resourceIds: [output.proposalId, output.preview.productId], rowCount: 1 }),
+});
+
+// Seller fulfillment proposals (#29), on the #22 proposal platform. The strict
+// input is exactly one owned sale line (the seller's own Order row id) and the
+// requested next stage — there is NO currentStatus input (the server derives
+// the exact stored status) and NO confirm/execute affordance: forged fields
+// fail the schema, not the order. The service resolves the sale line through
+// the immutable sellerIdAtPurchase attribution only and permits only the exact
+// one-step-forward seller transition out of Confirmed/Processing/Shipped.
+privateOperation({
+  path: "/propose_fulfillment_transition",
+  tool: "propose_fulfillment_transition",
+  operation: "proposals.fulfillmentTransition",
+  roles: ["seller"],
+  scope: "fulfillment:propose",
+  rolloutFlag: "MCP_TOOL_PROPOSE_FULFILLMENT_TRANSITION_ENABLED",
+  inputSchema: proposeFulfillmentTransitionInputSchema,
+  middlewares: [
+    enforceProposalCreationLimits({ operation: "proposals.fulfillmentTransition" }),
+    requireVerifiedSeller({ operation: "proposals.fulfillmentTransition" }),
+  ],
+  auditInput: () => ({}),
+  run: (input, ctx) => proposeFulfillmentTransition(input, ctx),
+  observe: (output) => ({ resourceIds: [output.proposalId, output.preview.saleLineId], rowCount: 1 }),
+});
+
+// Admin support queues (#17). Membership is the fixed server rule encoded in
+// the service — exact stored exception/return status strings plus failed
+// refunds inside a rolling 90-day window — with no caller-supplied filters.
+// The detail view requires an explicit bounded purpose, which observe() threads
+// into the durable audit metadata; foreign, missing, non-queued, and
+// quarantined rows all resolve to the identical generic 404.
+privateOperation({
+  path: "/list_order_exception_queue",
+  tool: "list_order_exception_queue",
+  operation: "support.orderExceptionQueue",
+  roles: ["admin"],
+  scope: "support:read",
+  rolloutFlag: "MCP_TOOL_LIST_ORDER_EXCEPTION_QUEUE_ENABLED",
+  inputSchema: z.object({ cursor, limit: z.number().int().min(1).max(50).optional() }).strict(),
+  run: (input, ctx) => listOrderExceptionQueue(input, ctx),
+  observe: (output) => ({ resourceIds: output.orders.map(({ orderId }) => orderId), rowCount: output.orders.length }),
+});
+
+privateOperation({
+  path: "/get_order_exception_detail",
+  tool: "get_order_exception_detail",
+  operation: "support.orderExceptionDetail",
+  roles: ["admin"],
+  scope: "support:read",
+  rolloutFlag: "MCP_TOOL_GET_ORDER_EXCEPTION_DETAIL_ENABLED",
+  inputSchema: z.object({ orderId, purpose: z.string().min(10).max(500) }).strict(),
+  run: (input, ctx) => getOrderExceptionDetail(input, ctx),
+  observe: (output, input) => orderExceptionDetailObserve(output, input),
+});
+
+privateOperation({
+  path: "/list_return_queue",
+  tool: "list_return_queue",
+  operation: "support.returnQueue",
+  roles: ["admin"],
+  scope: "support:read",
+  rolloutFlag: "MCP_TOOL_LIST_RETURN_QUEUE_ENABLED",
+  inputSchema: z.object({ cursor, limit: z.number().int().min(1).max(50).optional() }).strict(),
+  run: (input, ctx) => listReturnQueue(input, ctx),
+  observe: (output) => ({ resourceIds: output.returns.map(({ orderId }) => orderId), rowCount: output.returns.length }),
+});
+
+// Buyer support-message drafting (#19). DETERMINISTIC template composition
+// from the buyer's own minimized order facts plus approved, versioned policy
+// answers — no LLM. ZERO DELIVERY SIDE EFFECTS: nothing on this path sends
+// email or chat, creates a ticket or notification, or calls a webhook — the
+// tool only returns draft text for the buyer to review. The buyer picks the
+// owned order and the bounded topic; no recipient, channel, or send affordance
+// exists in the contract. The draft rate class carries stricter route-scoped
+// limits (10/minute, 100/day per subject+client, fail-closed) on top of the
+// shared distributed limit, and the user-authored `notes` field is excluded
+// from audit rows and logs.
+const draftSupportInput = z.object({
+  orderId: z.string().regex(/^[A-Za-z0-9]{1,24}$/),
+  topic: z.enum(["order_status", "delivery_issue", "return_question", "refund_question", "other"]),
+  notes: z.string().min(1).max(500).optional(),
+}).strict();
+
+privateOperation({
+  path: "/draft_support_message",
+  tool: "draft_support_message",
+  operation: "support.draftMessage",
+  roles: ["user"],
+  scope: "support:draft",
+  rolloutFlag: "MCP_TOOL_DRAFT_SUPPORT_MESSAGE_ENABLED",
+  inputSchema: draftSupportInput,
+  middlewares: [createDraftSupportLimit()],
+  auditInput: ({ orderId, topic }) => ({ orderId, topic }),
+  run: (input, ctx) => draftSupportMessage(input, ctx),
+  observe: (output) => ({ resourceIds: [output.orderId], rowCount: 1 }),
+});
+
+// Admin promotion reads (#18). Read-only by construction: the operations run
+// only SELECT projections and aggregate counts inside the actor transaction —
+// no promo mutation route, notification broadcast, counter reset, or activation
+// toggle is reachable from these paths. Configuration is an allowlist (the code
+// string is configuration, not a secret); per-user redemption history has no
+// field in any output. Missing and out-of-scope codes return the same 404.
+privateOperation({
+  path: "/list_promotion_configuration",
+  tool: "list_promotion_configuration",
+  operation: "promotions.listConfiguration",
+  roles: ["admin"],
+  scope: "promotions:read",
+  rolloutFlag: "MCP_TOOL_LIST_PROMOTION_CONFIGURATION_ENABLED",
+  inputSchema: z.object({
+    cursor,
+    limit: z.number().int().min(1).max(50).optional(),
+    activeOnly: z.boolean().optional(),
+  }).strict(),
+  run: (input, ctx) => listPromotionConfiguration(input, ctx),
+  observe: (output) => ({ resourceIds: output.promotions.map(({ promoCodeId }) => promoCodeId), rowCount: output.promotions.length }),
+});
+
+privateOperation({
+  path: "/get_promotion_usage_summary",
+  tool: "get_promotion_usage_summary",
+  operation: "promotions.usageSummary",
+  roles: ["admin"],
+  scope: "promotions:read",
+  rolloutFlag: "MCP_TOOL_GET_PROMOTION_USAGE_SUMMARY_ENABLED",
+  inputSchema: z.object({ promoCodeId: z.string().min(1).max(100) }).strict(),
+  run: (input, ctx) => getPromotionUsageSummary(input, ctx),
+  observe: (output) => ({ resourceIds: [output.promoCodeId], rowCount: 1 }),
+});
+
+// Admin recommendation drafts (#21). DETERMINISTIC template composition from
+// the authorized minimized admin views (seller application, return queue,
+// promotion configuration + aggregate usage) plus approved, versioned policy
+// sources — no LLM. ZERO AUTHORITY: these paths cannot approve or reject
+// sellers or returns, cannot release refunds, cannot activate or deactivate
+// promotions, cannot reset usage counters, and cannot notify anyone — every
+// draft only recommends that a human reviewer decide. Inputs carry opaque
+// references only (no raw user ids or emails), foreign/missing references
+// resolve to the identical generic 404, absent facts render as literal
+// "unknown", and every draft is bounded to 4000 characters with a truncation
+// flag. The draft rate class carries stricter route-scoped limits (10/minute,
+// 100/day per subject+client, fail-closed) on top of the shared distributed
+// limit, and the return draft's user-authored `purpose` rides through
+// observe() into the durable audit metadata exactly like the queue detail
+// tool — it never appears in a response.
+const sellerReferenceInput = z.object({
+  sellerReference: z.string().regex(/^seller-[0-9a-f]{12}$/),
+}).strict();
+
+privateOperation({
+  path: "/draft_seller_review_recommendation",
+  tool: "draft_seller_review_recommendation",
+  operation: "recommendations.sellerReview",
+  roles: ["admin"],
+  scope: "recommendations:draft",
+  rolloutFlag: "MCP_TOOL_DRAFT_SELLER_REVIEW_RECOMMENDATION_ENABLED",
+  inputSchema: sellerReferenceInput,
+  middlewares: [createRecommendationLimit()],
+  run: (input, ctx) => draftSellerReviewRecommendation(input, ctx),
+  observe: (_output, input) => ({ resourceIds: [input.sellerReference], rowCount: 1 }),
+});
+
+privateOperation({
+  path: "/draft_return_review_recommendation",
+  tool: "draft_return_review_recommendation",
+  operation: "recommendations.returnReview",
+  roles: ["admin"],
+  scope: "recommendations:draft",
+  rolloutFlag: "MCP_TOOL_DRAFT_RETURN_REVIEW_RECOMMENDATION_ENABLED",
+  inputSchema: z.object({ orderId, purpose: z.string().min(10).max(500) }).strict(),
+  middlewares: [createRecommendationLimit()],
+  run: (input, ctx) => draftReturnReviewRecommendation(input, ctx),
+  observe: (output, input) => returnReviewObserve(output, input),
+});
+
+privateOperation({
+  path: "/draft_promotion_recommendation",
+  tool: "draft_promotion_recommendation",
+  operation: "recommendations.promotionReview",
+  roles: ["admin"],
+  scope: "recommendations:draft",
+  rolloutFlag: "MCP_TOOL_DRAFT_PROMOTION_RECOMMENDATION_ENABLED",
+  inputSchema: z.object({ promoCodeId: z.string().min(1).max(100) }).strict(),
+  middlewares: [createRecommendationLimit()],
+  run: (input, ctx) => draftPromotionRecommendation(input, ctx),
+  observe: (_output, input) => ({ resourceIds: [input.promoCodeId], rowCount: 1 }),
 });
 
 router.use(authenticatePublicWorkload);

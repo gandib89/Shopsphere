@@ -1,0 +1,11 @@
+-- Mutation marker for orders (#25). This migration intentionally sorts before
+-- 20260919200000_assistant_order_cancel_proposals, which grants SELECT on the
+-- new column.
+--
+-- Orders previously had no "last modified" column, so no optimistic version
+-- proxy existed for first-party proposal execution. Assistant return proposals
+-- snapshot orders."updatedAt" (epoch seconds, int4-safe) as the proposal's
+-- expectedVersion and require it unchanged at execution. Prisma's @updatedAt
+-- maintains the column client-side on every update; the database default below
+-- covers rows written outside the Prisma client and backfills existing rows.
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT now();
