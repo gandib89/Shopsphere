@@ -13,25 +13,26 @@ const BUYER = "aaaaaaaaaaaaaaaaaaaaaaaa";
 const RIVAL = "bbbbbbbbbbbbbbbbbbbbbbbb";
 
 const REASON = "The left earcup arrived with a cracked hinge.";
+const FIXTURE_DELIVERED_AT = new Date(Date.now() - 24 * 60 * 60 * 1000);
+const FIXTURE_UPDATED_AT = new Date(FIXTURE_DELIVERED_AT.getTime() + 60 * 60 * 1000);
 
 const orderFixture = (overrides = {}) => {
-  const updatedAt = new Date("2026-09-15T09:30:00Z");
   return {
     id: "order-1",
     userId: BUYER,
     orderNumber: "ORD-2026-0042",
     status: "Delivered",
     totalPrice: "1299.00",
-    deliveredAt: new Date("2026-09-15T12:00:00Z"),
+    deliveredAt: new Date(FIXTURE_DELIVERED_AT),
     returnRequestedAt: null,
     returnReason: null,
-    updatedAt,
+    updatedAt: new Date(FIXTURE_UPDATED_AT),
     ...overrides,
   };
 };
 
 const createProposalRow = (overrides = {}) => {
-  const updatedAt = overrides.orderUpdatedAt ?? new Date("2026-09-15T09:30:00Z");
+  const updatedAt = overrides.orderUpdatedAt ?? FIXTURE_UPDATED_AT;
   return ({
     id: "prop-1",
     subjectId: BUYER,

@@ -49,7 +49,7 @@ const createMemoryPrisma = ({ initialUsers = [], initialProducts = [] } = {}) =>
   return database;
 };
 
-test("creates usable demo accounts and pictured products only once", async () => {
+test("creates usable demo accounts and products only once", async () => {
   const prisma = createMemoryPrisma();
 
   const firstResult = await ensureDemoData(prisma);
@@ -82,19 +82,12 @@ test("creates usable demo accounts and pictured products only once", async () =>
     prisma.users.get("seller1@shopsphere.test").id,
     prisma.users.get("seller2@shopsphere.test").id,
   ]);
-  const projectRoot = path.resolve(import.meta.dirname, "../..");
-
   for (const product of prisma.products.values()) {
     assert.ok(sellerIds.has(product.sellerId), `${product.name} should belong to a demo seller`);
     assert.ok(product.images.length > 0, `${product.name} should have at least one image`);
 
     for (const image of product.images) {
       assert.match(image, /^\/images\//);
-      assert.equal(
-        existsSync(path.join(projectRoot, "frontend", "public", image)),
-        true,
-        `${product.name} image should exist: ${image}`,
-      );
     }
   }
 
@@ -106,9 +99,7 @@ test("creates usable demo accounts and pictured products only once", async () =>
   );
 });
 
-test("keeps every configuration sandbox-priced and every phone color pictured", () => {
-  const projectRoot = path.resolve(import.meta.dirname, "../..");
-
+test("keeps every configuration sandbox-priced and every phone color represented", () => {
   for (const product of demoProducts) {
     assert.ok(
       getMaximumConfiguredPrice(product) <= MAX_DEMO_CONFIGURED_PRICE,
@@ -122,12 +113,22 @@ test("keeps every configuration sandbox-priced and every phone color pictured", 
       const images = picturedColors.get(color);
       assert.ok(images?.length, `${product.name} ${color} should have an image`);
       for (const image of images) {
-        assert.equal(
-          existsSync(path.join(projectRoot, "frontend", "public", image)),
-          true,
-          `${product.name} ${color} image should exist: ${image}`,
-        );
+        assert.match(image, /^\/images\//);
       }
+    }
+  }
+});
+
+const frontendPublic = path.resolve(import.meta.dirname, "../../frontend/public");
+test("every referenced demo product image exists", {
+  skip: !existsSync(frontendPublic) && "frontend/public is not included in the backend image",
+}, () => {
+  for (const product of demoProducts) {
+    for (const image of [
+      ...product.images,
+      ...product.colorVariants.flatMap((variant) => variant.images),
+    ]) {
+      assert.equal(existsSync(path.join(frontendPublic, image)), true, `${product.name} image should exist: ${image}`);
     }
   }
 });

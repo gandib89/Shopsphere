@@ -1,4 +1,4 @@
-import { act, screen } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useLocation } from 'react-router-dom';
@@ -79,7 +79,9 @@ describe('customer and seller forms', () => {
     await fillSignIn(user);
     await user.click(screen.getByRole('button', { name: 'Sign in' }));
     expect(login).toHaveBeenCalledWith(customer.email, 'TestPassword!123');
-    expect(screen.getByTestId('location').textContent).toBe(seller ? '/seller-panel' : '/');
+    await waitFor(() => {
+      expect(screen.getByTestId('location')).toHaveTextContent(seller ? '/seller-panel' : '/');
+    });
   });
 
   it('prevents duplicate submissions and reports a server error inline', async () => {
