@@ -18,9 +18,15 @@ Create a private release record outside the source repository from [the evidence
 
 Record the deployed commit SHA, image digest, environment, operator, UTC timestamps, approved client ID/version, policy/registry version, and links to immutable evidence. A checkbox without a link or attached artifact is not evidence.
 
+## Before starting staging validation
+
+Record the staging MCP URL and exact deployed artifact, approved first-party client IDs and versions, synthetic catalog fixtures, private evidence location, monitoring links and thresholds, and named release and rollback operators. Confirm the issuer, assistant backend, Redis, and durable audit sink are connected to this staging deployment. Keep all public flags disabled until the corresponding checks are ready to run. If any prerequisite is missing, record a no-go decision; a local fixture or storefront health check cannot stand in for the staging MCP service.
+
 ## Automated preflight
 
 Run both package suites against the exact release commit:
+
+Use a throwaway `JWT_SECRET` value for the backend tests, as the CI job does. Do not use a deployed signing secret in local validation.
 
 ```text
 cd mcp
@@ -30,6 +36,7 @@ npm test
 
 cd ../backend
 npm ci
+npx prisma generate
 npm test
 ```
 

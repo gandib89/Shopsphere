@@ -75,8 +75,8 @@ const seedFixtures = async () => {
   });
   await prisma.user.upsert({
     where: { id: SELLER },
-    create: { id: SELLER, firstName: "Ben", lastName: "Seller", email: "rls-b@example.test", role: "seller", isVerified: true },
-    update: { role: "seller", isVerified: true },
+    create: { id: SELLER, firstName: "Ben", lastName: "Seller", email: "rls-b@example.test", role: "seller", isVerified: false },
+    update: { role: "seller" },
   });
   await prisma.product.upsert({
     where: { id: PRODUCT },

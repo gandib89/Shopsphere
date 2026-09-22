@@ -388,6 +388,8 @@ Exit: correct protocol behavior in intended clients, no forbidden fields, bounde
 
 ### Phase 2 — authenticated private read-only tools
 
+Release evidence for issues #31–#36 is specified in the [phased release runbook](mcp-phased-release-runbook.md) and [private evidence template](mcp-phased-release-evidence-template.md). The [public pilot gate](mcp-public-pilot-runbook.md) remains a prerequisite for private reads.
+
 Build buyer tools first: profile summary, cart, order list/detail/tracking, existing bill summary, payment-status summary, notifications, promo validation, and pure checkout preview. Then seller-owned products, stock, order lines, and revenue. Finally pilot narrowly consented admin aggregates and redacted application/exception/return/promo views with staff.
 
 Exit: cross-principal and cross-seller tests pass on PostgreSQL 16 with pooled concurrent requests; revoked grants stop working; every nested result is projected and scoped. Privacy consent and audit retention are approved. Use progressive rollout by client, role, and account cohort; avoid a global launch.
