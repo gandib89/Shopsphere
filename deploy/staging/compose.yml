@@ -6,6 +6,8 @@ services:
       POSTGRES_USER: shopsphere
       POSTGRES_PASSWORD: ${APP_DB_PASSWORD:?set APP_DB_PASSWORD}
       POSTGRES_DB: shopsphere
+    ports:
+      - "${STAGE_VM_IP:?set STAGE_VM_IP}:5432:5432"
     volumes:
       - app_postgres_data:/var/lib/postgresql/data
     healthcheck:
