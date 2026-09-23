@@ -18,7 +18,6 @@ import userManagementRouter from "./routes/userManagementRoute.js";
 import chatRouter from "./routes/chatRoute.js";
 import notificationRouter from "./routes/notificationRoute.js";
 import promoRouter from "./routes/promoCodeRoute.js";
-import testEmailRouter from "./routes/testEmailRoute.js";
 import assistantRouter from "./routes/assistantRoute.js";
 import mcpOAuthRouter from "./routes/mcpOAuthRoute.js";
 import { rejectDelegatedTokens } from "./middlewares/assistantDelegation.js";
@@ -101,7 +100,6 @@ app.use('/api/v1/users', userManagementRouter);
 app.use('/api/v1/chat', chatRouter);
 app.use('/api/v1/notifications', notificationRouter);
 app.use('/api/v1/promo', promoRouter);
-app.use('/api/v1/email', testEmailRouter);
 app.use("/uploads", express.static(join(__dirname, "uploads")));
 
 // eSewa redirects the browser here after payment. These used to redirect straight to the

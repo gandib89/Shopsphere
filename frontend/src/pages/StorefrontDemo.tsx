@@ -8,7 +8,7 @@ const products: StorefrontProduct[] = [
     price: 234999,
     rating: 4.9,
     reviews: 86,
-    image: '/images/17pmorange.jpg',
+    image: '/images/17pmorange.webp',
     imageBackground: 'white',
     note: 'Available in 3 finishes',
   },

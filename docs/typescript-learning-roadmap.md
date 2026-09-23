@@ -90,11 +90,11 @@ frontend/src
 │   └── utils.ts          three small typed helper functions
 │
 ├── components/           reusable UI — the best-written TypeScript in the project
-│   ├── ui/               Button, Field, Status, AsyncState, sonner
+│   ├── ui/               Button, Field, Dialog, AsyncState
 │   ├── catalog/          ProductCard, Money
 │   ├── auth/             ProtectedRoute, RoleSelector
 │   ├── checkout/         CartSummary
-│   ├── operations/       PageHeader, ActionList
+│   ├── operations/       PageHeader
 │   ├── NavBar.tsx  Footer.tsx  ChatWidget.tsx  NotificationBell.tsx  OrbitMark.tsx
 │   └── *.test.tsx        component tests
 │
@@ -186,7 +186,6 @@ setData(response.data || []);
 | `Omit<T, K>` | `ui/Button.tsx:49`, `ui/Field.tsx:28` |
 | `Partial<T>` | `ui/AsyncState.tsx:17`, `pages/ProductDetailsAdmin.tsx:35`, `pages/SellerProductDetails.tsx:37` |
 | `keyof typeof` | `pages/AddProduct.tsx` (several lines) |
-| `ComponentProps<typeof X>` | `ui/sonner.tsx:5` |
 | `useRef<HTMLDivElement>(null)` | 5 places |
 | `forwardRef<Element, Props>` | 4 components |
 | Type assertions (`as`) | ~10 places |
@@ -217,13 +216,12 @@ Read them in this order. Each one adds a little on top of the previous.
 | 2 | `frontend/src/components/catalog/Money.tsx` | Smallest component with typed props. Optional prop. |
 | 3 | `frontend/src/components/auth/ProtectedRoute.tsx` | `type Props`, a union of two strings, `ReactNode`. 20 lines. |
 | 4 | `frontend/src/components/catalog/ProductCard.tsx` | The best single example: an exported domain type, optional fields, arrays of objects, callback props, a `Record` lookup. |
-| 5 | `frontend/src/components/ui/Status.tsx` | Union type used as the key of a `Record`. Shows why this pairing is powerful. |
-| 6 | `frontend/src/components/ui/Button.tsx` | Intersection types, `Record<Union, string>`, `Omit`, `forwardRef`. |
-| 7 | `frontend/src/components/ui/Field.tsx` | The same patterns repeated for input, textarea and select. Shows the payoff. |
-| 8 | `frontend/src/lib/session.ts` | The only real API module. `SessionUser`, `Promise<string \| null>`, `as SessionUser`, axios interceptors. |
-| 9 | `frontend/src/pages/Home.tsx` | A real page start to finish: state, handlers, axios, `error: any`. |
-| 10 | `frontend/src/pages/Cart.tsx` | Nested object types, `Record<string, string>` for product variants. |
-| 11 | `frontend/src/pages/OrderDetails.tsx` | The largest type in the project. Deeply nested, heavily optional. |
+| 5 | `frontend/src/components/ui/Button.tsx` | Union types, intersection types, `Record<Union, string>`, `Omit`, `forwardRef`. |
+| 6 | `frontend/src/components/ui/Field.tsx` | The same patterns repeated for input, textarea and select. Shows the payoff. |
+| 7 | `frontend/src/lib/session.ts` | The only real API module. `SessionUser`, `Promise<string \| null>`, `as SessionUser`, axios interceptors. |
+| 8 | `frontend/src/pages/Home.tsx` | A real page start to finish: state, handlers, axios, `error: any`. |
+| 9 | `frontend/src/pages/Cart.tsx` | Nested object types, `Record<string, string>` for product variants. |
+| 10 | `frontend/src/pages/OrderDetails.tsx` | The largest type in the project. Deeply nested, heavily optional. |
 | 12 | `frontend/src/components/catalog/catalog.test.tsx` | A type used as a test fixture — proof that types describe real data. |
 
 ---
@@ -248,9 +246,9 @@ Read them in this order. Each one adds a little on top of the previous.
 | `Partial<T>` | Yes, 3 | `AsyncState.tsx:17` | Medium |
 | `Pick<T, K>` | No | — | Medium (useful later) |
 | `keyof typeof` | Yes | `AddProduct.tsx:236` | Medium |
-| `ComponentProps<typeof X>` | Yes, 1 | `sonner.tsx:5` | Low |
+| `ComponentProps<typeof X>` | No | — | Low |
 | Component prop typing | Yes | every component | Critical |
-| `ReactNode` / `ReactElement` | Yes | `ActionList.tsx:1`, `test/render.tsx:1` | High |
+| `ReactNode` / `ReactElement` | Yes | `PageHeader.tsx:1`, `test/render.tsx:1` | High |
 | `useState<T>` | Yes, 60+ | all pages | Critical |
 | Event types | Yes, ~20 | `AddProduct.tsx:212` | High |
 | `useRef<T>` | Yes, 5 | `ChatWidget.tsx:21` | Medium |
@@ -486,7 +484,7 @@ Union types. Unions of exact string values. Working with `T | null` under strict
 **Files:**
 - `components/auth/RoleSelector.tsx` — `AccountRole`
 - `components/auth/ProtectedRoute.tsx` — `role: "admin" | "seller"`
-- `components/ui/Status.tsx` — `StatusTone`
+- `components/ui/Button.tsx` — `ButtonVariant` and `ButtonSize`
 - `pages/PromoManagement.tsx` — `discountType: "percentage" | "fixed"`
 - `pages/AdminUserManagement.tsx` — a union used as state
 
@@ -500,7 +498,7 @@ Parameter types, return types, optional and default parameters, callback props, 
 
 **Files:**
 - `components/catalog/ProductCard.tsx:38` — `onOpen` and `onAddToCart`
-- `components/operations/ActionList.tsx` — `onSelect: () => void`
+- `components/ui/Dialog.tsx` — `onClose: () => void`
 - `lib/session.ts` — `login`, `refreshSession` returning `Promise<string | null>`
 
 ---
@@ -566,9 +564,9 @@ Every business entity from section 8: what it represents, where it is defined, w
 
 **Concepts:** 16, 18, 20 (second half)
 
-`Record`, `Omit`, `Partial`, `Pick`, `keyof typeof`, `ComponentProps<typeof X>`. Then the important part: reading real TypeScript error messages, why `any` and `as` silence errors without fixing them, a tour of the 53 `any` uses in this project, and discriminated unions as the proper fix for `Notification.type` and order `status`.
+`Record`, `Omit`, `Partial`, `Pick`, and `keyof typeof`. Then the important part: reading real TypeScript error messages, why `any` and `as` silence errors without fixing them, a tour of the 53 `any` uses in this project, and discriminated unions as the proper fix for `Notification.type` and order `status`.
 
-**Files:** `components/ui/Button.tsx`, `components/ui/Field.tsx`, `components/ui/AsyncState.tsx`, `components/ui/sonner.tsx`, `pages/AddProduct.tsx:236`
+**Files:** `components/ui/Button.tsx`, `components/ui/Field.tsx`, `components/ui/AsyncState.tsx`, `pages/AddProduct.tsx:236`
 
 ---
 

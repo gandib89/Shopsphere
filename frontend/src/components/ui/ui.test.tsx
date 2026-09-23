@@ -4,7 +4,6 @@ import { renderRoute } from '../../test/render';
 import { Button, IconButton } from './Button';
 import { Field } from './Field';
 import { EmptyState } from './AsyncState';
-import { Status } from './Status';
 
 describe('ShopSphere UI primitives', () => {
   it('keeps a loading button named and unavailable', () => {
@@ -34,12 +33,6 @@ describe('ShopSphere UI primitives', () => {
     const input = screen.getByLabelText('Email');
     expect(input).toBeInvalid();
     expect(input).toHaveAccessibleDescription('Enter a valid email');
-  });
-
-  it('renders status meaning as readable text', () => {
-    renderRoute(<Status tone="warning">Low stock</Status>);
-
-    expect(screen.getByText('Low stock')).toHaveAttribute('data-tone', 'warning');
   });
 
   it('gives empty states a heading and recovery action', () => {

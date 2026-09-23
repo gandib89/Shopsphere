@@ -704,12 +704,9 @@ import controllers, which import `prismaClient.js` — and all of that finishes 
 `dotenv.config()` here, `process.env.DATABASE_URL` would be `undefined` at the moment
 `new PrismaPg(...)` runs.
 
-**Why PostgreSQL rather than MongoDB.** This is not hypothetical — **the project migrated
-from MongoDB to PostgreSQL partway through**, and the evidence is all over the repo:
-`backend/models/*.js` still contains Mongoose schemas,
-`backend/scripts/migrateMongoToPostgres.js` is the one-time ETL script, and `mongoose` and
-`mongodb` are still listed in `backend/package.json`. §8.1 covers this migration as a full
-case study.
+**Why PostgreSQL rather than MongoDB.** The project migrated from MongoDB to PostgreSQL.
+The current runtime is Prisma/PostgreSQL-only; the old MongoDB models, migration runtime,
+and unused `mongodb` package have been removed. §8.1 covers the migration as a case study.
 
 ### 2.9 zod
 
@@ -1016,22 +1013,17 @@ Three guards keep this from going wrong:
   Mounted once in `frontend/src/main.tsx` as `<Toaster />`; any component then calls
   `toast.success("...")`.
 - **lucide-react** — SVG icon set. `import { ShoppingCart } from 'lucide-react'`.
-- **@radix-ui/react-\*** — unstyled but fully accessible UI primitives (avatar, separator,
-  slot, tabs). Radix handles keyboard navigation, focus trapping, and ARIA attributes;
-  Tailwind handles the looks. `frontend/components.json` shows the project was scaffolded
-  with **shadcn/ui**, a convention of copying Radix-based components into your own repo
-  rather than installing them as a dependency.
+- **Local UI primitives** — Button, Field, Dialog, and async-state components use React and
+  native browser behavior directly. `frontend/components.json` records the earlier shadcn/ui
+  scaffold, but the unused Radix runtime packages have been removed.
 - **recharts** — the charts on `AdminRevenueDashboard.tsx` and `SellerRevenueDashboard.tsx`.
 - **jspdf** — generates the PDF receipt in `frontend/src/pages/Success.tsx`, entirely in the
   browser. No server-side PDF rendering exists.
 
-### 2.15 groq-sdk and @google/generative-ai
+### 2.15 groq-sdk
 
 **Groq** is an inference provider — it runs open-weight large language models very fast.
 `backend/routes/chatRoute.js` calls it with the model `llama-3.1-8b-instant`.
-
-`@google/generative-ai` is listed in `backend/package.json` but, at time of writing, is not
-imported by any file in `backend/`. It is a leftover from an earlier chatbot attempt.
 
 ### 2.16 Testing: node --test and Vitest
 
@@ -1281,8 +1273,7 @@ Shopsphere/
 │   │   ├── userManagementRoute.js  /api/v1/users
 │   │   ├── promoCodeRoute.js       /api/v1/promo
 │   │   ├── notificationRoute.js    /api/v1/notifications
-│   │   ├── chatRoute.js            /api/v1/chat   (logic lives here, not in a controller)
-│   │   └── testEmailRoute.js       /api/v1/email  (diagnostic, unauthenticated)
+│   │   └── chatRoute.js            /api/v1/chat   (logic lives here, not in a controller)
 │   │
 │   ├── controller/                 All business logic
 │   │   ├── auth.js                    417 lines
@@ -1359,12 +1350,12 @@ Shopsphere/
         │   ├── NavBar.tsx  Footer.tsx  OrbitMark.tsx
         │   ├── NotificationBell.tsx    Polls /notifications every 30s
         │   ├── ChatWidget.tsx          Floating chatbot
-        │   ├── ui/                     Button, Field, Status, AsyncState, sonner + tests
+        │   ├── ui/                     Button, Field, Dialog, AsyncState + tests
         │   ├── auth/RoleSelector.tsx + tests
         │   ├── catalog/                ProductCard, Money + tests
         │   ├── checkout/CartSummary.tsx + tests
         │   ├── layout/layout.test.tsx
-        │   └── operations/             ActionList, PageHeader + tests
+        │   └── operations/             PageHeader + test
         │
         ├── pages/                  45 route components (see §3.6)
         │
@@ -1426,7 +1417,7 @@ router imports its controller functions and the middleware it needs.
 
 **The main exception.** `backend/routes/chatRoute.js` contains its full handler inline —
 Groq calls, prompt construction, product fetching — rather than delegating to a controller.
-`backend/routes/testEmailRoute.js` does the same. Two smaller exceptions live in
+Two smaller exceptions live in
 `authRoute.js` (`GET /me` and `PUT /profile` are written inline) and `orderRoute.js`
 (a `/user/debug/info` diagnostic handler).
 
@@ -1689,7 +1680,6 @@ app.use('/api/v1/users', userManagementRouter);
 app.use('/api/v1/chat', chatRouter);
 app.use('/api/v1/notifications', notificationRouter);
 app.use('/api/v1/promo', promoRouter);
-app.use('/api/v1/email', testEmailRouter);
 app.use("/uploads", express.static(join(__dirname, "uploads")));
 ```
 
@@ -2398,13 +2388,6 @@ widget shows a chat bubble instead of an error state.
 **Security note:** `/api/v1/chat` has **no authentication and no rate limiting**. Anyone who
 can reach the API can spend the project's Groq quota. `express-rate-limit` is already a
 dependency; applying it here would be a two-line fix.
-
-#### `backend/routes/testEmailRoute.js`
-
-A diagnostic endpoint that sends a test email. **Unauthenticated**, and it logs
-`EMAIL_PASS length` to the server console. It is a development tool that is currently
-mounted in every environment. It should be removed, or gated behind
-`verifyToken + authorizeAdmin`, before any real deployment.
 
 ### 3.6 File-by-file: the frontend
 
@@ -7084,8 +7067,8 @@ await prisma.user.create({ data: { id: id(d._id), firstName: d.firstName, ... } 
 5. **Preserve quirks deliberately, with tests** — `updateFirstRevenueByOrder` mirrors
    `findOneAndUpdate`'s "first match only" semantics, and `order.test.js` asserts that the
    second matching row is untouched.
-6. **Keep the old layer for the ETL only** — `backend/models/` and `mongoose`/`mongodb` remain
-   installed but are imported by nothing except the migration script.
+6. **Remove the old layer after the ETL** — the current checkout keeps only the
+   Prisma/PostgreSQL runtime and its migrations.
 
 #### Lesson
 
@@ -7233,11 +7216,10 @@ grep -rn "navigate(\"/payment\|navigate('/payment\|to=\"/payment" frontend/src
 which returns nothing, while `payment/checkout` appears in exactly two files —
 `BuyProduct.tsx` and `CartCheckout.tsx`.
 
-#### Fix (recommended; not yet applied)
+#### Current state
 
-Delete `frontend/src/pages/PaymentForm.tsx`, its `lazy()` import, and its `<Route>`. Then
-`crypto-js` and `uuid` can likely be reviewed as dependencies — though `uuid` is still used for
-`Idempotency-Key` generation, so check before removing.
+`PaymentForm.tsx`, its route, and the unused `crypto-js` package have been removed. `uuid`
+remains because the active eSewa checkout uses it for transaction identifiers.
 
 **How bad is it today?** `8gBm/:&EnhH.1/q` is eSewa's *published sandbox* secret — the same
 value is in `backend/config/config.env.example`. So no real credential is exposed. But this
@@ -7945,7 +7927,7 @@ a stale copy of something you never copied.
 | 8.9e | `POST /revenue/create` lacks `authorizeAdmin` | Medium | `routes/revenueRoute.js` |
 | 8.9f | Reviews trust `userId`/`userName` from the body | Medium | `controller/productController.js` |
 | 8.9g | `cancelOrder` restores stock for never-deducted orders | Medium | `controller/order.js` |
-| 8.9i | `/chat` unauthenticated + unlimited; `/email` unauthenticated | Medium | `routes/chatRoute.js`, `routes/testEmailRoute.js` |
+| 8.9i | `/chat` is public and consumes shared provider quota, with rate limiting | Medium | `routes/chatRoute.js` |
 | 8.3 | Orphaned `PaymentForm.tsx` with browser-side HMAC signing | Medium | `frontend/src/pages/PaymentForm.tsx` |
 | 8.4 | Six pages use `fetch` with the sentinel token → always 401 | Medium | six frontend files |
 | 8.10 | `_id` vs `id` breaks `BuyProduct` checkout | Medium | `frontend/src/pages/BuyProduct.tsx` |
