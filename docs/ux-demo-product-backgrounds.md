@@ -6,7 +6,7 @@ The iPhone and MacBook retain their existing white-background images; the hero r
 
 ## watch
 
-- Source: `C:/Projects/Shopsphere/frontend/public/images/applewatch.jpg` (AVIF content). A temporary lossless PNG conversion was used as the edit target and removed after the final asset was saved.
+- Source: `C:/Projects/Shopsphere/frontend/public/images/applewatch.avif`. A temporary lossless PNG conversion was used as the edit target and removed after the final asset was saved.
 - Final asset: `C:/Projects/Shopsphere/frontend/public/images/ux-demo/apple-watch-dark.webp`
 
 ### Final prompt
