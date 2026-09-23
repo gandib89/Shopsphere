@@ -1,3 +1,5 @@
+import { createCloudRunIdentityTokenProvider } from "../utils/cloudRunIdentity.js";
+
 const REALM = "shopsphere";
 const RETENTION_NOTICE =
   "Your selected data is shared with the named external AI client. ShopSphere cannot control that client's retention after disclosure.";
@@ -27,9 +29,16 @@ export const createKeycloakAdmin = ({
   clientId = process.env.KEYCLOAK_SYNC_CLIENT_ID,
   clientSecret = process.env.KEYCLOAK_SYNC_CLIENT_SECRET,
   redirectUris = (process.env.MCP_CLIENT_REDIRECT_URIS ?? "").split(",").map((value) => value.trim()).filter(Boolean),
+  cloudRunIdToken,
   fetchImpl = fetch,
 } = {}) => {
   const base = new URL(requireConfig(origin, "KEYCLOAK_ADMIN_ORIGIN"));
+  const identityToken = cloudRunIdToken ?? (process.env.KEYCLOAK_ADMIN_CLOUD_RUN_AUTH === "true"
+    ? createCloudRunIdentityTokenProvider(base.origin)
+    : null);
+  const cloudRunHeaders = async () => identityToken
+    ? { "x-serverless-authorization": `Bearer ${await identityToken()}` }
+    : {};
   const publicIssuer = requireConfig(issuer, "MCP_OAUTH_ISSUER");
   requireConfig(clientId, "KEYCLOAK_SYNC_CLIENT_ID");
   requireConfig(clientSecret, "KEYCLOAK_SYNC_CLIENT_SECRET");
@@ -40,7 +49,7 @@ export const createKeycloakAdmin = ({
     if (cachedToken && tokenExpiresAt > Date.now() + 10_000) return cachedToken;
     const response = await fetchImpl(new URL(`/realms/${REALM}/protocol/openid-connect/token`, base), {
       method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
+      headers: { "content-type": "application/x-www-form-urlencoded", ...await cloudRunHeaders() },
       body: new URLSearchParams({ grant_type: "client_credentials", client_id: clientId, client_secret: clientSecret }),
       signal: AbortSignal.timeout(5_000),
     });
@@ -55,7 +64,7 @@ export const createKeycloakAdmin = ({
     const token = await serviceToken();
     const response = await fetchImpl(new URL(path, base), {
       ...init,
-      headers: { authorization: `Bearer ${token}`, ...(init.body ? { "content-type": "application/json" } : {}), ...init.headers },
+      headers: { authorization: `Bearer ${token}`, ...(init.body ? { "content-type": "application/json" } : {}), ...init.headers, ...await cloudRunHeaders() },
       signal: AbortSignal.timeout(5_000),
     });
     if (!response.ok) throw new Error("Keycloak account operation failed");
@@ -90,6 +99,13 @@ export const createKeycloakAdmin = ({
       await request(`/admin/realms/${REALM}/users/${linked.id}`, { method: "PUT", body: JSON.stringify(representation) });
     }
     if (!linked) throw new Error("Keycloak account link was not created");
+    const stored = await request(`/admin/realms/${REALM}/users/${linked.id}`);
+    const attributes = (await stored.json()).attributes;
+    if (attributes?.shopsphere_user_id?.[0] !== user.id
+      || attributes?.shopsphere_role?.[0] !== user.role
+      || attributes?.shopsphere_verified?.[0] !== String(Boolean(user.isVerified))) {
+      throw new Error("Keycloak account attributes were not stored");
+    }
     await request(`/admin/realms/${REALM}/users/${linked.id}/reset-password`, {
       method: "PUT",
       body: JSON.stringify({ type: "password", value: password, temporary: false }),
