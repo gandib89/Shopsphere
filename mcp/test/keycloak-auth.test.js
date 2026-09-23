@@ -100,6 +100,7 @@ test("exchanges only the presented subject token for the fixed assistant audienc
   assert.equal(await auth.exchange("subject-token", ["profile:read"]), "delegated-token");
   const body = new URLSearchParams(request.init.body);
   assert.equal(body.get("subject_token"), "subject-token");
+  assert.equal(body.get("subject_token_type"), "urn:ietf:params:oauth:token-type:access_token");
   assert.equal(body.get("audience"), "shopsphere-assistant-api");
   assert.equal(body.get("scope"), "profile:read");
   assert.equal(body.get("subject"), null);
