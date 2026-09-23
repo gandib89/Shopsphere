@@ -1,6 +1,7 @@
 import { readConfig } from "./config.js";
 import { createMcpHttpServer } from "./httpServer.js";
 import { createBackendClient } from "./backendClient.js";
+import { createCloudRunIdentityTokenProvider } from "./cloudRunIdentity.js";
 import { createKeycloakMcpAuth } from "./keycloakAuth.js";
 import {
   connectAssistantRedis,
@@ -30,6 +31,9 @@ const backendClient = createBackendClient({
   origin: config.backendOrigin,
   token: config.backendToken || "disabled",
   exchangeToken: oauth?.exchange,
+  cloudRunIdToken: config.cloudRunBackendAuth
+    ? createCloudRunIdentityTokenProvider(config.backendOrigin)
+    : undefined,
   timeoutMs: config.backendTimeoutMs,
 });
 const redis = config.enabled ? await connectAssistantRedis(config.redisUrl) : null;

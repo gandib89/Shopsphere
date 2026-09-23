@@ -37,6 +37,7 @@ export const readConfig = (environment = process.env) => ({
     .map((client) => client.trim())
     .filter(Boolean),
   backendOrigin: environment.MCP_BACKEND_ORIGIN ?? "http://127.0.0.1:4000",
+  cloudRunBackendAuth: parseBoolean(environment.MCP_BACKEND_CLOUD_RUN_AUTH, false),
   redisUrl: environment.REDIS_URL,
   backendToken: environment.ASSISTANT_API_TOKEN,
   backendTimeoutMs: parsePositiveInteger(
