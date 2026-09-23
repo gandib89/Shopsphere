@@ -90,12 +90,15 @@ const PRIVATE_SCOPES = Object.freeze({
   draft_promotion_recommendation: Object.freeze(["recommendations:draft"]),
 });
 
-export const createBackendClient = ({ origin, token, exchangeToken, timeoutMs = 10_000, fetchImpl = fetch }) => {
+export const createBackendClient = ({ origin, token, exchangeToken, cloudRunIdToken, timeoutMs = 10_000, fetchImpl = fetch }) => {
   if (!origin || !token) throw new Error("MCP backend origin and token are required");
   const base = new URL(origin);
   if (!/^https:$/.test(base.protocol) && base.hostname !== "127.0.0.1" && base.hostname !== "localhost" && base.hostname !== "backend") {
     throw new Error("MCP backend origin must use HTTPS outside the private local network");
   }
+  const cloudRunHeaders = async () => cloudRunIdToken
+    ? { "x-serverless-authorization": `Bearer ${await cloudRunIdToken()}` }
+    : {};
 
   return Object.freeze({
     async recordAudit(event, context = {}) {
@@ -106,6 +109,7 @@ export const createBackendClient = ({ origin, token, exchangeToken, timeoutMs = 
         headers: {
           "x-assistant-api-token": token,
           "content-type": "application/json",
+          ...await cloudRunHeaders(),
           ...(context.requestId ? { "x-request-id": context.requestId } : {}),
         },
         body: JSON.stringify(event),
@@ -125,6 +129,7 @@ export const createBackendClient = ({ origin, token, exchangeToken, timeoutMs = 
           authorization: `Bearer ${delegatedToken}`,
           "x-assistant-api-token": token,
           "content-type": "application/json",
+          ...await cloudRunHeaders(),
           ...(context.requestId ? { "x-request-id": context.requestId } : {}),
         },
         body: "{}",
@@ -151,6 +156,7 @@ export const createBackendClient = ({ origin, token, exchangeToken, timeoutMs = 
           authorization: `Bearer ${delegatedToken ?? token}`,
           ...(delegatedToken ? { "x-assistant-api-token": token } : {}),
           "content-type": "application/json",
+          ...await cloudRunHeaders(),
           ...(context.requestId ? { "x-request-id": context.requestId } : {}),
         },
         body: JSON.stringify(input),

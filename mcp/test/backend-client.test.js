@@ -8,6 +8,7 @@ test("private backend calls use workload authentication plus exchanged delegatio
   const client = createBackendClient({
     origin: "http://backend:4000",
     token: "workload-secret",
+    cloudRunIdToken: async () => "google-id-token",
     exchangeToken: async (subjectToken, scopes) => {
       assert.equal(subjectToken, "mcp-subject-token");
       assert.deepEqual(scopes, ["profile:read"]);
@@ -25,6 +26,7 @@ test("private backend calls use workload authentication plus exchanged delegatio
   assert.equal(output.displayName, "Ada Buyer");
   assert.equal(requests[0].init.headers.authorization, "Bearer delegated-token");
   assert.equal(requests[0].init.headers["x-assistant-api-token"], "workload-secret");
+  assert.equal(requests[0].init.headers["x-serverless-authorization"], "Bearer google-id-token");
 });
 
 test("authorization context is resolved through a fresh exchanged token", async () => {
@@ -32,10 +34,12 @@ test("authorization context is resolved through a fresh exchanged token", async 
   const client = createBackendClient({
     origin: "http://backend:4000",
     token: "workload-secret",
+    cloudRunIdToken: async () => "google-id-token",
     exchangeToken: async () => { exchanges += 1; return "delegated-token"; },
     fetchImpl: async (url, init) => {
       assert.match(String(url), /authorization-context$/);
       assert.equal(init.headers.authorization, "Bearer delegated-token");
+      assert.equal(init.headers["x-serverless-authorization"], "Bearer google-id-token");
       return new Response(JSON.stringify({ subject: "user-1", role: "seller", verified: true, scopes: ["profile:read"], grantId: "grant-1" }), {
         status: 200,
         headers: { "content-type": "application/json" },
@@ -55,6 +59,7 @@ test("MCP audit events are sent only to the fixed workload-authenticated audit o
   const client = createBackendClient({
     origin: "http://backend:4000",
     token: "workload-secret",
+    cloudRunIdToken: async () => "google-id-token",
     fetchImpl: async (url, init) => {
       request = { url: String(url), init };
       return new Response(null, { status: 204 });
@@ -65,4 +70,17 @@ test("MCP audit events are sent only to the fixed workload-authenticated audit o
   assert.equal(request.init.headers["x-assistant-api-token"], "workload-secret");
   assert.equal(request.init.headers["x-request-id"], "trace-1");
   assert.equal(request.init.headers.authorization, undefined);
+  assert.equal(request.init.headers["x-serverless-authorization"], "Bearer google-id-token");
+});
+
+test("local backend calls do not request a Cloud Run identity token", async () => {
+  const client = createBackendClient({
+    origin: "http://backend:4000",
+    token: "workload-secret",
+    fetchImpl: async (_url, init) => {
+      assert.equal(init.headers["x-serverless-authorization"], undefined);
+      return new Response("{}", { status: 200 });
+    },
+  });
+  await client.call("search_products", {});
 });

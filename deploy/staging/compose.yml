@@ -1,0 +1,97 @@
+services:
+  app-postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: shopsphere
+      POSTGRES_PASSWORD: ${APP_DB_PASSWORD:?set APP_DB_PASSWORD}
+      POSTGRES_DB: shopsphere
+    ports:
+      - "${STAGE_VM_IP:?set STAGE_VM_IP}:5432:5432"
+    volumes:
+      - app_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shopsphere -d shopsphere"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  auth-postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?set KEYCLOAK_DB_PASSWORD}
+      POSTGRES_DB: keycloak
+    ports:
+      - "${STAGE_VM_IP:?set STAGE_VM_IP}:5433:5432"
+    volumes:
+      - auth_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD}"]
+    ports:
+      - "${STAGE_VM_IP:?set STAGE_VM_IP}:6379:6379"
+    volumes:
+      - redis_data:/data
+
+  backend:
+    image: ${BACKEND_IMAGE:?set BACKEND_IMAGE}
+    restart: unless-stopped
+    depends_on:
+      app-postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      PORT: "4000"
+      NODE_ENV: production
+      FRONTEND_URL: ${STAGE_FRONTEND_URL:?set STAGE_FRONTEND_URL}
+      DATABASE_URL: postgresql://shopsphere:${APP_DB_PASSWORD}@app-postgres:5432/shopsphere?schema=public
+      ASSISTANT_DATABASE_URL: postgresql://shopsphere_assistant_runtime:${ASSISTANT_DB_PASSWORD:?set ASSISTANT_DB_PASSWORD}@app-postgres:5432/shopsphere?schema=public
+      ASSISTANT_PRIVATE_DATABASE_URL: postgresql://shopsphere_assistant_private_runtime:${ASSISTANT_PRIVATE_DB_PASSWORD:?set ASSISTANT_PRIVATE_DB_PASSWORD}@app-postgres:5432/shopsphere?schema=public
+      ASSISTANT_DB_PASSWORD: ${ASSISTANT_DB_PASSWORD}
+      ASSISTANT_PRIVATE_DB_PASSWORD: ${ASSISTANT_PRIVATE_DB_PASSWORD}
+      ASSISTANT_API_TOKEN: ${ASSISTANT_API_TOKEN:?set ASSISTANT_API_TOKEN}
+      ASSISTANT_CURSOR_SECRET: ${ASSISTANT_CURSOR_SECRET:?set ASSISTANT_CURSOR_SECRET}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      MCP_OAUTH_ISSUER: ${STAGE_AUTH_URL:?set STAGE_AUTH_URL}/realms/shopsphere
+      MCP_OAUTH_JWKS_URI: ${STAGE_AUTH_URL}/realms/shopsphere/protocol/openid-connect/certs
+      MCP_OAUTH_INTROSPECTION_ENDPOINT: ${STAGE_AUTH_URL}/realms/shopsphere/protocol/openid-connect/token/introspect
+      MCP_OAUTH_INTROSPECTION_CLIENT_ID: shopsphere-assistant-api
+      MCP_OAUTH_INTROSPECTION_CLIENT_SECRET: ${ASSISTANT_OAUTH_CLIENT_SECRET:?set ASSISTANT_OAUTH_CLIENT_SECRET}
+      MCP_WORKLOAD_CLIENT_ID: shopsphere-mcp-workload
+      KEYCLOAK_ADMIN_ORIGIN: ${STAGE_AUTH_URL}
+      KEYCLOAK_SYNC_CLIENT_ID: shopsphere-account-sync
+      KEYCLOAK_SYNC_CLIENT_SECRET: ${KEYCLOAK_SYNC_CLIENT_SECRET:?set KEYCLOAK_SYNC_CLIENT_SECRET}
+      MCP_CLIENT_REDIRECT_URIS: http://localhost:6274/oauth/callback
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
+      ADMIN_EMAIL: stage-admin@example.invalid
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD}
+      SEED_DEMO_DATA: "true"
+      DEMO_PASSWORD: ${DEMO_PASSWORD:?set DEMO_PASSWORD}
+      PAYMENT_MODE: sandbox
+      SANDBOX_REFUND_OUTCOME: success
+      ESEWA_PRODUCT_CODE: EPAYTEST
+      ESEWA_SECRET_KEY: ${ESEWA_SECRET_KEY:?set ESEWA_SECRET_KEY}
+      ESEWA_FORM_URL: https://rc-epay.esewa.com.np/api/epay/main/v2/form
+      ESEWA_STATUS_URL: https://rc.esewa.com.np/api/epay/transaction/status/
+      MCP_TOOL_GET_MY_PROFILE_SUMMARY_ENABLED: "false"
+      MCP_TOOL_LIST_MY_NOTIFICATIONS_ENABLED: "false"
+    ports:
+      - "${STAGE_VM_IP}:4000:4000"
+    volumes:
+      - backend_uploads:/app/uploads
+
+volumes:
+  app_postgres_data:
+  auth_postgres_data:
+  redis_data:
+  backend_uploads:
