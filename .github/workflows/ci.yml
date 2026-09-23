@@ -41,6 +41,46 @@ jobs:
           test -n "$sync_token"
           curl --fail --silent --header "Authorization: Bearer $sync_token" \
             "http://localhost:8080/admin/realms/shopsphere/users?max=1" > /dev/null
+      - name: Verify the approved local MCP OAuth callback
+        run: |
+          curl --fail --silent --show-error --get \
+            --data-urlencode 'client_id=shopsphere-mcp-client' \
+            --data-urlencode 'response_type=code' \
+            --data-urlencode 'redirect_uri=http://localhost:6274/oauth/callback' \
+            --data-urlencode 'scope=openid shopsphere-identity profile:read' \
+            --data-urlencode 'code_challenge=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' \
+            --data-urlencode 'code_challenge_method=S256' \
+            --data-urlencode 'state=ci-local-callback' \
+            'http://localhost:8080/realms/shopsphere/protocol/openid-connect/auth' \
+            | grep -q 'kc-form-login'
+      - name: Verify imported MCP identity and introspection configuration
+        run: |
+          jq -e '.components["org.keycloak.userprofile.UserProfileProvider"][0].config["kc.user.profile.config"][0]
+            | fromjson | [.attributes[] | select(.name | startswith("shopsphere_"))
+            | select(.permissions.edit == ["admin"])] | length == 3' infra/keycloak/realm-shopsphere.json
+          jq -e '[.clientScopes[] | select(.name == "basic") | .protocolMappers[]
+            | select(.protocolMapper == "oidc-sub-mapper")] | length == 1' infra/keycloak/realm-shopsphere.json
+          jq -e '[.clientScopes[] | select(.name == "shopsphere-mcp-audience")
+            | .protocolMappers[].config["included.client.audience"]] | sort ==
+            ["shopsphere-assistant-api", "shopsphere-mcp", "shopsphere-mcp-workload"]' infra/keycloak/realm-shopsphere.json
+          jq -e '[.clients[] | select(.clientId == "shopsphere-mcp-workload")
+            | .defaultClientScopes[]] | index("shopsphere-mcp-audience") != null' infra/keycloak/realm-shopsphere.json
+      - name: Verify Keycloak retains synced ShopSphere identity fields
+        run: |
+          sync_token=$(curl --fail --silent --request POST \
+            --data-urlencode grant_type=client_credentials \
+            --data-urlencode client_id=shopsphere-account-sync \
+            --data-urlencode client_secret=ci-account-sync-client-secret \
+            http://localhost:8080/realms/shopsphere/protocol/openid-connect/token | jq -r .access_token)
+          curl --fail --silent --show-error --request POST \
+            --header "Authorization: Bearer $sync_token" \
+            --header 'Content-Type: application/json' \
+            --data '{"username":"ci-mcp-identity","email":"ci-mcp-identity@example.test","firstName":"CI","lastName":"User","enabled":true,"attributes":{"shopsphere_user_id":["ci-mcp-identity"],"shopsphere_role":["user"],"shopsphere_verified":["true"]}}' \
+            http://localhost:8080/admin/realms/shopsphere/users
+          curl --fail --silent --show-error --header "Authorization: Bearer $sync_token" \
+            'http://localhost:8080/admin/realms/shopsphere/users?username=ci-mcp-identity&exact=true' \
+            | jq -e '.[0].attributes | .shopsphere_user_id == ["ci-mcp-identity"]
+              and .shopsphere_role == ["user"] and .shopsphere_verified == ["true"]'
 
   mcp:
     runs-on: ubuntu-latest
