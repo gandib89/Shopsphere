@@ -7,11 +7,11 @@ import { createKeycloakMcpAuth } from "../src/keycloakAuth.js";
 const ISSUER = "https://auth.test/realms/shopsphere";
 const AUDIENCE = "shopsphere-mcp";
 
-const tokenFixture = async ({ azp = "shopsphere-mcp-client", audience = AUDIENCE } = {}) => {
+const tokenFixture = async ({ azp = "shopsphere-mcp-client", audience = AUDIENCE, subject = "keycloak-user-1" } = {}) => {
   const { publicKey, privateKey } = await generateKeyPair("RS256");
   const jwk = await exportJWK(publicKey);
   Object.assign(jwk, { kid: "test-key", use: "sig", alg: "RS256" });
-  const token = await new SignJWT({
+  const signer = new SignJWT({
     azp,
     sid: "grant-1",
     scope: "profile:read catalog:read",
@@ -22,10 +22,10 @@ const tokenFixture = async ({ azp = "shopsphere-mcp-client", audience = AUDIENCE
     .setProtectedHeader({ alg: "RS256", kid: "test-key" })
     .setIssuer(ISSUER)
     .setAudience(audience)
-    .setSubject("keycloak-user-1")
     .setIssuedAt()
-    .setExpirationTime("5m")
-    .sign(privateKey);
+    .setExpirationTime("5m");
+  if (subject) signer.setSubject(subject);
+  const token = await signer.sign(privateKey);
   return { token, jwks: createLocalJWKSet({ keys: [jwk] }) };
 };
 
@@ -57,6 +57,12 @@ test("verifies an active audience-bound token from an approved client", async ()
   });
   assert.deepEqual(auth.protectedResourceMetadata.authorization_servers, [ISSUER]);
   assert.equal(auth.protectedResourceMetadata.resource, "https://mcp.test/mcp");
+});
+
+test("uses the required ShopSphere user id when Keycloak omits sub", async () => {
+  const { token, jwks } = await tokenFixture({ subject: null });
+  const auth = createAuth({ jwks });
+  assert.equal((await auth.verify(token)).sub, "user-1");
 });
 
 test("rejects an audience name or non-loopback HTTP as protected resource metadata", () => {

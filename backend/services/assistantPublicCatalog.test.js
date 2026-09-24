@@ -68,25 +68,33 @@ test("search projects exact money and issues query-bound opaque cursors", async 
 });
 
 test("product detail selects only public fields and exact option deltas", async () => {
-  let captured;
+  let capturedProduct;
+  let capturedOptions;
   const client = {
     product: {
       findFirst: async (args) => {
-        captured = args;
+        capturedProduct = args;
         return {
           ...products[0],
           description: "A phone",
           variantColor: ["Black"],
           variantStorage: ["128GB"],
-          options: [{ kind: "storage", value: "256GB", priceDelta: { toString: () => "100.00" } }],
         };
       },
+    },
+    $queryRaw: async (strings, productId) => {
+      capturedOptions = { query: strings.join("$1"), productId };
+      return [{ kind: "storage", value: "256GB", priceDelta: { toString: () => "100.00" } }];
     },
   };
   const result = await getPublicProduct({ productId: "p1" }, { client });
   assert.deepEqual(result.variants.options[0].priceDelta, { amount: "100.00", currency: "NPR" });
-  assert.equal(captured.where.isArchived, false);
-  assert.equal(captured.select.sellerId, undefined);
-  assert.equal(captured.select.quantity, true);
+  assert.equal(capturedProduct.where.isArchived, false);
+  assert.equal(capturedProduct.select.sellerId, undefined);
+  assert.equal(capturedProduct.select.quantity, true);
+  assert.match(capturedOptions.query, /SELECT kind, value, "priceDelta"/);
+  assert.doesNotMatch(capturedOptions.query, /SELECT[^]*\bid\b/i);
+  assert.doesNotMatch(capturedOptions.query, /SELECT[^]*\bstock\b/i);
+  assert.equal(capturedOptions.productId, "p1");
   assert.doesNotMatch(JSON.stringify(result), /"sellerId"|"stock"|"quantity"/);
 });

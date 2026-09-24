@@ -4,7 +4,7 @@ import test from "node:test";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 
 import { createMcpHttpServer as createRawMcpHttpServer } from "../src/httpServer.js";
-import { PROTOCOL_VERSION, REGISTRY_VERSION } from "../src/toolRegistry.js";
+import { POLICY_VERSION, PROTOCOL_VERSION, REGISTRY_VERSION } from "../src/toolRegistry.js";
 import { ACCESS_TOKEN, ALL_FLAGS, fakeBackendClient } from "./support/fakeBackend.js";
 import { close, listen } from "./support/httpServer.js";
 
@@ -157,6 +157,9 @@ test("a public backend outage degrades to a safe tool error and leaves transport
     async call() {
       throw Object.assign(new Error("postgresql://private:secret@database/internal"), { statusCode: 503 });
     },
+    async recordAudit() {
+      throw Object.assign(new Error("https://private-audit.internal unavailable"), { statusCode: 503 });
+    },
   };
   const server = createMcpHttpServer({
     enabled: true,
@@ -192,4 +195,26 @@ test("kill-switch denial emits a stable reason and caller trace", async (t) => {
     event.requestId === "pilot-kill-switch"
     && event.outcome === "denied"
     && event.reason === "kill_switch"));
+});
+
+test("kill-switch denial persists its durable backend audit", async (t) => {
+  const audits = [];
+  const server = createMcpHttpServer({
+    enabled: false,
+    backendClient: {
+      ...fakeBackendClient,
+      async recordAudit(event, context) { audits.push({ event, context }); },
+    },
+  });
+  const url = await listen(server);
+  t.after(() => close(server));
+
+  const response = await initialize(url, 1, { "x-request-id": "pilot-durable-kill-switch" });
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), { error: "MCP is disabled" });
+  assert.equal(audits.length, 1);
+  assert.equal(audits[0].event.traceId, "pilot-durable-kill-switch");
+  assert.equal(audits[0].event.failureReason, "kill_switch");
+  assert.equal(audits[0].event.policyVersion, POLICY_VERSION);
+  assert.equal(audits[0].context.requestId, "pilot-durable-kill-switch");
 });

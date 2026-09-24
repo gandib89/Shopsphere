@@ -144,17 +144,25 @@ export const getPublicProduct = async ({ productId }, { client = assistantPublic
       description: true,
       variantColor: true,
       variantStorage: true,
-      options: { select: { kind: true, value: true, priceDelta: true } },
     },
   });
   if (!product) throw Object.assign(new Error("Product not found"), { statusCode: 404 });
+  // Prisma selects the option primary key for both relation fetches and direct
+  // findMany calls. Use a fixed projection so the public role never needs
+  // access to product_options.id or stock.
+  const options = await client.$queryRaw`
+    SELECT kind, value, "priceDelta"
+    FROM product_options
+    WHERE "productId" = ${productId}
+    ORDER BY kind ASC, value ASC
+  `;
   return {
     ...publicProduct(product),
     description: product.description || product.name,
     variants: {
       colors: product.variantColor,
       storages: product.variantStorage,
-      options: product.options.map((option) => ({
+      options: options.map((option) => ({
         kind: option.kind,
         value: option.value,
         priceDelta: money(option.priceDelta),

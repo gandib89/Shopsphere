@@ -6,6 +6,7 @@ const endpoint = process.env.MCP_PILOT_URL;
 const token = process.env.MCP_PILOT_ACCESS_TOKEN;
 const clientName = process.env.MCP_PILOT_CLIENT_NAME;
 const clientVersion = process.env.MCP_PILOT_CLIENT_VERSION;
+const cloudRunIdToken = process.env.MCP_PILOT_CLOUD_RUN_ID_TOKEN;
 
 if (!endpoint || !token || !clientName || !clientVersion) {
   throw new Error(
@@ -29,7 +30,14 @@ const client = new Client(
   { versionNegotiation: { mode: "legacy" } },
 );
 const transport = new StreamableHTTPClientTransport(new URL(endpoint), {
-  requestInit: { headers: { authorization: `Bearer ${token}` } },
+  requestInit: {
+    headers: {
+      authorization: `Bearer ${token}`,
+      ...(cloudRunIdToken
+        ? { "x-serverless-authorization": `Bearer ${cloudRunIdToken}` }
+        : {}),
+    },
+  },
 });
 const evidence = {
   schemaVersion: "1.0.0",

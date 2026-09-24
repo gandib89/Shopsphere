@@ -15,6 +15,7 @@ const runValidator = (url) => new Promise((resolve, reject) => {
       MCP_PILOT_ACCESS_TOKEN: ACCESS_TOKEN,
       MCP_PILOT_CLIENT_NAME: "shopsphere-pilot-test",
       MCP_PILOT_CLIENT_VERSION: "1.0.0",
+      MCP_PILOT_CLOUD_RUN_ID_TOKEN: "synthetic-cloud-run-id-token",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -48,7 +49,7 @@ test("pilot validator records seven successful bounded public calls without prod
   assert.ok(evidence.checks.every(({ outcome }) => outcome === "pass"));
   assert.ok(evidence.checks.slice(2).every(({ responseBytes }) => responseBytes > 0 && responseBytes <= 64 * 1024));
   assert.equal(evidence.checks.find(({ name }) => name === "search_products").productCount > 0, true);
-  assert.doesNotMatch(JSON.stringify(evidence), /productIds|access_token/i);
+  assert.doesNotMatch(JSON.stringify(evidence), /productIds|access_token|synthetic-cloud-run-id-token/i);
 });
 
 test("pilot validator fails when a public tool returns an error", async (t) => {

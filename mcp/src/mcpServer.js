@@ -113,15 +113,20 @@ export const createShopSphereMcpServer = ({
           };
         } catch (error) {
           const reason = error?.statusCode === 404 ? "not_found" : "backend_error";
-          await audit({
-            requestId,
-            tool: tool.name,
-            registryVersion: REGISTRY_VERSION,
-            operation: tool.backendOperation.operationId,
-            outcome: "error",
-            reason,
-            durationMs: Date.now() - startedAt,
-          });
+          try {
+            await audit({
+              requestId,
+              tool: tool.name,
+              registryVersion: REGISTRY_VERSION,
+              operation: tool.backendOperation.operationId,
+              outcome: "error",
+              reason,
+              durationMs: Date.now() - startedAt,
+            });
+          } catch {
+            // The audit dependency can fail at the same time as the operation.
+            // Never replace the bounded public error with dependency details.
+          }
           throw Object.assign(
             new Error(reason === "not_found" ? "Resource not found" : "ShopSphere operation unavailable"),
             { statusCode: error?.statusCode },

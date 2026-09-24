@@ -9,6 +9,7 @@ import { createShopSphereMcpServer } from "./mcpServer.js";
 import {
   DEFAULT_MAX_REQUEST_BYTES,
   DEFAULT_MAX_RESPONSE_BYTES,
+  POLICY_VERSION,
   PROTOCOL_VERSION,
 } from "./toolRegistry.js";
 
@@ -298,6 +299,7 @@ export const createMcpHttpServer = ({
             failureReason: "kill_switch",
           });
         } catch {
+          console.warn("Durable audit unavailable during kill-switch denial");
           return withRequestId(jsonResponse(503, { error: "Audit service unavailable" }), requestId);
         }
         return withRequestId(jsonResponse(503, { error: "MCP is disabled" }), requestId);

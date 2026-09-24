@@ -41,7 +41,7 @@ export const createKeycloakMcpAuth = ({
         issuer,
         audience,
         algorithms,
-        requiredClaims: ["sub", "exp", "iat", "sid", "shopsphere_user_id", "shopsphere_role", "shopsphere_verified"],
+        requiredClaims: ["exp", "iat", "sid", "shopsphere_user_id", "shopsphere_role", "shopsphere_verified"],
       }));
     } catch {
       const error = new Error("Invalid MCP access token");

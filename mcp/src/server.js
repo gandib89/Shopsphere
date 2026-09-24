@@ -40,6 +40,7 @@ const redis = config.enabled ? await connectAssistantRedis(config.redisUrl) : nu
 const server = createMcpHttpServer({
   ...config,
   backendClient,
+  audit: (event) => console.log(JSON.stringify(event)),
   distributedControls: redis ? createDistributedControls({
     redis,
     limit: config.requestsPerMinute,
