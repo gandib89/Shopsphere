@@ -139,9 +139,15 @@ test("restricted PostgreSQL role and transaction-local RLS isolate assistant rea
   `);
   assert.equal(rlsTables.length, 10);
   for (const table of rlsTables) assert.deepEqual(table, { ...table, rls: true, force: true });
-  // The RLS seed owns one seller product; the catalog shares this role without
-  // actor context, so the count stays visible while private rows stay scoped.
-  assert.deepEqual(await assistantPublicPrisma.product.count({ select: { id: true } }), { id: 1 });
+  // The catalog role can see the seeded public fixture without assuming the
+  // staging database contains no other synthetic catalog products.
+  assert.deepEqual(
+    await assistantPublicPrisma.product.findUnique({
+      where: { id: "d1d1d1d1d1d1d1d1d1d1d1d1" },
+      select: { id: true },
+    }),
+    { id: "d1d1d1d1d1d1d1d1d1d1d1d1" },
+  );
   await assert.rejects(
     assistantPublicPrisma.product.findMany({ select: { sellerId: true } }),
     /permission denied|database query/i,
