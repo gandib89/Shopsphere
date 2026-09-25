@@ -1,6 +1,10 @@
 import { z } from "zod";
 
 export const PROTOCOL_VERSION = "2025-11-25";
+export const SUPPORTED_PROTOCOL_VERSIONS = Object.freeze([
+  PROTOCOL_VERSION,
+  "2025-06-18",
+]);
 export const REGISTRY_VERSION = "1.4.0";
 export const POLICY_VERSION = "1.0.0";
 export const POLICY_TOPICS = Object.freeze([

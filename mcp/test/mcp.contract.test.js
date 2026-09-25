@@ -185,7 +185,41 @@ test("negotiates the pinned protocol and serves public get_capabilities", async 
   ]);
 });
 
-test("rejects protocol revisions other than the pinned version", async (t) => {
+test("accepts the protocol version used by Codex CLI 0.150.1", async (t) => {
+  const server = createMcpHttpServer({ enabled: true });
+  const url = await listen(server);
+  t.after(() => close(server));
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${ACCESS_TOKEN}`,
+      accept: "application/json, text/event-stream",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: "2025-06-18",
+        capabilities: {},
+        clientInfo: { name: "codex-cli", version: "0.150.1" },
+      },
+    }),
+  });
+
+  assert.equal(response.status, 200);
+  const responseText = await response.text();
+  const payload = JSON.parse(
+    responseText.startsWith("event:")
+      ? responseText.split("\n").find((line) => line.startsWith("data: ")).slice(6)
+      : responseText,
+  );
+  assert.equal(payload.result.protocolVersion, "2025-06-18");
+});
+
+test("rejects protocol revisions outside the supported allowlist", async (t) => {
   const server = createMcpHttpServer({ enabled: true });
   const url = await listen(server);
   t.after(() => close(server));

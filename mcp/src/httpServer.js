@@ -11,6 +11,7 @@ import {
   DEFAULT_MAX_RESPONSE_BYTES,
   POLICY_VERSION,
   PROTOCOL_VERSION,
+  SUPPORTED_PROTOCOL_VERSIONS,
 } from "./toolRegistry.js";
 
 const jsonResponse = (status, body) =>
@@ -138,30 +139,29 @@ const requestIdFor = (request) => {
   return supplied && /^[A-Za-z0-9_-]{1,100}$/.test(supplied) ? supplied : crypto.randomUUID();
 };
 
-const validatePinnedProtocol = (request, body) => {
+const validateSupportedProtocol = (request, body) => {
+  const isSupported = (version) => SUPPORTED_PROTOCOL_VERSIONS.includes(version);
+  const unsupported = (id) =>
+    protocolError(
+      400,
+      id,
+      `Supported MCP protocols: ${SUPPORTED_PROTOCOL_VERSIONS.join(", ")}`,
+    );
   if (request.method !== "POST") {
     const version = request.headers.get("mcp-protocol-version");
-    return version === PROTOCOL_VERSION
-      ? null
-      : protocolError(400, null, `Only MCP protocol ${PROTOCOL_VERSION} is supported`);
+    return isSupported(version) ? null : unsupported(null);
   }
 
   const messages = Array.isArray(body) ? body : [body];
   const initialize = messages.find((message) => message?.method === "initialize");
   if (initialize) {
-    return initialize.params?.protocolVersion === PROTOCOL_VERSION
+    return isSupported(initialize.params?.protocolVersion)
       ? null
-      : protocolError(
-          400,
-          initialize.id,
-          `Only MCP protocol ${PROTOCOL_VERSION} is supported`,
-        );
+      : unsupported(initialize.id);
   }
 
   const version = request.headers.get("mcp-protocol-version");
-  return version === PROTOCOL_VERSION
-    ? null
-    : protocolError(400, messages[0]?.id, `Only MCP protocol ${PROTOCOL_VERSION} is supported`);
+  return isSupported(version) ? null : unsupported(messages[0]?.id);
 };
 
 export const createMcpHttpServer = ({
@@ -395,7 +395,7 @@ export const createMcpHttpServer = ({
           return withCors(withRequestId(jsonResponse(404, { error: "Session not found" }), requestId), origin);
         }
 
-        const versionError = validatePinnedProtocol(request, body);
+        const versionError = validateSupportedProtocol(request, body);
         const requestHeaders = new Headers(request.headers);
         requestHeaders.set("x-request-id", requestId);
         const mcpRequest = new Request(request.url, {
