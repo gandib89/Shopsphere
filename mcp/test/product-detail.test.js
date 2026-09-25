@@ -78,6 +78,18 @@ test("get_product exposes the discovery list and the public projection only", as
   });
 });
 
+test("public product detail tools accept the snake_case alias emitted by Codex", async (t) => {
+  await withClient(t, undefined, async (client) => {
+    for (const name of ["get_product", "get_product_reviews", "get_recommendations"]) {
+      const result = await client.callTool({
+        name,
+        arguments: { product_id: "prod_001" },
+      });
+      assert.equal(result.isError, undefined);
+    }
+  });
+});
+
 test("get_product labels availability and hides archived or unknown products", async (t) => {
   await withClient(t, undefined, async (client) => {
     const soldOut = await client.callTool({

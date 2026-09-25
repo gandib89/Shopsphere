@@ -69,6 +69,18 @@ test("search_products exposes the discovery list and the public projection only"
   });
 });
 
+test("search_products accepts an omitted optional query", async (t) => {
+  await withClient(t, undefined, async (client) => {
+    const result = await client.callTool({
+      name: "search_products",
+      arguments: { limit: 2 },
+    });
+
+    assert.equal(result.isError, undefined);
+    assert.ok(result.structuredContent.items.length > 0);
+  });
+});
+
 test("search_products filters by category, price, and sort with capped pages", async (t) => {
   await withClient(t, undefined, async (client) => {
     const byCategory = await client.callTool({
@@ -130,6 +142,18 @@ test("compare_products returns the same public projection and drops hidden ids",
     for (const product of result.structuredContent.products) {
       assert.deepEqual(Object.keys(product).sort(), PUBLIC_KEYS);
     }
+  });
+});
+
+test("compare_products accepts the snake_case alias emitted by Codex", async (t) => {
+  await withClient(t, undefined, async (client) => {
+    const result = await client.callTool({
+      name: "compare_products",
+      arguments: { product_ids: ["prod_001", "prod_002"] },
+    });
+
+    assert.equal(result.isError, undefined);
+    assert.deepEqual(result.structuredContent.products.map(({ id }) => id), ["prod_001", "prod_002"]);
   });
 });
 
