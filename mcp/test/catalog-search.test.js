@@ -145,6 +145,18 @@ test("compare_products returns the same public projection and drops hidden ids",
   });
 });
 
+test("compare_products accepts the snake_case alias emitted by Codex", async (t) => {
+  await withClient(t, undefined, async (client) => {
+    const result = await client.callTool({
+      name: "compare_products",
+      arguments: { product_ids: ["prod_001", "prod_002"] },
+    });
+
+    assert.equal(result.isError, undefined);
+    assert.deepEqual(result.structuredContent.products.map(({ id }) => id), ["prod_001", "prod_002"]);
+  });
+});
+
 test("compare_products caps comparisons at 5 products", async (t) => {
   await withClient(t, undefined, async (client) => {
     await expectToolError(client, {

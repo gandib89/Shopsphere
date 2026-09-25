@@ -143,9 +143,14 @@ const SearchProductsOutputSchema = z
 
 const CompareProductsInputSchema = z
   .object({
-    productIds: z.array(z.string().min(1).max(100)).min(1).max(5),
+    productIds: z.array(z.string().min(1).max(100)).min(1).max(5).optional(),
+    product_ids: z.array(z.string().min(1).max(100)).min(1).max(5).optional(),
   })
-  .strict();
+  .strict()
+  .refine(({ productIds, product_ids }) => Boolean(productIds) !== Boolean(product_ids), {
+    message: "Provide exactly one of productIds or product_ids",
+  })
+  .transform(({ productIds, product_ids }) => ({ productIds: productIds ?? product_ids }));
 
 const CompareProductsOutputSchema = z
   .object({
@@ -178,9 +183,14 @@ const ProductDetailSchema = PublicProductSchema.extend({
 
 const GetProductInputSchema = z
   .object({
-    productId: z.string().min(1).max(100),
+    productId: z.string().min(1).max(100).optional(),
+    product_id: z.string().min(1).max(100).optional(),
   })
-  .strict();
+  .strict()
+  .refine(({ productId, product_id }) => Boolean(productId) !== Boolean(product_id), {
+    message: "Provide exactly one of productId or product_id",
+  })
+  .transform(({ productId, product_id }) => ({ productId: productId ?? product_id }));
 
 const PublicReviewSchema = z
   .object({
@@ -193,11 +203,19 @@ const PublicReviewSchema = z
 
 const GetProductReviewsInputSchema = z
   .object({
-    productId: z.string().min(1).max(100),
+    productId: z.string().min(1).max(100).optional(),
+    product_id: z.string().min(1).max(100).optional(),
     cursor: z.string().min(1).max(2048).optional(),
     limit: z.number().int().min(1).max(50).optional(),
   })
-  .strict();
+  .strict()
+  .refine(({ productId, product_id }) => Boolean(productId) !== Boolean(product_id), {
+    message: "Provide exactly one of productId or product_id",
+  })
+  .transform(({ productId, product_id, ...rest }) => ({
+    productId: productId ?? product_id,
+    ...rest,
+  }));
 
 const GetProductReviewsOutputSchema = z
   .object({
@@ -211,10 +229,18 @@ const GetProductReviewsOutputSchema = z
 
 const GetRecommendationsInputSchema = z
   .object({
-    productId: z.string().min(1).max(100),
+    productId: z.string().min(1).max(100).optional(),
+    product_id: z.string().min(1).max(100).optional(),
     limit: z.number().int().min(1).max(20).optional(),
   })
-  .strict();
+  .strict()
+  .refine(({ productId, product_id }) => Boolean(productId) !== Boolean(product_id), {
+    message: "Provide exactly one of productId or product_id",
+  })
+  .transform(({ productId, product_id, ...rest }) => ({
+    productId: productId ?? product_id,
+    ...rest,
+  }));
 
 const GetRecommendationsOutputSchema = z
   .object({
