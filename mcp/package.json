@@ -8,6 +8,8 @@
   },
   "scripts": {
     "check": "node -e \"import('fs').then(async (fs) => { const { execFileSync } = await import('child_process'); for (const f of fs.readdirSync('src')) { if (f.endsWith('.js')) execFileSync(process.execPath, ['--check', 'src/' + f], { stdio: 'inherit' }); } })\"",
+    "buyer:matrix": "node scripts/generate-buyer-release-matrix.js",
+    "buyer:validate": "node scripts/validate-buyer-release.js",
     "pilot:validate": "node scripts/validate-public-pilot.js",
     "pilot:validate:controls": "node scripts/validate-public-pilot-controls.js",
     "pilot:validate:degradation": "node scripts/validate-public-pilot-degradation.js",

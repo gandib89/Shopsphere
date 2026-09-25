@@ -36,6 +36,64 @@ Never put tokens, customer data, raw private responses, full prompts, or interna
 | **#35 buyer proposals** | Forge chat confirmation, delegated execution, cross-user/grant references, target/payload substitution, replay, expiry, revocation, ownership change, and stale state: all deny. Browser review must show exact effects and require the human's authenticated confirmation. Concurrent confirmations yield one permitted mutation and deterministic repeat status; audit/outbox failure rolls back safely. Creating an abandoned proposal changes no commerce data; cancellation/return execution never initiates or releases payment/refund money. Validate cart cohort first, then cancellation and return independently. |
 | **#36 seller proposals** | Deny cross-seller, unverified seller, substituted target, stale ownership, role change, invalid listing publication, unsafe decimal/price, stock race, and invalid fulfillment. Human browser execution applies exactly the reviewed bounded change once; MCP creates proposals but cannot execute. Check PII/secret redaction, atomic audit/outbox behavior, dependency outage, multi-replica replay, quotas, and rollback. Release listing content before independent price/inventory and fulfillment cohorts. |
 
+## Executable #31 buyer gate
+
+Run the generated registry matrix before any deployment or flag change:
+
+```text
+cd mcp
+npm ci
+npm run check
+npm test
+npm run buyer:matrix
+```
+
+`buyer:matrix` derives the ten #31 tools, flags, roles, and scopes from the live registry and fails if any static allow/deny case disagrees with the registry. Save its sanitized JSON output in the private release record.
+
+Use `npm run buyer:validate` against the exact deployed artifact before enablement, after enablement, and after rollback:
+
+1. With `MCP_BUYER_MODE=disabled`, prove the global switch or every buyer flag denies MCP discovery/dispatch and every direct Express route returns `404`.
+2. Only after the release identity, approvals, thresholds, monitoring, rollback operator, synthetic fixtures, and credential scenarios are recorded, enable the approved buyer surface and run with `MCP_BUYER_MODE=enabled`.
+3. Immediately restore the disabled configuration and rerun `MCP_BUYER_MODE=disabled` if any check fails. Do not start the observation window after a failed result.
+
+The validator requires short-lived staging-only values through the process environment. Do not save them in `.env`, shell profiles, CI artifacts, the repository, or the public issue:
+
+- MCP URL, optional Cloud Run identity token, exact client name `shopsphere-mcp-client`, exact version, and valid/wrong-role/wrong-scope/revoked/missing-account OAuth tokens.
+- Backend URL, workload credential, optional Cloud Run identity token, and corresponding valid/wrong-role/wrong-scope/revoked/missing-account delegated tokens.
+- Owned and foreign synthetic order IDs, a synthetic promo code, and a non-empty JSON array of canary PII/credential markers.
+
+Required variable names for the enabled pass:
+
+```text
+MCP_BUYER_MODE
+MCP_BUYER_URL
+MCP_BUYER_CLIENT_NAME
+MCP_BUYER_CLIENT_VERSION
+MCP_BUYER_VALID_TOKEN
+MCP_BUYER_ACCOUNT_SUBJECT
+MCP_BUYER_WRONG_ROLE_TOKEN
+MCP_BUYER_WRONG_SCOPE_TOKEN
+MCP_BUYER_REVOKED_TOKEN
+MCP_BUYER_MISSING_ACCOUNT_TOKEN
+MCP_BUYER_BACKEND_URL
+MCP_BUYER_BACKEND_WORKLOAD_TOKEN
+MCP_BUYER_DELEGATED_VALID_TOKEN
+MCP_BUYER_DELEGATED_WRONG_ROLE_TOKEN
+MCP_BUYER_DELEGATED_WRONG_SCOPE_TOKEN
+MCP_BUYER_DELEGATED_REVOKED_TOKEN
+MCP_BUYER_DELEGATED_MISSING_ACCOUNT_TOKEN
+MCP_BUYER_ORDER_ID
+MCP_BUYER_FOREIGN_ORDER_ID
+MCP_BUYER_PROMO_CODE
+MCP_BUYER_FORBIDDEN_MARKERS
+```
+
+Set `MCP_BUYER_CLOUD_RUN_ID_TOKEN` and `MCP_BUYER_BACKEND_CLOUD_RUN_ID_TOKEN` when Cloud Run IAM protects those endpoints. The validator decodes the already server-verified valid JWT only to assert its `azp` is `shopsphere-mcp-client` and its ShopSphere subject matches `MCP_BUYER_ACCOUNT_SUBJECT`; neither value is written to evidence.
+
+The wrong-role token must carry one role rejected by all ten buyer tools. The wrong-scope token must lack the required scope for all ten tools. Issue the valid, wrong-role, and wrong-scope credentials as three distinct short-lived grants for the same pilot account so the complete matrix cannot consume one grant's transport limit. The validator rejects narrower or shared-grant fixtures so shared profile/notification tools and buyer-only cart/order tools cannot silently receive partial matrix coverage.
+
+The exact variable names are enforced by `mcp/scripts/validate-buyer-release.js`. Its only authoritative machine-readable record is the final line prefixed `SHOPSPHERE_BUYER_EVIDENCE=`. The record contains check names, outcomes, durations, statuses, and byte counts; it deliberately excludes tokens, fixture IDs, promo codes, response bodies, and canary values.
+
 ## Rollback and re-entry
 
 Disable the affected per-tool flags and stop cohort admission immediately; use the global MCP switch if isolation is uncertain. Revoke affected grants/tokens and terminate private sessions. Expire pending proposals for affected cohorts, but preserve audits and committed commerce data. Verify disabled tools disappear from discovery, forged dispatch is denied, and normal storefront paths remain healthy. Record trigger, operator, UTC timestamps, changed flags/cohort, revocations, observed impact, request/audit links, and follow-up owner. Restore only after the affected gate is repeated and approved; do not treat a code revert as proof that data or previous execution was reversed.
