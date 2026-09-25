@@ -26,11 +26,6 @@ export const BUYER_RUNTIME_CASES = Object.freeze([
   "foreign_buyer",
 ]);
 
-export const BUYER_ONLY_TOOL_NAMES = Object.freeze(BUYER_TOOL_NAMES.filter((name) => {
-  const definition = toolRegistry.find((tool) => tool.name === name);
-  return definition?.roles.length === 1 && definition.roles[0] === "user";
-}));
-
 const definitionsByName = new Map(toolRegistry.map((tool) => [tool.name, tool]));
 
 export const buyerToolDefinitions = Object.freeze(BUYER_TOOL_NAMES.map((name) => {

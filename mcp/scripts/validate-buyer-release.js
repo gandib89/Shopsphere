@@ -1,6 +1,6 @@
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 
-import { BUYER_ONLY_TOOL_NAMES, BUYER_TOOL_NAMES, buyerToolDefinitions } from "../src/buyerReleaseGate.js";
+import { BUYER_TOOL_NAMES, buyerToolDefinitions } from "../src/buyerReleaseGate.js";
 import { DEFAULT_MAX_RESPONSE_BYTES } from "../src/toolRegistry.js";
 
 const required = (name) => {
@@ -34,15 +34,15 @@ const config = {
   forbiddenMarkers: JSON.parse(required("MCP_BUYER_FORBIDDEN_MARKERS")),
 };
 
-const decodeJwtPayload = (token) => {
+const decodeJwtPayload = (token, name) => {
   try {
     return JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8"));
   } catch {
-    throw new Error("MCP_BUYER_VALID_TOKEN must be a JWT");
+    throw new Error(`${name} must be a JWT`);
   }
 };
 
-const validClaims = decodeJwtPayload(config.validToken);
+const validClaims = decodeJwtPayload(config.validToken, "MCP_BUYER_VALID_TOKEN");
 if (validClaims.azp !== "shopsphere-mcp-client") {
   throw new Error("The valid pilot token was not issued to shopsphere-mcp-client");
 }
@@ -66,6 +66,27 @@ if (mode === "enabled") {
     delegatedRevokedToken: required("MCP_BUYER_DELEGATED_REVOKED_TOKEN"),
     delegatedMissingAccountToken: required("MCP_BUYER_DELEGATED_MISSING_ACCOUNT_TOKEN"),
   });
+
+  const wrongRoleClaims = decodeJwtPayload(config.wrongRoleToken, "MCP_BUYER_WRONG_ROLE_TOKEN");
+  const wrongRole = wrongRoleClaims.shopsphere_role ?? wrongRoleClaims.role;
+  if (typeof wrongRole !== "string"
+    || buyerToolDefinitions.some((definition) => definition.roles.includes(wrongRole))) {
+    throw new Error("MCP_BUYER_WRONG_ROLE_TOKEN must carry a role rejected by every buyer tool");
+  }
+
+  const wrongScopeClaims = decodeJwtPayload(config.wrongScopeToken, "MCP_BUYER_WRONG_SCOPE_TOKEN");
+  const wrongScopes = typeof wrongScopeClaims.scope === "string"
+    ? wrongScopeClaims.scope.split(" ").filter(Boolean)
+    : Array.isArray(wrongScopeClaims.scopes) ? wrongScopeClaims.scopes : [];
+  if (buyerToolDefinitions.some((definition) => definition.scopes.every((scope) => wrongScopes.includes(scope)))) {
+    throw new Error("MCP_BUYER_WRONG_SCOPE_TOKEN must lack the required scope for every buyer tool");
+  }
+
+  const scenarioGrantIds = [validClaims.sid, wrongRoleClaims.sid, wrongScopeClaims.sid];
+  if (scenarioGrantIds.some((grantId) => typeof grantId !== "string" || !grantId)
+    || new Set(scenarioGrantIds).size !== scenarioGrantIds.length) {
+    throw new Error("Valid, wrong-role, and wrong-scope MCP tokens must use distinct short-lived grants");
+  }
 }
 
 const evidence = {
@@ -261,12 +282,12 @@ try {
         const client = await createClient(token);
         try {
           const discovered = (await client.listTools()).tools.map(({ name }) => name);
-          if (BUYER_ONLY_TOOL_NAMES.some((name) => discovered.includes(name))) throw new Error("buyer tool disclosed");
-          await expectMcpDenial(client, "get_my_cart", {});
+          if (BUYER_TOOL_NAMES.some((name) => discovered.includes(name))) throw new Error("buyer tool disclosed");
+          for (const name of BUYER_TOOL_NAMES) await expectMcpDenial(client, name, toolInputs[name]);
         } finally {
           await client.close().catch(() => {});
         }
-        return { denied: true };
+        return { denied: true, deniedTools: BUYER_TOOL_NAMES.length };
       });
     }
 
@@ -326,9 +347,8 @@ try {
       ["missing_account", config.delegatedMissingAccountToken, [401]],
     ]) {
       await check(`express_denial:${scenario}`, async () => {
-        const names = scenario === "wrong_role" ? BUYER_ONLY_TOOL_NAMES : BUYER_TOOL_NAMES;
-        for (const name of names) await expectBackendDenial(name, token, toolInputs[name], statuses);
-        return { deniedRoutes: names.length };
+        for (const name of BUYER_TOOL_NAMES) await expectBackendDenial(name, token, toolInputs[name], statuses);
+        return { deniedRoutes: BUYER_TOOL_NAMES.length };
       });
     }
 

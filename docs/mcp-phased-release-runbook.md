@@ -90,6 +90,8 @@ MCP_BUYER_FORBIDDEN_MARKERS
 
 Set `MCP_BUYER_CLOUD_RUN_ID_TOKEN` and `MCP_BUYER_BACKEND_CLOUD_RUN_ID_TOKEN` when Cloud Run IAM protects those endpoints. The validator decodes the already server-verified valid JWT only to assert its `azp` is `shopsphere-mcp-client` and its ShopSphere subject matches `MCP_BUYER_ACCOUNT_SUBJECT`; neither value is written to evidence.
 
+The wrong-role token must carry one role rejected by all ten buyer tools. The wrong-scope token must lack the required scope for all ten tools. Issue the valid, wrong-role, and wrong-scope credentials as three distinct short-lived grants for the same pilot account so the complete matrix cannot consume one grant's transport limit. The validator rejects narrower or shared-grant fixtures so shared profile/notification tools and buyer-only cart/order tools cannot silently receive partial matrix coverage.
+
 The exact variable names are enforced by `mcp/scripts/validate-buyer-release.js`. Its only authoritative machine-readable record is the final line prefixed `SHOPSPHERE_BUYER_EVIDENCE=`. The record contains check names, outcomes, durations, statuses, and byte counts; it deliberately excludes tokens, fixture IDs, promo codes, response bodies, and canary values.
 
 ## Rollback and re-entry

@@ -59,26 +59,34 @@ const outputs = {
 
 const flags = Object.fromEntries(buyerToolDefinitions.map((tool) => [tool.rollout.flag, true]));
 const allScopes = [...new Set(buyerToolDefinitions.flatMap((tool) => tool.scopes))];
-const jwt = (label, subject = "buyer") => [
+const jwt = (label, { subject = "buyer", role = "user", scopes = allScopes } = {}) => [
   Buffer.from(JSON.stringify({ alg: "RS256", typ: "JWT" })).toString("base64url"),
-  Buffer.from(JSON.stringify({ azp: "shopsphere-mcp-client", shopsphere_user_id: subject, label })).toString("base64url"),
+  Buffer.from(JSON.stringify({
+    azp: "shopsphere-mcp-client",
+    shopsphere_user_id: subject,
+    shopsphere_role: role,
+    scope: scopes.join(" "),
+    sid: `grant-${label}`,
+    label,
+  })).toString("base64url"),
   "signature",
 ].join(".");
 const tokens = {
   valid: jwt("valid"),
-  wrongrole: jwt("wrongrole"),
-  wrongscope: jwt("wrongscope"),
-  missing: jwt("missing", "missing"),
+  wrongrole: jwt("wrongrole", { role: "public" }),
+  wrongscope: jwt("wrongscope", { scopes: [] }),
+  missing: jwt("missing", { subject: "missing" }),
   revoked: jwt("revoked"),
 };
 const tokenAuth = {
-  [tokens.valid]: { sub: "buyer", role: "user", verified: true, clientId: "shopsphere-mcp-client", grantId: "grant", scopes: allScopes },
-  [tokens.wrongrole]: { sub: "buyer", role: "seller", verified: true, clientId: "shopsphere-mcp-client", grantId: "grant", scopes: allScopes },
-  [tokens.wrongscope]: { sub: "buyer", role: "user", verified: true, clientId: "shopsphere-mcp-client", grantId: "grant", scopes: [] },
-  [tokens.missing]: { sub: "missing", role: "user", verified: true, clientId: "shopsphere-mcp-client", grantId: "grant", scopes: allScopes },
+  [tokens.valid]: { sub: "buyer", role: "user", verified: true, clientId: "shopsphere-mcp-client", grantId: "grant-valid", scopes: allScopes },
+  [tokens.wrongrole]: { sub: "buyer", role: "public", verified: true, clientId: "shopsphere-mcp-client", grantId: "grant-wrongrole", scopes: allScopes },
+  [tokens.wrongscope]: { sub: "buyer", role: "user", verified: true, clientId: "shopsphere-mcp-client", grantId: "grant-wrongscope", scopes: [] },
+  [tokens.missing]: { sub: "missing", role: "user", verified: true, clientId: "shopsphere-mcp-client", grantId: "grant-missing", scopes: allScopes },
 };
 
 const startBackend = async ({ disabled = false } = {}) => {
+  const requests = [];
   const server = http.createServer(async (request, response) => {
     const body = await new Promise((resolve) => {
       let value = "";
@@ -88,6 +96,7 @@ const startBackend = async ({ disabled = false } = {}) => {
     });
     const name = request.url?.split("/").at(-1);
     const token = request.headers.authorization?.replace(/^Bearer /, "");
+    requests.push({ name, token });
     response.setHeader("content-type", "application/json");
     if (request.headers["x-assistant-api-token"] !== "workload") return response.writeHead(401).end("{}");
     if (!token || token === "d-revoked" || token === "d-missing") return response.writeHead(401).end("{}");
@@ -99,7 +108,7 @@ const startBackend = async ({ disabled = false } = {}) => {
     return response.end(JSON.stringify(outputs[name]));
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  return { server, url: `http://127.0.0.1:${server.address().port}` };
+  return { server, url: `http://127.0.0.1:${server.address().port}`, requests };
 };
 
 const runValidator = (env) => new Promise((resolve, reject) => {
@@ -123,6 +132,7 @@ const runValidator = (env) => new Promise((resolve, reject) => {
 });
 
 test("buyer validator exercises MCP and Express matrices without leaking fixtures", async (t) => {
+  const resolvedTokens = [];
   const mcp = createMcpHttpServer({
     enabled: true,
     flags,
@@ -131,6 +141,7 @@ test("buyer validator exercises MCP and Express matrices without leaking fixture
       return tokenAuth[token];
     },
     authContextResolver: async (context) => {
+      resolvedTokens.push(context.subjectToken);
       if (context.subjectToken === tokens.missing) throw Object.assign(new Error("missing"), { statusCode: 401 });
       return { ...context, auth: tokenAuth[context.subjectToken], delegatedToken: "delegated" };
     },
@@ -168,11 +179,24 @@ test("buyer validator exercises MCP and Express matrices without leaking fixture
     MCP_BUYER_FORBIDDEN_MARKERS: JSON.stringify(["CANARY-PII", "credential-canary"]),
   });
 
-  assert.equal(code, 0);
+  assert.equal(code, 0, JSON.stringify(evidence));
   assert.equal(evidence.outcome, "pass");
   assert.ok(evidence.checks.every(({ outcome }) => outcome === "pass"));
   assert.equal(evidence.client.id, "shopsphere-mcp-client");
   assert.doesNotMatch(JSON.stringify(evidence), /order-owned|order-foreign|PILOT|d-valid|CANARY-PII/i);
+  const checks = Object.fromEntries(evidence.checks.map((item) => [item.name, item]));
+  assert.equal(checks["mcp_denial:wrong_role"].deniedTools, buyerToolDefinitions.length);
+  assert.equal(checks["mcp_denial:wrong_scope"].deniedTools, buyerToolDefinitions.length);
+  assert.equal(checks["express_denial:wrong_role"].deniedRoutes, buyerToolDefinitions.length);
+  assert.equal(checks["express_denial:wrong_scope"].deniedRoutes, buyerToolDefinitions.length);
+  assert.ok(resolvedTokens.filter((token) => token === tokens.wrongrole).length >= buyerToolDefinitions.length);
+  assert.ok(resolvedTokens.filter((token) => token === tokens.wrongscope).length >= buyerToolDefinitions.length);
+  for (const delegatedToken of ["d-wrongrole", "d-wrongscope"]) {
+    assert.deepEqual(
+      backend.requests.filter(({ token }) => token === delegatedToken).map(({ name }) => name).sort(),
+      [...buyerToolDefinitions.map(({ name }) => name)].sort(),
+    );
+  }
 });
 
 test("buyer validator rejects any OAuth client name other than shopsphere-mcp-client", async () => {
