@@ -7,7 +7,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { validateAssistantAccess } from "./assistantDelegation.js";
+import { readAssistantAccountCohort, validateAssistantAccess } from "./assistantDelegation.js";
 
 const ADMIN = "eeeeeeeeeeeeeeeeeeeeeeee";
 const USER = "aaaaaaaaaaaaaaaaaaaaaaaa";
@@ -43,6 +43,8 @@ test("an admin whose delegated grant lacks the new scope is denied despite the l
 });
 
 test("the same grant still authorizes a scope the user actually consented to", async () => {
+  const previous = process.env.MCP_ACCOUNT_COHORT;
+  process.env.MCP_ACCOUNT_COHORT = ADMIN;
   const client = {
     user: { findUnique: async () => account({ id: ADMIN, role: "admin" }) },
   };
@@ -54,9 +56,36 @@ test("the same grant still authorizes a scope the user actually consented to", a
       scopes: ["profile:read", "platform:read"],
     },
   };
-  const result = await validateAssistantAccess(req, { roles: ["admin"], scope: "platform:read" }, client);
-  assert.equal(result.status, undefined);
-  assert.equal(result.account.role, "admin");
+  try {
+    const result = await validateAssistantAccess(req, { roles: ["admin"], scope: "platform:read" }, client);
+    assert.equal(result.status, undefined);
+    assert.equal(result.account.role, "admin");
+  } finally {
+    if (previous === undefined) delete process.env.MCP_ACCOUNT_COHORT;
+    else process.env.MCP_ACCOUNT_COHORT = previous;
+  }
+});
+
+test("private assistant access defaults to an empty account cohort", async () => {
+  const previous = process.env.MCP_ACCOUNT_COHORT;
+  delete process.env.MCP_ACCOUNT_COHORT;
+  const client = { user: { findUnique: async () => account() } };
+  const req = { delegation: { sub: USER, role: "user", verified: true, scopes: ["profile:read"] } };
+  try {
+    assert.deepEqual(
+      await validateAssistantAccess(req, { scope: "profile:read" }, client),
+      { status: 403, code: "account_not_in_cohort" },
+    );
+  } finally {
+    if (previous !== undefined) process.env.MCP_ACCOUNT_COHORT = previous;
+  }
+});
+
+test("the account cohort parser trims, deduplicates, and drops empty entries", () => {
+  assert.deepEqual(
+    [...readAssistantAccountCohort({ MCP_ACCOUNT_COHORT: ` ${USER},,${ADMIN},${USER} ` })],
+    [USER, ADMIN],
+  );
 });
 
 test("a token claiming the admin role is denied when the live account role disagrees", async () => {

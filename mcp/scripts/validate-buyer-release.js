@@ -61,10 +61,12 @@ if (mode === "enabled") {
     wrongScopeToken: required("MCP_BUYER_WRONG_SCOPE_TOKEN"),
     revokedToken: required("MCP_BUYER_REVOKED_TOKEN"),
     missingAccountToken: required("MCP_BUYER_MISSING_ACCOUNT_TOKEN"),
+    unapprovedAccountToken: required("MCP_BUYER_UNAPPROVED_ACCOUNT_TOKEN"),
     delegatedWrongRoleToken: required("MCP_BUYER_DELEGATED_WRONG_ROLE_TOKEN"),
     delegatedWrongScopeToken: required("MCP_BUYER_DELEGATED_WRONG_SCOPE_TOKEN"),
     delegatedRevokedToken: required("MCP_BUYER_DELEGATED_REVOKED_TOKEN"),
     delegatedMissingAccountToken: required("MCP_BUYER_DELEGATED_MISSING_ACCOUNT_TOKEN"),
+    delegatedUnapprovedAccountToken: required("MCP_BUYER_DELEGATED_UNAPPROVED_ACCOUNT_TOKEN"),
   });
 
   const wrongRoleClaims = decodeJwtPayload(config.wrongRoleToken, "MCP_BUYER_WRONG_ROLE_TOKEN");
@@ -86,6 +88,12 @@ if (mode === "enabled") {
   if (scenarioGrantIds.some((grantId) => typeof grantId !== "string" || !grantId)
     || new Set(scenarioGrantIds).size !== scenarioGrantIds.length) {
     throw new Error("Valid, wrong-role, and wrong-scope MCP tokens must use distinct short-lived grants");
+  }
+
+  const unapprovedClaims = decodeJwtPayload(config.unapprovedAccountToken, "MCP_BUYER_UNAPPROVED_ACCOUNT_TOKEN");
+  if (unapprovedClaims.azp !== "shopsphere-mcp-client"
+    || (unapprovedClaims.shopsphere_user_id ?? unapprovedClaims.sub) === config.accountSubject) {
+    throw new Error("MCP_BUYER_UNAPPROVED_ACCOUNT_TOKEN must belong to a different account using shopsphere-mcp-client");
   }
 }
 
@@ -308,6 +316,12 @@ try {
       });
     }
 
+    await check("mcp_denial:unapproved_account", async () => {
+      const response = await rawInitialize(config.unapprovedAccountToken);
+      if (response.status !== 403) throw new Error("unapproved account was not denied");
+      return { denied: true, ...await responseEvidence(response) };
+    });
+
     await check("mcp_foreign_buyer", async () => {
       for (const name of ["get_my_order", "track_my_order", "get_my_bill_summary", "get_my_payment_status"]) {
         await expectMcpDenial(validClient, name, { orderId: config.foreignOrderId });
@@ -345,6 +359,7 @@ try {
       ["wrong_scope", config.delegatedWrongScopeToken, [403]],
       ["revoked", config.delegatedRevokedToken, [401]],
       ["missing_account", config.delegatedMissingAccountToken, [401]],
+      ["unapproved_account", config.delegatedUnapprovedAccountToken, [403]],
     ]) {
       await check(`express_denial:${scenario}`, async () => {
         for (const name of BUYER_TOOL_NAMES) await expectBackendDenial(name, token, toolInputs[name], statuses);

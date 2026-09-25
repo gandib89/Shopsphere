@@ -36,7 +36,7 @@ test("buyer release matrix is generated for every #31 tool and denial class", ()
       "malformed_input",
     ]);
   }
-  assert.deepEqual(BUYER_RUNTIME_CASES, ["revoked", "missing_account", "foreign_buyer"]);
+  assert.deepEqual(BUYER_RUNTIME_CASES, ["revoked", "missing_account", "unapproved_account", "foreign_buyer"]);
 });
 
 test("registry matrix allows only the exact enabled buyer grant", () => {

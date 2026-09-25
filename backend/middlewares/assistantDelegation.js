@@ -58,6 +58,13 @@ const safeEqual = (left, right) => {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 };
 
+export const readAssistantAccountCohort = (environment = process.env) => new Set(
+  (environment.MCP_ACCOUNT_COHORT ?? "")
+    .split(",")
+    .map((subject) => subject.trim())
+    .filter(Boolean),
+);
+
 const auditedDenial = async (req, res, status, code, message, operation = "authorization.resolve") => {
   // Direct middleware unit tests do not install requestContext. Every real app
   // request has a trace id and therefore must use the durable fail-closed path.
@@ -142,6 +149,7 @@ export const validateAssistantAccess = async (
     return { status: 403, code: "stale_identity" };
   }
   if (!roles.includes(account.role)) return { status: 403, code: "role_not_allowed" };
+  if (!readAssistantAccountCohort().has(account.id)) return { status: 403, code: "account_not_in_cohort" };
   return { account };
 };
 

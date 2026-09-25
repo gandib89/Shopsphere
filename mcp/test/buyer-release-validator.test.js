@@ -76,6 +76,7 @@ const tokens = {
   wrongrole: jwt("wrongrole", { role: "public" }),
   wrongscope: jwt("wrongscope", { scopes: [] }),
   missing: jwt("missing", { subject: "missing" }),
+  unapproved: jwt("unapproved", { subject: "new-customer" }),
   revoked: jwt("revoked"),
 };
 const tokenAuth = {
@@ -83,6 +84,7 @@ const tokenAuth = {
   [tokens.wrongrole]: { sub: "buyer", role: "public", verified: true, clientId: "shopsphere-mcp-client", grantId: "grant-wrongrole", scopes: allScopes },
   [tokens.wrongscope]: { sub: "buyer", role: "user", verified: true, clientId: "shopsphere-mcp-client", grantId: "grant-wrongscope", scopes: [] },
   [tokens.missing]: { sub: "missing", role: "user", verified: true, clientId: "shopsphere-mcp-client", grantId: "grant-missing", scopes: allScopes },
+  [tokens.unapproved]: { sub: "new-customer", role: "user", verified: true, clientId: "shopsphere-mcp-client", grantId: "grant-unapproved", scopes: allScopes },
 };
 
 const startBackend = async ({ disabled = false } = {}) => {
@@ -100,7 +102,7 @@ const startBackend = async ({ disabled = false } = {}) => {
     response.setHeader("content-type", "application/json");
     if (request.headers["x-assistant-api-token"] !== "workload") return response.writeHead(401).end("{}");
     if (!token || token === "d-revoked" || token === "d-missing") return response.writeHead(401).end("{}");
-    if (token === "d-wrongrole" || token === "d-wrongscope") return response.writeHead(403).end("{}");
+    if (token === "d-wrongrole" || token === "d-wrongscope" || token === "d-unapproved") return response.writeHead(403).end("{}");
     if (disabled) return response.writeHead(404).end("{}");
     if (body.__unknown) return response.writeHead(400).end("{}");
     if (body.orderId === "order-foreign") return response.writeHead(404).end("{}");
@@ -143,6 +145,7 @@ test("buyer validator exercises MCP and Express matrices without leaking fixture
     authContextResolver: async (context) => {
       resolvedTokens.push(context.subjectToken);
       if (context.subjectToken === tokens.missing) throw Object.assign(new Error("missing"), { statusCode: 401 });
+      if (context.subjectToken === tokens.unapproved) throw Object.assign(new Error("cohort"), { statusCode: 403 });
       return { ...context, auth: tokenAuth[context.subjectToken], delegatedToken: "delegated" };
     },
     backendClient: { call: async (name, input) => {
@@ -166,6 +169,7 @@ test("buyer validator exercises MCP and Express matrices without leaking fixture
     MCP_BUYER_WRONG_SCOPE_TOKEN: tokens.wrongscope,
     MCP_BUYER_REVOKED_TOKEN: tokens.revoked,
     MCP_BUYER_MISSING_ACCOUNT_TOKEN: tokens.missing,
+    MCP_BUYER_UNAPPROVED_ACCOUNT_TOKEN: tokens.unapproved,
     MCP_BUYER_BACKEND_URL: backend.url,
     MCP_BUYER_BACKEND_WORKLOAD_TOKEN: "workload",
     MCP_BUYER_DELEGATED_VALID_TOKEN: "d-valid",
@@ -173,6 +177,7 @@ test("buyer validator exercises MCP and Express matrices without leaking fixture
     MCP_BUYER_DELEGATED_WRONG_SCOPE_TOKEN: "d-wrongscope",
     MCP_BUYER_DELEGATED_REVOKED_TOKEN: "d-revoked",
     MCP_BUYER_DELEGATED_MISSING_ACCOUNT_TOKEN: "d-missing",
+    MCP_BUYER_DELEGATED_UNAPPROVED_ACCOUNT_TOKEN: "d-unapproved",
     MCP_BUYER_ORDER_ID: order.id,
     MCP_BUYER_FOREIGN_ORDER_ID: "order-foreign",
     MCP_BUYER_PROMO_CODE: "PILOT",
@@ -189,6 +194,7 @@ test("buyer validator exercises MCP and Express matrices without leaking fixture
   assert.equal(checks["mcp_denial:wrong_scope"].deniedTools, buyerToolDefinitions.length);
   assert.equal(checks["express_denial:wrong_role"].deniedRoutes, buyerToolDefinitions.length);
   assert.equal(checks["express_denial:wrong_scope"].deniedRoutes, buyerToolDefinitions.length);
+  assert.equal(checks["express_denial:unapproved_account"].deniedRoutes, buyerToolDefinitions.length);
   assert.ok(resolvedTokens.filter((token) => token === tokens.wrongrole).length >= buyerToolDefinitions.length);
   assert.ok(resolvedTokens.filter((token) => token === tokens.wrongscope).length >= buyerToolDefinitions.length);
   for (const delegatedToken of ["d-wrongrole", "d-wrongscope"]) {
@@ -229,6 +235,7 @@ test("buyer validator stops on the first failed release check", async (t) => {
     MCP_BUYER_WRONG_SCOPE_TOKEN: tokens.wrongscope,
     MCP_BUYER_REVOKED_TOKEN: tokens.revoked,
     MCP_BUYER_MISSING_ACCOUNT_TOKEN: tokens.missing,
+    MCP_BUYER_UNAPPROVED_ACCOUNT_TOKEN: tokens.unapproved,
     MCP_BUYER_BACKEND_URL: "http://127.0.0.1:1",
     MCP_BUYER_BACKEND_WORKLOAD_TOKEN: "workload",
     MCP_BUYER_DELEGATED_VALID_TOKEN: "d-valid",
@@ -236,6 +243,7 @@ test("buyer validator stops on the first failed release check", async (t) => {
     MCP_BUYER_DELEGATED_WRONG_SCOPE_TOKEN: "d-wrongscope",
     MCP_BUYER_DELEGATED_REVOKED_TOKEN: "d-revoked",
     MCP_BUYER_DELEGATED_MISSING_ACCOUNT_TOKEN: "d-missing",
+    MCP_BUYER_DELEGATED_UNAPPROVED_ACCOUNT_TOKEN: "d-unapproved",
     MCP_BUYER_ORDER_ID: order.id,
     MCP_BUYER_FOREIGN_ORDER_ID: "order-foreign",
     MCP_BUYER_PROMO_CODE: "PILOT",

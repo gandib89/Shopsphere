@@ -296,6 +296,7 @@ test("restricted PostgreSQL role and transaction-local RLS isolate assistant rea
   process.env.MCP_OAUTH_INTROSPECTION_CLIENT_ID = "assistant-integration";
   process.env.MCP_OAUTH_INTROSPECTION_CLIENT_SECRET = "assistant-integration-secret";
   process.env.MCP_WORKLOAD_CLIENT_ID = "shopsphere-mcp-workload";
+  process.env.MCP_ACCOUNT_COHORT = actorA.actorId;
   process.env.MCP_TOOL_VALIDATE_PROMO_CODE_ENABLED = "true";
   process.env.MCP_TOOL_PREVIEW_CHECKOUT_ENABLED = "true";
   const delegatedToken = await new SignJWT({
