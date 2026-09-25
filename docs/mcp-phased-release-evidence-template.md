@@ -22,6 +22,8 @@ Each row needs expected and actual results, sanitized request/audit IDs, UTC tim
 | Scenario | Tool and fixture | Expected / actual | Request and audit IDs | UTC / evidence link / reviewer |
 |---|---|---|---|---|
 | Release-SHA MCP/backend/frontend suites; generated authorization matrix | | | | |
+| `buyer:validate` disabled-state record before enablement (#31) | | | | |
+| `buyer:validate` enabled MCP and Express matrix record (#31) | | | | |
 | Intended client initialization, discovery, and calls in staging | | | | |
 | MCP and direct Express denial matrix; legacy-route bypass | | | | |
 | PostgreSQL 16 ownership/RLS, nested fields, cursors, cache, sessions, pool/failure cleanup | | | | |
