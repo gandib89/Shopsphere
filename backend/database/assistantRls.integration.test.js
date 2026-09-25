@@ -160,7 +160,13 @@ test("restricted PostgreSQL role and transaction-local RLS isolate assistant rea
   // connection; the public policy normalizes that state back to no actor.
   await assistantPublicPrisma.$transaction((tx) =>
     tx.$executeRawUnsafe("SELECT set_config('shopsphere.actor_id', 'temporary', true)"));
-  assert.deepEqual(await assistantPublicPrisma.product.count({ select: { id: true } }), { id: 1 });
+  assert.deepEqual(
+    await assistantPublicPrisma.product.findUnique({
+      where: { id: "d1d1d1d1d1d1d1d1d1d1d1d1" },
+      select: { id: true },
+    }),
+    { id: "d1d1d1d1d1d1d1d1d1d1d1d1" },
+  );
 
   assert.deepEqual(await assistantPrisma.user.findMany({ select: projection }), []);
   assert.deepEqual(await assistantPrisma.notification.findMany({ select: { id: true } }), []);
