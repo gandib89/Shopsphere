@@ -58,8 +58,8 @@ Use `npm run buyer:validate` against the exact deployed artifact before enableme
 
 The validator requires short-lived staging-only values through the process environment. Do not save them in `.env`, shell profiles, CI artifacts, the repository, or the public issue:
 
-- MCP URL, optional Cloud Run identity token, exact client name `shopsphere-mcp-client`, exact version, and valid/wrong-role/wrong-scope/revoked/missing-account OAuth tokens.
-- Backend URL, workload credential, optional Cloud Run identity token, and corresponding valid/wrong-role/wrong-scope/revoked/missing-account delegated tokens.
+- MCP URL, optional Cloud Run identity token, exact client name `shopsphere-mcp-client`, exact version, and valid/wrong-role/wrong-scope/revoked/missing-account/unapproved-account OAuth tokens.
+- Backend URL, workload credential, optional Cloud Run identity token, and corresponding valid/wrong-role/wrong-scope/revoked/missing-account/unapproved-account delegated tokens.
 - Owned and foreign synthetic order IDs, a synthetic promo code, and a non-empty JSON array of canary PII/credential markers.
 
 Required variable names for the enabled pass:
@@ -75,6 +75,7 @@ MCP_BUYER_WRONG_ROLE_TOKEN
 MCP_BUYER_WRONG_SCOPE_TOKEN
 MCP_BUYER_REVOKED_TOKEN
 MCP_BUYER_MISSING_ACCOUNT_TOKEN
+MCP_BUYER_UNAPPROVED_ACCOUNT_TOKEN
 MCP_BUYER_BACKEND_URL
 MCP_BUYER_BACKEND_WORKLOAD_TOKEN
 MCP_BUYER_DELEGATED_VALID_TOKEN
@@ -82,6 +83,7 @@ MCP_BUYER_DELEGATED_WRONG_ROLE_TOKEN
 MCP_BUYER_DELEGATED_WRONG_SCOPE_TOKEN
 MCP_BUYER_DELEGATED_REVOKED_TOKEN
 MCP_BUYER_DELEGATED_MISSING_ACCOUNT_TOKEN
+MCP_BUYER_DELEGATED_UNAPPROVED_ACCOUNT_TOKEN
 MCP_BUYER_ORDER_ID
 MCP_BUYER_FOREIGN_ORDER_ID
 MCP_BUYER_PROMO_CODE
@@ -89,6 +91,8 @@ MCP_BUYER_FORBIDDEN_MARKERS
 ```
 
 Set `MCP_BUYER_CLOUD_RUN_ID_TOKEN` and `MCP_BUYER_BACKEND_CLOUD_RUN_ID_TOKEN` when Cloud Run IAM protects those endpoints. The validator decodes the already server-verified valid JWT only to assert its `azp` is `shopsphere-mcp-client` and its ShopSphere subject matches `MCP_BUYER_ACCOUNT_SUBJECT`; neither value is written to evidence.
+
+Set backend `MCP_ACCOUNT_COHORT` to the comma-separated ShopSphere account IDs approved for the demo. Missing or empty configuration denies every private MCP account. A newly registered ShopSphere account remains able to use the normal storefront but cannot use private MCP tools until its account ID is deliberately added to this cohort. Do not put the cohort IDs in the public issue or repository.
 
 The wrong-role token must carry one role rejected by all ten buyer tools. The wrong-scope token must lack the required scope for all ten tools. Issue the valid, wrong-role, and wrong-scope credentials as three distinct short-lived grants for the same pilot account so the complete matrix cannot consume one grant's transport limit. The validator rejects narrower or shared-grant fixtures so shared profile/notification tools and buyer-only cart/order tools cannot silently receive partial matrix coverage.
 

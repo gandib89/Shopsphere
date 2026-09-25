@@ -126,7 +126,9 @@ test("delegation middleware exposes normalized claims and rejects inactive crede
 
 test("assistant access rechecks live role, verification, scope, and rollout before data access", async () => {
   const previous = process.env.MCP_TOOL_GET_MY_PROFILE_SUMMARY_ENABLED;
+  const previousCohort = process.env.MCP_ACCOUNT_COHORT;
   process.env.MCP_TOOL_GET_MY_PROFILE_SUMMARY_ENABLED = "true";
+  process.env.MCP_ACCOUNT_COHORT = "user-1";
   try {
     const account = { id: "user-1", firstName: "Ada", lastName: "Buyer", role: "user", isVerified: true };
     const client = { user: { findUnique: async () => account } };
@@ -143,6 +145,8 @@ test("assistant access rechecks live role, verification, scope, and rollout befo
   } finally {
     if (previous === undefined) delete process.env.MCP_TOOL_GET_MY_PROFILE_SUMMARY_ENABLED;
     else process.env.MCP_TOOL_GET_MY_PROFILE_SUMMARY_ENABLED = previous;
+    if (previousCohort === undefined) delete process.env.MCP_ACCOUNT_COHORT;
+    else process.env.MCP_ACCOUNT_COHORT = previousCohort;
   }
 });
 

@@ -23,6 +23,7 @@ export const BUYER_TOOL_NAMES = Object.freeze([
 export const BUYER_RUNTIME_CASES = Object.freeze([
   "revoked",
   "missing_account",
+  "unapproved_account",
   "foreign_buyer",
 ]);
 
