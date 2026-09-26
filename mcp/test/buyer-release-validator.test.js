@@ -144,6 +144,7 @@ test("buyer validator exercises MCP and Express matrices without leaking fixture
     },
     authContextResolver: async (context) => {
       resolvedTokens.push(context.subjectToken);
+      if (context.subjectToken === tokens.wrongrole) throw Object.assign(new Error("forbidden"), { statusCode: 403 });
       if (context.subjectToken === tokens.missing) throw Object.assign(new Error("missing"), { statusCode: 401 });
       if (context.subjectToken === tokens.unapproved) throw Object.assign(new Error("cohort"), { statusCode: 403 });
       return { ...context, auth: tokenAuth[context.subjectToken], delegatedToken: "delegated" };
@@ -190,12 +191,12 @@ test("buyer validator exercises MCP and Express matrices without leaking fixture
   assert.equal(evidence.client.id, "shopsphere-mcp-client");
   assert.doesNotMatch(JSON.stringify(evidence), /order-owned|order-foreign|PILOT|d-valid|CANARY-PII/i);
   const checks = Object.fromEntries(evidence.checks.map((item) => [item.name, item]));
-  assert.equal(checks["mcp_denial:wrong_role"].deniedTools, buyerToolDefinitions.length);
+  assert.equal(checks["mcp_denial:wrong_role"].sessionDenied, true);
   assert.equal(checks["mcp_denial:wrong_scope"].deniedTools, buyerToolDefinitions.length);
   assert.equal(checks["express_denial:wrong_role"].deniedRoutes, buyerToolDefinitions.length);
   assert.equal(checks["express_denial:wrong_scope"].deniedRoutes, buyerToolDefinitions.length);
   assert.equal(checks["express_denial:unapproved_account"].deniedRoutes, buyerToolDefinitions.length);
-  assert.ok(resolvedTokens.filter((token) => token === tokens.wrongrole).length >= buyerToolDefinitions.length);
+  assert.equal(resolvedTokens.filter((token) => token === tokens.wrongrole).length, 1);
   assert.ok(resolvedTokens.filter((token) => token === tokens.wrongscope).length >= buyerToolDefinitions.length);
   for (const delegatedToken of ["d-wrongrole", "d-wrongscope"]) {
     assert.deepEqual(
