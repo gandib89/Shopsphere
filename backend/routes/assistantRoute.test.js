@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import express from "express";
 
-import assistantRouter, { sendProfileSummary } from "./assistantRoute.js";
+import assistantRouter, { profileSummaryInput, sendProfileSummary } from "./assistantRoute.js";
 
 const token = "assistant-test-token-123456789012345";
 
@@ -100,4 +100,9 @@ test("profile summary exposes only display name, current role, and verification"
     },
   }, { json: (body) => { output = body; } });
   assert.deepEqual(output, { displayName: "Ada Buyer", role: "user", verified: true });
+});
+
+test("profile summary accepts only an empty input object", () => {
+  assert.equal(profileSummaryInput.safeParse({}).success, true);
+  assert.equal(profileSummaryInput.safeParse({ __unknown: true }).success, false);
 });
