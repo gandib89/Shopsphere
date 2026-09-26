@@ -97,6 +97,7 @@ const notificationInput = z.object({
   cursor,
   limit: z.number().int().min(1).max(50).optional(),
 }).strict();
+export const profileSummaryInput = z.object({}).strict();
 const remoteAuditInput = z.object({
   traceId: z.string().min(1).max(100).optional(),
   subjectId: z.string().max(24).nullable().optional(),
@@ -283,12 +284,24 @@ router.post(
     scope: "profile:read",
     rolloutFlag: "MCP_TOOL_GET_MY_PROFILE_SUMMARY_ENABLED",
   }),
-  async (req, res) => auditedJson(req, res, {
-    operation: "profile.getMySummary",
-    tool: "get_my_profile_summary",
-    output: profileSummary(req),
-    startedAt: Date.now(),
-  }),
+  async (req, res) => {
+    const startedAt = Date.now();
+    const parsed = profileSummaryInput.safeParse(req.body);
+    if (!parsed.success) return auditedError(req, res, {
+      operation: "profile.getMySummary",
+      tool: "get_my_profile_summary",
+      input: {},
+      status: 400,
+      code: "invalid_input",
+      startedAt,
+    });
+    return auditedJson(req, res, {
+      operation: "profile.getMySummary",
+      tool: "get_my_profile_summary",
+      output: profileSummary(req),
+      startedAt,
+    });
+  },
 );
 
 router.post(
