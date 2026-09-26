@@ -71,9 +71,11 @@ if (mode === "enabled") {
 
   const wrongRoleClaims = decodeJwtPayload(config.wrongRoleToken, "MCP_BUYER_WRONG_ROLE_TOKEN");
   const wrongRole = wrongRoleClaims.shopsphere_role ?? wrongRoleClaims.role;
-  if (typeof wrongRole !== "string"
-    || buyerToolDefinitions.some((definition) => definition.roles.includes(wrongRole))) {
-    throw new Error("MCP_BUYER_WRONG_ROLE_TOKEN must carry a role rejected by every buyer tool");
+  const validRole = validClaims.shopsphere_role ?? validClaims.role;
+  const validSubject = validClaims.shopsphere_user_id ?? validClaims.sub;
+  const wrongRoleSubject = wrongRoleClaims.shopsphere_user_id ?? wrongRoleClaims.sub;
+  if (typeof wrongRole !== "string" || wrongRole === validRole || wrongRoleSubject !== validSubject) {
+    throw new Error("MCP_BUYER_WRONG_ROLE_TOKEN must carry a different role for the pilot account");
   }
 
   const wrongScopeClaims = decodeJwtPayload(config.wrongScopeToken, "MCP_BUYER_WRONG_SCOPE_TOKEN");
