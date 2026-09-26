@@ -12,6 +12,10 @@ const required = (name) => {
 const optional = (name) => process.env[name] || null;
 const mode = process.env.MCP_BUYER_MODE ?? "enabled";
 if (!new Set(["enabled", "disabled"]).has(mode)) throw new Error("MCP_BUYER_MODE must be enabled or disabled");
+const rateWindowWaitMs = Number(process.env.MCP_BUYER_RATE_WINDOW_WAIT_MS ?? "0");
+if (!Number.isInteger(rateWindowWaitMs) || rateWindowWaitMs < 0 || rateWindowWaitMs > 120_000) {
+  throw new Error("MCP_BUYER_RATE_WINDOW_WAIT_MS must be an integer from 0 to 120000");
+}
 
 const clientName = required("MCP_BUYER_CLIENT_NAME");
 if (clientName !== "shopsphere-mcp-client") {
@@ -119,6 +123,14 @@ const check = async (name, run) => {
     process.exitCode = 1;
     throw new Error(`Buyer release gate stopped at ${name}`);
   }
+};
+
+const waitForRateWindow = async (phase) => {
+  if (!rateWindowWaitMs) return;
+  await check(`rate_window_reset:${phase}`, async () => {
+    await new Promise((resolve) => setTimeout(resolve, rateWindowWaitMs));
+    return { waitedMs: rateWindowWaitMs };
+  });
 };
 
 const headersFor = (token, cloudRunIdToken) => ({
@@ -289,6 +301,8 @@ try {
       return { repeatedReads: BUYER_TOOL_NAMES.length };
     });
 
+    await waitForRateWindow("mcp_denials");
+
     for (const [scenario, token] of [
       ["wrong_role", config.wrongRoleToken],
       ["wrong_scope", config.wrongScopeToken],
@@ -339,6 +353,8 @@ try {
       }
       return { deniedTools: 4 };
     });
+
+    await waitForRateWindow("express_matrix");
 
     await check("express_valid_buyer", async () => {
       for (const definition of buyerToolDefinitions) {

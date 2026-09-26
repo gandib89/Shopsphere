@@ -164,6 +164,7 @@ test("buyer validator exercises MCP and Express matrices without leaking fixture
     MCP_BUYER_URL: String(mcpUrl),
     MCP_BUYER_CLIENT_NAME: "shopsphere-mcp-client",
     MCP_BUYER_CLIENT_VERSION: "test",
+    MCP_BUYER_RATE_WINDOW_WAIT_MS: "1",
     MCP_BUYER_VALID_TOKEN: tokens.valid,
     MCP_BUYER_ACCOUNT_SUBJECT: "buyer",
     MCP_BUYER_WRONG_ROLE_TOKEN: tokens.wrongrole,
@@ -192,6 +193,8 @@ test("buyer validator exercises MCP and Express matrices without leaking fixture
   assert.doesNotMatch(JSON.stringify(evidence), /order-owned|order-foreign|PILOT|d-valid|CANARY-PII/i);
   const checks = Object.fromEntries(evidence.checks.map((item) => [item.name, item]));
   assert.equal(checks["mcp_denial:wrong_role"].sessionDenied, true);
+  assert.equal(checks["rate_window_reset:mcp_denials"].waitedMs, 1);
+  assert.equal(checks["rate_window_reset:express_matrix"].waitedMs, 1);
   assert.equal(checks["mcp_denial:wrong_scope"].deniedTools, buyerToolDefinitions.length);
   assert.equal(checks["express_denial:wrong_role"].deniedRoutes, buyerToolDefinitions.length);
   assert.equal(checks["express_denial:wrong_scope"].deniedRoutes, buyerToolDefinitions.length);
