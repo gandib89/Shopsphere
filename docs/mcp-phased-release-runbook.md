@@ -41,12 +41,21 @@ Never put tokens, customer data, raw private responses, full prompts, or interna
 Run the generated registry matrix before any deployment or flag change:
 
 ```text
-cd mcp
+cd backend
+npm ci
+npx prisma generate --schema=prisma/schema.prisma
+npm test
+
+cd ../mcp
 npm ci
 npm run check
 npm test
 npm run buyer:matrix
 ```
+
+The MCP contract suite starts the backend, so the backend Prisma client must be
+generated first in every clean checkout. The generated client is gitignored;
+its absence is a setup failure, not a release-gate result.
 
 `buyer:matrix` derives the ten #31 tools, flags, roles, and scopes from the live registry and fails if any static allow/deny case disagrees with the registry. Save its sanitized JSON output in the private release record.
 
