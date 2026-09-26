@@ -195,6 +195,7 @@ test("buyer validator exercises MCP and Express matrices without leaking fixture
   assert.equal(checks["mcp_denial:wrong_role"].sessionDenied, true);
   assert.equal(checks["rate_window_reset:mcp_denials"].waitedMs, 1);
   assert.equal(checks["rate_window_reset:express_matrix"].waitedMs, 1);
+  assert.equal(checks["rate_window_reset:express_cohort_denial"].waitedMs, 1);
   assert.equal(checks["mcp_denial:wrong_scope"].deniedTools, buyerToolDefinitions.length);
   assert.equal(checks["express_denial:wrong_role"].deniedRoutes, buyerToolDefinitions.length);
   assert.equal(checks["express_denial:wrong_scope"].deniedRoutes, buyerToolDefinitions.length);
