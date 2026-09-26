@@ -386,13 +386,21 @@ try {
       ["wrong_scope", config.delegatedWrongScopeToken, [403]],
       ["revoked", config.delegatedRevokedToken, [401]],
       ["missing_account", config.delegatedMissingAccountToken, [401]],
-      ["unapproved_account", config.delegatedUnapprovedAccountToken, [403]],
     ]) {
       await check(`express_denial:${scenario}`, async () => {
         for (const name of BUYER_TOOL_NAMES) await expectBackendDenial(name, token, toolInputs[name], statuses);
         return { deniedRoutes: BUYER_TOOL_NAMES.length };
       });
     }
+
+    await waitForRateWindow("express_cohort_denial");
+
+    await check("express_denial:unapproved_account", async () => {
+      for (const name of BUYER_TOOL_NAMES) {
+        await expectBackendDenial(name, config.delegatedUnapprovedAccountToken, toolInputs[name], [403]);
+      }
+      return { deniedRoutes: BUYER_TOOL_NAMES.length };
+    });
 
     await check("express_missing_auth", async () => {
       const response = await fetch(new URL("/api/v1/assistant/get_my_cart", config.backendUrl), {
