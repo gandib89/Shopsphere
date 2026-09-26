@@ -166,6 +166,11 @@ const responseEvidence = async (response) => ({
   responseBytes: assertSanitizedAndBounded(await response.text()),
 });
 
+const isAuthorizationDenial = (error) => (
+  /401|403|unauthorized|forbidden|authorization|verification|not found|unknown|denied|revoked/i
+    .test(error?.message ?? "")
+);
+
 const expectMcpDenial = async (client, tool, args) => {
   try {
     const result = await client.callTool({ name: tool, arguments: args });
@@ -173,7 +178,7 @@ const expectMcpDenial = async (client, tool, args) => {
     assertSanitizedAndBounded(result);
   } catch (error) {
     if (error?.message === "unexpected success") throw error;
-    if (!/401|403|404|unauthorized|forbidden|authorization|verification|not found|unknown|denied|revoked/i.test(error?.message ?? "")) {
+    if (!isAuthorizationDenial(error)) {
       throw error;
     }
   }
@@ -287,13 +292,17 @@ try {
       ["wrong_scope", config.wrongScopeToken],
     ]) {
       await check(`mcp_denial:${scenario}`, async () => {
-        const client = await createClient(token);
+        let client;
         try {
+          client = await createClient(token);
           const discovered = (await client.listTools()).tools.map(({ name }) => name);
           if (BUYER_TOOL_NAMES.some((name) => discovered.includes(name))) throw new Error("buyer tool disclosed");
           for (const name of BUYER_TOOL_NAMES) await expectMcpDenial(client, name, toolInputs[name]);
+        } catch (error) {
+          if (!isAuthorizationDenial(error)) throw error;
+          return { denied: true, sessionDenied: true };
         } finally {
-          await client.close().catch(() => {});
+          await client?.close().catch(() => {});
         }
         return { denied: true, deniedTools: BUYER_TOOL_NAMES.length };
       });
