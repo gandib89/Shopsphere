@@ -99,6 +99,8 @@ MCP_BUYER_PROMO_CODE
 MCP_BUYER_FORBIDDEN_MARKERS
 ```
 
+Set `MCP_BUYER_RATE_WINDOW_WAIT_MS=61000` for the live staging gate so the exhaustive MCP and Express phases do not consume the pilot account's fixed one-minute backend rate bucket. The wait is recorded in the evidence; a rate-limit response is still a failed gate.
+
 Set `MCP_BUYER_CLOUD_RUN_ID_TOKEN` and `MCP_BUYER_BACKEND_CLOUD_RUN_ID_TOKEN` when Cloud Run IAM protects those endpoints. The validator decodes the already server-verified valid JWT only to assert its `azp` is `shopsphere-mcp-client` and its ShopSphere subject matches `MCP_BUYER_ACCOUNT_SUBJECT`; neither value is written to evidence.
 
 Set backend `MCP_ACCOUNT_COHORT` to the comma-separated ShopSphere account IDs approved for the demo. Missing or empty configuration denies every private MCP account. A newly registered ShopSphere account remains able to use the normal storefront but cannot use private MCP tools until its account ID is deliberately added to this cohort. Do not put the cohort IDs in the public issue or repository.
