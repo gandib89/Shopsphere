@@ -40,4 +40,16 @@ test("Redis shares principal-bound sessions across MCP replicas", { skip: !enabl
 
   await secondReplica.destroy(sessionId);
   assert.equal(await firstReplica.validate(sessionId, owner), false);
+
+  const seller = { sub: "seller-redis-a", clientId: "shopsphere-mcp-client", role: "seller", grantId: "seller-grant-a" };
+  const sellerSession = await firstReplica.create(seller);
+  assert.equal(await secondReplica.validate(sellerSession, seller), true);
+  for (const other of [
+    { ...seller, sub: "seller-redis-b" },
+    { ...seller, clientId: "foreign-client" },
+    { ...seller, grantId: "revoked-grant" },
+    { ...seller, role: "user" },
+  ]) assert.equal(await secondReplica.validate(sellerSession, other), false);
+  await secondReplica.destroy(sellerSession);
+  assert.equal(await firstReplica.validate(sellerSession, seller), false);
 });
