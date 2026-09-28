@@ -111,7 +111,7 @@ The exact variable names are enforced by `mcp/scripts/validate-buyer-release.js`
 
 ## Executable #32 seller gate
 
-Run the same clean-checkout backend installation, Prisma generation, backend tests, MCP installation, syntax check, and MCP tests described above. Then run `npm run seller:matrix` from `mcp`. Its 42 executable registry checks cover all six seller reads, including verified and unverified seller discovery. Save the sanitized matrix output privately.
+Run the same clean-checkout backend installation, Prisma generation, backend tests, MCP installation, syntax check, and MCP tests described above. Then run `npm run seller:matrix` from `mcp`. Its 42 executable registry checks cover all six seller reads, including verified and unverified seller discovery. The output is `pending_runtime` until all required hosted, PostgreSQL, Redis, rollback, and observation proofs are supplied; a registry-only pass is not a release pass. Save the sanitized matrix output privately.
 
 Run `npm run seller:validate` against the exact deployed backend and MCP images in this order:
 
@@ -125,6 +125,8 @@ Provide these staging-only values through the process environment, never in file
 The owned sale fixture must be attributed to the pilot seller at purchase, while its product is now owned by the foreign seller. The foreign sale must share the same order group with the owned sale and one additional sale attributed to the pilot seller. The first page of owned catalog and sales must include those fixtures. Use non-zero stock and revenue totals so exact-output checks are meaningful. Record independent expected values before invoking the validator.
 
 The validator's final `SHOPSPHERE_SELLER_EVIDENCE=` line contains only check names, outcomes, durations, statuses, and byte counts. This is one part of the gate: separately attach real PostgreSQL 16 and Redis evidence, historical seller-at-purchase and multi-seller-group observations, cursor/session/cache isolation, telemetry privacy scan, read-only commerce snapshots, a declared observation window, and timed rollback. No local mock run substitutes for deployed evidence.
+
+For the final matrix pass, provide `MCP_SELLER_MATRIX_PROOFS` as a private JSON object with `hosted` (enabled validator evidence), `postgres` and `redis` (the sanitized CI evidence lines), `flags` (six distinct flag-mode validator results), `initialDisabled` and `finalDisabled` (disabled validator results), and `observation` (start/end UTC timestamps, `outcome: "pass"`, `privacyScan: "pass"`, `commerceSnapshot: "unchanged"`, and zero `unauthorizedReads` and `forbiddenMutations`). Run `MCP_SELLER_MATRIX_FINAL=true npm run seller:matrix`; malformed, incomplete, duplicate, failed, or short-window evidence must exit nonzero. Store this input and the full output only in the private release record, with CI and immutable staging artifact references. The matrix checks evidence coverage and consistency; retain the underlying CI and hosted observations for review.
 
 ## Rollback and re-entry
 

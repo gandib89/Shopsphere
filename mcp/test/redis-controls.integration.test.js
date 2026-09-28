@@ -52,4 +52,10 @@ test("Redis shares principal-bound sessions across MCP replicas", { skip: !enabl
   ]) assert.equal(await secondReplica.validate(sellerSession, other), false);
   await secondReplica.destroy(sellerSession);
   assert.equal(await firstReplica.validate(sellerSession, seller), false);
+  process.stdout.write(`SHOPSPHERE_SELLER_REDIS_EVIDENCE=${JSON.stringify({
+    issue: 32, mode: "redis", outcome: "pass",
+    tools: ["list_my_products", "get_my_product", "get_my_inventory_summary",
+      "list_my_seller_orders", "get_my_seller_order", "get_my_revenue_summary"],
+    checks: [{ name: "seller_session_isolation", outcome: "pass" }],
+  })}\n`);
 });

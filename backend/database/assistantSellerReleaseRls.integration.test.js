@@ -24,7 +24,7 @@ const read = (subject, operation, fn) => withAssistantActor(
 );
 const snapshot = async () => {
   const result = {};
-  for (const table of ["products", "product_options", "orders", "revenues", "refunds", "payments", "bills"]) {
+  for (const table of ["products", "product_options", "orders", "revenues", "refunds", "payments", "bills", "carts", "cart_items"]) {
     const [row] = await prisma.$queryRawUnsafe(`
       SELECT md5(coalesce(json_agg(t ORDER BY t.id)::text, '[]')) AS digest
       FROM ${table} t
@@ -39,6 +39,8 @@ test("seller release: PostgreSQL RLS, historical attribution, privacy, and read 
   const before = await snapshot();
   const ben = principal(seller);
   const cara = principal(competitor);
+  assert.equal(await prisma.user.count({ where: { id: { in: [seller, competitor] }, role: "seller", isVerified: true } }), 2);
+  assert.equal(await prisma.user.count({ where: { id: "ffffffffffffffffffffffff", role: "seller", isVerified: false } }), 1);
 
   const benCatalog = await read(seller, "products.listMine", (tx) =>
     listMyProducts({}, { client: tx, principal: ben, cursorSecret }));
@@ -146,4 +148,13 @@ test("seller release: PostgreSQL RLS, historical attribution, privacy, and read 
     ]);
   }
   assert.deepEqual(await snapshot(), before);
+  process.stdout.write(`SHOPSPHERE_SELLER_POSTGRES_EVIDENCE=${JSON.stringify({
+    issue: 32, mode: "postgres", outcome: "pass",
+    tools: ["list_my_products", "get_my_product", "get_my_inventory_summary",
+      "list_my_seller_orders", "get_my_seller_order", "get_my_revenue_summary"],
+    checks: ["verified_and_unverified_fixture", "archived_and_foreign_catalog",
+      "private_stock_and_inventory", "historical_and_grouped_sales", "revenue_and_refunds",
+      "cursor_binding", "negative_rls_and_read_purity", "pooled_cleanup"]
+      .map((name) => ({ name, outcome: "pass" })),
+  })}\n`);
 });
