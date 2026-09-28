@@ -138,6 +138,15 @@ test("seller release: PostgreSQL RLS, historical attribution, privacy, and read 
     await tx.order.findMany({ select: { id: true } });
     throw new Error("forced seller rollback");
   }), /forced seller rollback/);
+  await assert.rejects(withAssistantActor(
+    { actorId: seller, role: "seller", operation: "sales.listMine", timeoutMs: 100 },
+    (tx) => tx.$queryRawUnsafe("SELECT pg_sleep(1)"),
+  ), /timeout|canceling statement|transaction/i);
+  // A later request on the pool must see only its own seller, even after
+  // a failed transaction and a timed-out transaction released connections.
+  assert.deepEqual(await read(competitor, "sales.listMine", (tx) => tx.order.findMany({
+    where: { orderGroupId: "rls-mixed-seller-group-32" }, select: { id: true },
+  })), [{ id: competitorSale }]);
   assert.deepEqual(await assistantPrisma.order.findMany({ select: { id: true } }), []);
 
   for (let repeat = 0; repeat < 2; repeat += 1) {
