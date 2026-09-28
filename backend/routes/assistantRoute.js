@@ -376,14 +376,14 @@ router.post(
 // user-authored content that must never be echoed into audits or logs.
 // observe(output, input) may return auditMetadata merged into the audited
 // redacted input.
-const privateOperation = ({ path, tool, operation, roles, scope, rolloutFlag, inputSchema, run, observe, middlewares = [], auditInput }) => {
+const privateOperation = ({ path, tool, operation, roles, scope, rolloutFlag, verifiedSeller = false, inputSchema, run, observe, middlewares = [], auditInput }) => {
   const auditEventInput = (data) => (auditInput ? auditInput(data) : data);
   router.post(
     path,
     authenticateAssistantWorkload,
     authenticateAssistantDelegation,
     enforceAssistantDistributedLimit(),
-    authorizeAssistantOperation({ operation, roles, scope, rolloutFlag }),
+    authorizeAssistantOperation({ operation, roles, scope, rolloutFlag, verifiedSeller }),
     ...middlewares,
     async (req, res) => {
       const startedAt = Date.now();
@@ -548,6 +548,7 @@ privateOperation({
   tool: "list_my_products",
   operation: "products.listMine",
   roles: ["seller"],
+  verifiedSeller: true,
   scope: "catalog:read",
   rolloutFlag: "MCP_TOOL_LIST_MY_PRODUCTS_ENABLED",
   inputSchema: z.object({ cursor, limit: z.number().int().min(1).max(50).optional() }).strict(),
@@ -560,6 +561,7 @@ privateOperation({
   tool: "get_my_product",
   operation: "products.getMine",
   roles: ["seller"],
+  verifiedSeller: true,
   scope: "catalog:read",
   rolloutFlag: "MCP_TOOL_GET_MY_PRODUCT_ENABLED",
   inputSchema: z.object({ productId }).strict(),
@@ -572,6 +574,7 @@ privateOperation({
   tool: "get_my_inventory_summary",
   operation: "products.getMyInventorySummary",
   roles: ["seller"],
+  verifiedSeller: true,
   scope: "catalog:read",
   rolloutFlag: "MCP_TOOL_GET_MY_INVENTORY_SUMMARY_ENABLED",
   inputSchema: z.object({ threshold: z.number().int().min(1).max(50).optional() }).strict(),
@@ -588,6 +591,7 @@ privateOperation({
   tool: "list_my_seller_orders",
   operation: "sales.listMine",
   roles: ["seller"],
+  verifiedSeller: true,
   scope: "sales:read",
   rolloutFlag: "MCP_TOOL_LIST_MY_SELLER_ORDERS_ENABLED",
   inputSchema: z.object({ status: sellerSaleStatus, from: isoDateTime, to: isoDateTime, cursor, limit: z.number().int().min(1).max(50).optional() }).strict(),
@@ -600,6 +604,7 @@ privateOperation({
   tool: "get_my_seller_order",
   operation: "sales.getMine",
   roles: ["seller"],
+  verifiedSeller: true,
   scope: "sales:read",
   rolloutFlag: "MCP_TOOL_GET_MY_SELLER_ORDER_ENABLED",
   inputSchema: z.object({ orderId }).strict(),
@@ -612,6 +617,7 @@ privateOperation({
   tool: "get_my_revenue_summary",
   operation: "sales.revenueSummary",
   roles: ["seller"],
+  verifiedSeller: true,
   scope: "revenue:read",
   rolloutFlag: "MCP_TOOL_GET_MY_REVENUE_SUMMARY_ENABLED",
   inputSchema: z.object({ year: z.number().int().min(2000).max(2100).optional() }).strict(),

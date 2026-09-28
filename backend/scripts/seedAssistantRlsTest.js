@@ -59,6 +59,29 @@ try {
       ('a4a4a4a4a4a4a4a4a4a4a4a4', 'Legacy', 'Row', 'd1d1d1d1d1d1d1d1d1d1d1d1', 1, now(), 'legacy@example.test', 54.99, 'Delivered', NULL, NULL)
     ON CONFLICT (id) DO NOTHING
   `);
+  // #32: one historical Ben sale now points at Cara's product, and Cara's
+  // separate sale shares its group. Seller RLS must isolate the two lines.
+  await pool.query(`
+    INSERT INTO users (id, "firstName", "lastName", email, role, "isVerified") VALUES
+      ('eeeeeeeeeeeeeeeeeeeeeeee', 'Cara', 'Seller', 'rls-seller-c@example.test', 'seller', true)
+    ON CONFLICT (id) DO NOTHING
+  `);
+  await pool.query(`
+    INSERT INTO products (id, name, price, quantity, category, "sellerId") VALUES
+      ('d2d2d2d2d2d2d2d2d2d2d2d2', 'RLS Shared Lamp', 39.99, 3, 'Home', 'eeeeeeeeeeeeeeeeeeeeeeee')
+    ON CONFLICT (id) DO NOTHING
+  `);
+  await pool.query(`
+    INSERT INTO orders (id, "firstName", "lastName", "productId", quantity, "deliveryDate", email,
+                        "totalPrice", status, "userId", "sellerIdAtPurchase", "orderGroupId") VALUES
+      ('f4f4f4f4f4f4f4f4f4f4f4f4', 'Eve', 'Buyer', 'd2d2d2d2d2d2d2d2d2d2d2d2', 1, now(),
+       'rls-e@example.test', 39.99, 'Shipped', 'dddddddddddddddddddddddd', 'bbbbbbbbbbbbbbbbbbbbbbbb', 'rls-mixed-seller-group-32'),
+      ('f5f5f5f5f5f5f5f5f5f5f5f5', 'Eve', 'Buyer', 'd2d2d2d2d2d2d2d2d2d2d2d2', 1, now(),
+       'rls-e@example.test', 39.99, 'Shipped', 'dddddddddddddddddddddddd', 'eeeeeeeeeeeeeeeeeeeeeeee', 'rls-mixed-seller-group-32'),
+      ('f6f6f6f6f6f6f6f6f6f6f6f6', 'Eve', 'Buyer', 'd1d1d1d1d1d1d1d1d1d1d1d1', 1, now(),
+       'rls-e@example.test', 49.99, 'Shipped', 'dddddddddddddddddddddddd', 'bbbbbbbbbbbbbbbbbbbbbbbb', 'rls-mixed-seller-group-32')
+    ON CONFLICT (id) DO NOTHING
+  `);
   await pool.query(`
     INSERT INTO bills (id, "orderId", "userId", "productId", "billNumber", "productName", quantity, "unitPrice", "totalPrice", status) VALUES
       ('c6c6c6c6c6c6c6c6c6c6c6c6', 'f3f3f3f3f3f3f3f3f3f3f3f3', 'aaaaaaaaaaaaaaaaaaaaaaaa', 'd1d1d1d1d1d1d1d1d1d1d1d1', 'BILL-f3f3f3f3f3f3f3f3f3f3f3f3', 'RLS Lamp', 1, 54.99, 54.99, 'Generated'),

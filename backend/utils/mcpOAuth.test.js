@@ -150,6 +150,21 @@ test("assistant access rechecks live role, verification, scope, and rollout befo
   }
 });
 
+test("unverified seller cannot read private seller data but may use listing drafts", async () => {
+  const previous = process.env.MCP_ACCOUNT_COHORT;
+  process.env.MCP_ACCOUNT_COHORT = "seller-1";
+  try {
+    const account = { id: "seller-1", role: "seller", isVerified: false };
+    const client = { user: { findUnique: async () => account } };
+    const request = { delegation: { sub: "seller-1", role: "seller", verified: false, scopes: ["catalog:read", "listings:draft"] } };
+    assert.equal((await validateAssistantAccess(request, { roles: ["seller"], scope: "catalog:read", verifiedSeller: true }, client)).code, "seller_not_verified");
+    assert.deepEqual(await validateAssistantAccess(request, { roles: ["seller"], scope: "listings:draft" }, client), { account });
+  } finally {
+    if (previous === undefined) delete process.env.MCP_ACCOUNT_COHORT;
+    else process.env.MCP_ACCOUNT_COHORT = previous;
+  }
+});
+
 test("delegated tokens are rejected outside assistant routes", async () => {
   const { token, jwks } = await fixture();
   const blocked = fakeRes();
