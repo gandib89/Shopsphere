@@ -64,12 +64,14 @@ if (claims.azp !== config.clientName || (claims.shopsphere_user_id ?? claims.sub
 if (mode === "enabled") {
   Object.assign(config, {
     unverified: required("MCP_SELLER_UNVERIFIED_TOKEN"),
+    staleVerification: required("MCP_SELLER_STALE_VERIFICATION_TOKEN"),
     wrongRole: required("MCP_SELLER_WRONG_ROLE_TOKEN"),
     wrongScope: required("MCP_SELLER_WRONG_SCOPE_TOKEN"),
     revoked: required("MCP_SELLER_REVOKED_TOKEN"),
     missing: required("MCP_SELLER_MISSING_ACCOUNT_TOKEN"),
     unapproved: required("MCP_SELLER_UNAPPROVED_ACCOUNT_TOKEN"),
     delegatedUnverified: required("MCP_SELLER_DELEGATED_UNVERIFIED_TOKEN"),
+    delegatedStaleVerification: required("MCP_SELLER_DELEGATED_STALE_VERIFICATION_TOKEN"),
     delegatedWrongRole: required("MCP_SELLER_DELEGATED_WRONG_ROLE_TOKEN"),
     delegatedWrongScope: required("MCP_SELLER_DELEGATED_WRONG_SCOPE_TOKEN"),
     delegatedRevoked: required("MCP_SELLER_DELEGATED_REVOKED_TOKEN"),
@@ -77,6 +79,7 @@ if (mode === "enabled") {
     delegatedUnapproved: required("MCP_SELLER_DELEGATED_UNAPPROVED_ACCOUNT_TOKEN"),
   });
   const unverified = decode(config.unverified, "MCP_SELLER_UNVERIFIED_TOKEN");
+  const staleVerification = decode(config.staleVerification, "MCP_SELLER_STALE_VERIFICATION_TOKEN");
   const wrongScope = decode(config.wrongScope, "MCP_SELLER_WRONG_SCOPE_TOKEN");
   const wrongRole = decode(config.wrongRole, "MCP_SELLER_WRONG_ROLE_TOKEN");
   const unapproved = decode(config.unapproved, "MCP_SELLER_UNAPPROVED_ACCOUNT_TOKEN");
@@ -86,6 +89,13 @@ if (mode === "enabled") {
     || (unverified.shopsphere_role ?? unverified.role) !== "seller"
     || ![false, "false"].includes(unverified.shopsphere_verified)) {
     throw new Error("Unverified fixture must be a separate unverified seller on the approved client");
+  }
+  if (staleVerification.azp !== config.clientName
+    || (staleVerification.shopsphere_user_id ?? staleVerification.sub)
+      !== (unverified.shopsphere_user_id ?? unverified.sub)
+    || (staleVerification.shopsphere_role ?? staleVerification.role) !== "seller"
+    || ![true, "true"].includes(staleVerification.shopsphere_verified)) {
+    throw new Error("Stale-verification fixture must claim verified for the live unverified seller");
   }
   if (wrongRole.azp !== config.clientName
     || (wrongRole.shopsphere_user_id ?? wrongRole.sub) !== config.subject
@@ -105,7 +115,7 @@ if (mode === "enabled") {
     || (unapproved.shopsphere_user_id ?? unapproved.sub) === config.subject) {
     throw new Error("Unapproved fixture must use a separate account and the approved client");
   }
-  const grants = [claims.sid, wrongScope.sid, wrongRole.sid, unverified.sid];
+  const grants = [claims.sid, wrongScope.sid, wrongRole.sid, unverified.sid, staleVerification.sid];
   if (grants.some((grant) => typeof grant !== "string" || !grant) || new Set(grants).size !== grants.length) {
     throw new Error("Valid and denial fixtures need distinct short-lived grants");
   }
@@ -314,6 +324,11 @@ try {
           } finally { await client?.close().catch(() => {}); }
         });
       }
+      await check("mcp_denial:stale_verification", async () => {
+        const response = await rawInitialize(config.staleVerification);
+        if (response.status !== 403) throw new Error("Stale verification was not denied");
+        return { status: response.status, responseBytes: bounded(await response.text()) };
+      });
       for (const [scenario, token, status] of [["revoked", config.revoked, 401], ["missing_account", config.missing, 401],
         ["unapproved_account", config.unapproved, 403], ["unauthenticated", null, 401]]) {
         await check(`mcp_denial:${scenario}`, async () => {
@@ -340,12 +355,14 @@ try {
         return { deniedRoutes: SELLER_TOOL_NAMES.length };
       });
       for (const [scenario, token, status] of [["unverified_seller", config.delegatedUnverified, 403],
+        ["stale_verification", config.delegatedStaleVerification, 403],
         ["wrong_role", config.delegatedWrongRole, 403], ["wrong_scope", config.delegatedWrongScope, 403],
         ["revoked", config.delegatedRevoked, 401], ["missing_account", config.delegatedMissing, 401]]) {
         await check(`express_denial:${scenario}`, async () => {
           for (const name of SELLER_TOOL_NAMES) {
             await backendStatus(name, token, status, inputs[name],
-              scenario === "unverified_seller" ? "seller_not_verified" : undefined);
+              scenario === "unverified_seller" ? "seller_not_verified"
+                : scenario === "stale_verification" ? "stale_identity" : undefined);
           }
           return { deniedRoutes: SELLER_TOOL_NAMES.length };
         });
@@ -365,7 +382,25 @@ try {
 } finally {
   await validClient?.close().catch(() => {});
   evidence.finishedAt = new Date().toISOString();
-  evidence.outcome = evidence.checks.length && evidence.checks.every(({ outcome }) => outcome === "pass") ? "pass" : "fail";
+  const requiredChecks = mode === "disabled" ? ["mcp_disabled", "express_disabled"]
+    : mode === "flag" ? ["mcp_discovery", `mcp_flag_denial:${disabledTool}`, `express_flag_denial:${disabledTool}`]
+      : [
+          "mcp_discovery",
+          ...SELLER_TOOL_NAMES.flatMap((name) => [`mcp_call:${name}`, `mcp_malformed:${name}`]),
+          "mcp_repeated_reads",
+          ...["unverified_seller", "wrong_role", "wrong_scope", "stale_verification", "revoked",
+            "unauthenticated", "missing_account", "unapproved_account"].map((scenario) => `mcp_denial:${scenario}`),
+          "mcp_foreign:get_my_product", "mcp_foreign:get_my_seller_order",
+          "express_valid_seller", "express_repeated_reads", "express_malformed",
+          ...["unverified_seller", "stale_verification", "wrong_role", "wrong_scope", "revoked",
+            "missing_account", "unapproved_account"].map((scenario) => `express_denial:${scenario}`),
+          "express_foreign:get_my_product", "express_foreign:get_my_seller_order", "express_unauthenticated",
+        ];
+  const completed = new Set(evidence.checks.filter(({ outcome }) => outcome === "pass").map(({ name }) => name));
+  evidence.outcome = evidence.checks.length > 0
+    && evidence.checks.every(({ outcome }) => outcome === "pass")
+    && requiredChecks.every((name) => completed.has(name)) ? "pass" : "fail";
+  evidence.requiredCheckCount = requiredChecks.length;
   process.stdout.write(`SHOPSPHERE_SELLER_EVIDENCE=${JSON.stringify(evidence)}\n`);
   if (evidence.outcome !== "pass") process.exitCode = 1;
 }

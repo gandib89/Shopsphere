@@ -257,7 +257,9 @@ test("restricted PostgreSQL role and transaction-local RLS isolate assistant rea
   // self-ordered rows — the seller-private columns are never enumerable.
   const sellerCatalogOp = { ...actorB, operation: "products.getMine" };
   const benProducts = await withAssistantActor(sellerCatalogOp, (tx) => tx.product.findMany({ select: { id: true } }));
-  assert.deepEqual(benProducts.map(({ id }) => id), ["d1d1d1d1d1d1d1d1d1d1d1d1"]);
+  assert.deepEqual(benProducts.map(({ id }) => id).sort(), [
+    "d1d1d1d1d1d1d1d1d1d1d1d1", "d3d3d3d3d3d3d3d3d3d3d3d3",
+  ]);
   const benOptions = await withAssistantActor(sellerCatalogOp, (tx) => tx.productOption.findMany({ select: { value: true, stock: true } }));
   assert.deepEqual(benOptions, [{ value: "Red", stock: 4 }]);
   const caraCatalogOp = { actorId: "eeeeeeeeeeeeeeeeeeeeeeee", role: "seller", operation: "products.getMine" };

@@ -170,6 +170,7 @@ jobs:
       - run: node scripts/provisionAssistantRole.js
       - run: node scripts/seedAssistantRlsTest.js
       - run: node --test database/assistantRls.integration.test.js
+      - run: node --test database/assistantSellerReleaseRls.integration.test.js
       - run: node --test database/assistantAdminReadsRls.integration.test.js
       - run: node --test database/assistantRls.integration.test.js database/assistantAdminQueues.integration.test.js
       - run: node --test database/assistantAdminPromotionsRls.integration.test.js

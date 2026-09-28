@@ -134,6 +134,7 @@ test("seller validator checks the complete enabled MCP and Express denial matrix
   const fixtures = {
     valid: scenarioJwt("valid"),
     unverified: scenarioJwt("unverified", { subject: "seller-unverified", verified: "false" }),
+    stale: scenarioJwt("stale", { subject: "seller-unverified" }),
     wrongrole: scenarioJwt("wrongrole", { role: "user" }),
     wrongscope: scenarioJwt("wrongscope", { scope: "openid" }),
     revoked: scenarioJwt("revoked"),
@@ -156,6 +157,7 @@ test("seller validator checks the complete enabled MCP and Express denial matrix
     } },
     tokenVerifier: async (token) => {
       if (token === fixtures.unapproved) throw Object.assign(new Error("denied"), { statusCode: 403 });
+      if (token === fixtures.stale) throw Object.assign(new Error("stale"), { statusCode: 403 });
       if (!authByToken[token]) throw Object.assign(new Error("denied"), { statusCode: 401 });
       return authByToken[token];
     },
@@ -170,11 +172,12 @@ test("seller validator checks the complete enabled MCP and Express denial matrix
     const name = request.url?.split("/").at(-1);
     response.setHeader("content-type", "application/json");
     const status = !token || ["d-revoked", "d-missing"].includes(token) ? 401
-      : ["d-unverified", "d-wrongrole", "d-wrongscope", "d-unapproved"].includes(token) ? 403
+      : ["d-unverified", "d-stale", "d-wrongrole", "d-wrongscope", "d-unapproved"].includes(token) ? 403
         : input.__unknown ? 400
           : input.productId === "product-foreign" || input.orderId === "order-foreign" ? 404 : 200;
     response.writeHead(status).end(JSON.stringify(status === 200 ? outputs[name]
-      : token === "d-unverified" ? { code: "seller_not_verified" } : {}));
+      : token === "d-unverified" ? { code: "seller_not_verified" }
+        : token === "d-stale" ? { code: "stale_identity" } : {}));
   });
   await new Promise((resolve) => backendServer.listen(0, "127.0.0.1", resolve));
   t.after(() => new Promise((resolve) => backendServer.close(resolve)));
@@ -182,12 +185,14 @@ test("seller validator checks the complete enabled MCP and Express denial matrix
   const result = await run(envFor(mcpUrl, backendUrl, {
     MCP_SELLER_MODE: "enabled", MCP_SELLER_VALID_TOKEN: fixtures.valid,
     MCP_SELLER_UNVERIFIED_TOKEN: fixtures.unverified,
+    MCP_SELLER_STALE_VERIFICATION_TOKEN: fixtures.stale,
     MCP_SELLER_WRONG_ROLE_TOKEN: fixtures.wrongrole,
     MCP_SELLER_WRONG_SCOPE_TOKEN: fixtures.wrongscope,
     MCP_SELLER_REVOKED_TOKEN: fixtures.revoked,
     MCP_SELLER_MISSING_ACCOUNT_TOKEN: fixtures.missing,
     MCP_SELLER_UNAPPROVED_ACCOUNT_TOKEN: fixtures.unapproved,
     MCP_SELLER_DELEGATED_UNVERIFIED_TOKEN: "d-unverified",
+    MCP_SELLER_DELEGATED_STALE_VERIFICATION_TOKEN: "d-stale",
     MCP_SELLER_DELEGATED_WRONG_ROLE_TOKEN: "d-wrongrole",
     MCP_SELLER_DELEGATED_WRONG_SCOPE_TOKEN: "d-wrongscope",
     MCP_SELLER_DELEGATED_REVOKED_TOKEN: "d-revoked",
@@ -196,7 +201,7 @@ test("seller validator checks the complete enabled MCP and Express denial matrix
   }));
   assert.equal(result.code, 0);
   assert.equal(result.evidence.outcome, "pass");
-  for (const scenario of ["unverified_seller", "wrong_role", "wrong_scope", "revoked", "missing_account", "unapproved_account"]) {
+  for (const scenario of ["unverified_seller", "stale_verification", "wrong_role", "wrong_scope", "revoked", "missing_account", "unapproved_account"]) {
     assert.equal(result.evidence.checks.find(({ name }) => name === `mcp_denial:${scenario}`)?.outcome, "pass");
     assert.equal(result.evidence.checks.find(({ name }) => name === `express_denial:${scenario}`)?.outcome, "pass");
   }
