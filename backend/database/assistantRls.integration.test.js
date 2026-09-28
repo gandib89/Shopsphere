@@ -260,6 +260,33 @@ test("restricted PostgreSQL role and transaction-local RLS isolate assistant rea
   assert.deepEqual(benProducts.map(({ id }) => id), ["d1d1d1d1d1d1d1d1d1d1d1d1"]);
   const benOptions = await withAssistantActor(sellerCatalogOp, (tx) => tx.productOption.findMany({ select: { value: true, stock: true } }));
   assert.deepEqual(benOptions, [{ value: "Red", stock: 4 }]);
+  const caraCatalogOp = { actorId: "eeeeeeeeeeeeeeeeeeeeeeee", role: "seller", operation: "products.getMine" };
+  assert.deepEqual(await withAssistantActor(sellerCatalogOp, (tx) => tx.product.findMany({
+    where: { id: "d2d2d2d2d2d2d2d2d2d2d2d2" }, select: { id: true },
+  })), []);
+  assert.deepEqual(await withAssistantActor(caraCatalogOp, (tx) => tx.product.findMany({
+    where: { id: "d2d2d2d2d2d2d2d2d2d2d2d2" }, select: { id: true },
+  })), [{ id: "d2d2d2d2d2d2d2d2d2d2d2d2" }]);
+
+  // Query without an application ownership predicate: PostgreSQL still
+  // isolates a mixed group by immutable seller-at-purchase attribution.
+  const mixedGroup = { orderGroupId: "rls-mixed-seller-group-32" };
+  const sellerSales = (sellerId) => withAssistantActor(
+    { actorId: sellerId, role: "seller", operation: "sales.listMine" },
+    (tx) => tx.order.findMany({ where: mixedGroup, select: { id: true } }),
+  );
+  const [benGroup, caraGroup] = await Promise.all([
+    sellerSales(actorB.actorId), sellerSales(caraCatalogOp.actorId),
+  ]);
+  assert.deepEqual(benGroup.map(({ id }) => id).sort(), [
+    "f4f4f4f4f4f4f4f4f4f4f4f4", "f6f6f6f6f6f6f6f6f6f6f6f6",
+  ]);
+  assert.deepEqual(caraGroup, [{ id: "f5f5f5f5f5f5f5f5f5f5f5f5" }]);
+  assert.deepEqual(await assistantPrisma.order.findMany({ where: mixedGroup, select: { id: true } }), []);
+  await assert.rejects(withAssistantActor(
+    { actorId: actorB.actorId, role: "seller", operation: "sales.getMine" },
+    (tx) => tx.order.findMany({ where: mixedGroup, select: { email: true } }),
+  ), /permission denied|database query/i);
   const adaProductView = await withAssistantActor(
     { ...actorA, operation: "cart.getMine" },
     (tx) => tx.product.findMany({ select: { id: true } }),

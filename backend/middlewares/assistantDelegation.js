@@ -131,7 +131,7 @@ export const enforceAssistantDistributedLimit = () => async (req, res, next) => 
 
 export const validateAssistantAccess = async (
   req,
-  { roles = ["user", "seller", "admin"], scope, rolloutFlag } = {},
+  { roles = ["user", "seller", "admin"], scope, rolloutFlag, verifiedSeller = false } = {},
   client = prisma,
 ) => {
   if (rolloutFlag && process.env[rolloutFlag] !== "true") {
@@ -149,6 +149,9 @@ export const validateAssistantAccess = async (
     return { status: 403, code: "stale_identity" };
   }
   if (!roles.includes(account.role)) return { status: 403, code: "role_not_allowed" };
+  if (verifiedSeller && account.role === "seller" && !account.isVerified) {
+    return { status: 403, code: "seller_not_verified" };
+  }
   if (!readAssistantAccountCohort().has(account.id)) return { status: 403, code: "account_not_in_cohort" };
   return { account };
 };

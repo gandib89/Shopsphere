@@ -173,7 +173,7 @@ export const getMySale = async ({ orderId }, { client, principal }) => {
   // revenues RLS as the third layer.
   const revenue = await client.revenue.findFirst({
     where: { orderId: row.id, sellerId: principal.subject },
-    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    orderBy: [{ id: "asc" }],
     select: { status: true, totalSalePrice: true, adminCommission: true, sellerRevenue: true },
   });
   return {

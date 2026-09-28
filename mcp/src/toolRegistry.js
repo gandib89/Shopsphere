@@ -1845,6 +1845,7 @@ const definitions = [
     outputSchema: ListMyProductsOutputSchema,
     operationClass: "read",
     roles: ["seller"],
+    requiresVerifiedSeller: true,
     scopes: ["catalog:read"],
     rateClass: "authenticated-read",
     rollout: {
@@ -1866,6 +1867,7 @@ const definitions = [
     outputSchema: GetMyProductOutputSchema,
     operationClass: "read",
     roles: ["seller"],
+    requiresVerifiedSeller: true,
     scopes: ["catalog:read"],
     rateClass: "authenticated-read",
     rollout: {
@@ -1887,6 +1889,7 @@ const definitions = [
     outputSchema: GetMyInventorySummaryOutputSchema,
     operationClass: "read",
     roles: ["seller"],
+    requiresVerifiedSeller: true,
     scopes: ["catalog:read"],
     rateClass: "authenticated-read",
     rollout: {
@@ -1909,6 +1912,7 @@ const definitions = [
     outputSchema: ListMySellerOrdersOutputSchema,
     operationClass: "read",
     roles: ["seller"],
+    requiresVerifiedSeller: true,
     scopes: ["sales:read"],
     rateClass: "authenticated-read",
     rollout: {
@@ -1931,6 +1935,7 @@ const definitions = [
     outputSchema: GetMySellerOrderOutputSchema,
     operationClass: "read",
     roles: ["seller"],
+    requiresVerifiedSeller: true,
     scopes: ["sales:read"],
     rateClass: "authenticated-read",
     rollout: {
@@ -1953,6 +1958,7 @@ const definitions = [
     outputSchema: GetMyRevenueSummaryOutputSchema,
     operationClass: "read",
     roles: ["seller"],
+    requiresVerifiedSeller: true,
     scopes: ["revenue:read"],
     rateClass: "authenticated-read",
     rollout: {
@@ -2539,6 +2545,7 @@ export const isToolAvailable = (definition, flags = {}, auth) => {
   return Boolean(
     auth
     && definition.roles.includes(auth.role)
+    && (!definition.requiresVerifiedSeller || auth.verified === true)
     && definition.scopes.every((scope) => auth.scopes?.includes(scope)),
   );
 };

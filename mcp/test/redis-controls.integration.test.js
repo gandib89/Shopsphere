@@ -40,4 +40,31 @@ test("Redis shares principal-bound sessions across MCP replicas", { skip: !enabl
 
   await secondReplica.destroy(sessionId);
   assert.equal(await firstReplica.validate(sessionId, owner), false);
+
+  const seller = { sub: "seller-redis-a", clientId: "shopsphere-mcp-client", role: "seller", grantId: "seller-grant-a" };
+  const sellerSession = await firstReplica.create(seller);
+  assert.equal(await secondReplica.validate(sellerSession, seller), true);
+  for (const other of [
+    { ...seller, sub: "seller-redis-b" },
+    { ...seller, clientId: "foreign-client" },
+    { ...seller, grantId: "revoked-grant" },
+    { ...seller, role: "user" },
+  ]) assert.equal(await secondReplica.validate(sellerSession, other), false);
+  for await (const batch of firstClient.scanIterator({ MATCH: `${prefix}:*` })) {
+    for (const key of Array.isArray(batch) ? batch : [batch]) {
+      assert.ok(!key.includes(seller.sub) && !key.includes(seller.grantId));
+      if (key.includes(":session:")) {
+        const value = await firstClient.get(key);
+        assert.ok(!value?.includes(seller.sub) && !value?.includes(seller.grantId));
+      }
+    }
+  }
+  await secondReplica.destroy(sellerSession);
+  assert.equal(await firstReplica.validate(sellerSession, seller), false);
+  process.stdout.write(`SHOPSPHERE_SELLER_REDIS_EVIDENCE=${JSON.stringify({
+    issue: 32, mode: "redis", outcome: "pass",
+    tools: ["list_my_products", "get_my_product", "get_my_inventory_summary",
+      "list_my_seller_orders", "get_my_seller_order", "get_my_revenue_summary"],
+    checks: [{ name: "seller_session_isolation", outcome: "pass" }],
+  })}\n`);
 });
