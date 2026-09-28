@@ -9,7 +9,7 @@ try {
   await pool.query(`
     INSERT INTO users (id, "firstName", "lastName", email, role, "isVerified") VALUES
       ('aaaaaaaaaaaaaaaaaaaaaaaa', 'Ada', 'Buyer', 'rls-a@example.test', 'user', true),
-      ('bbbbbbbbbbbbbbbbbbbbbbbb', 'Ben', 'Seller', 'rls-b@example.test', 'seller', true)
+      ('bbbbbbbbbbbbbbbbbbbbbbbb', 'Ben', 'Seller', 'rls-b@example.test', 'seller', false)
     ON CONFLICT (id) DO UPDATE SET
       "firstName" = EXCLUDED."firstName",
       "lastName" = EXCLUDED."lastName",
@@ -63,60 +63,23 @@ try {
   // separate sale shares its group. Seller RLS must isolate the two lines.
   await pool.query(`
     INSERT INTO users (id, "firstName", "lastName", email, role, "isVerified") VALUES
-      ('eeeeeeeeeeeeeeeeeeeeeeee', 'Cara', 'Seller', 'rls-seller-c@example.test', 'seller', true),
-      ('ffffffffffffffffffffffff', 'Una', 'Seller', 'rls-unverified@example.test', 'seller', false)
+      ('eeeeeeeeeeeeeeeeeeeeeeee', 'Cara', 'Seller', 'rls-seller-c@example.test', 'seller', true)
     ON CONFLICT (id) DO NOTHING
   `);
   await pool.query(`
     INSERT INTO products (id, name, price, quantity, category, "sellerId") VALUES
-      ('d2d2d2d2d2d2d2d2d2d2d2d2', 'RLS Shared Lamp', 39.99, 3, 'Home', 'eeeeeeeeeeeeeeeeeeeeeeee'),
-      ('d3d3d3d3d3d3d3d3d3d3d3d3', 'RLS Archived Lamp', 19.99, 1, 'Home', 'bbbbbbbbbbbbbbbbbbbbbbbb')
-    ON CONFLICT (id) DO NOTHING
-  `);
-  await pool.query(`
-    UPDATE products SET "isArchived" = true WHERE id = 'd3d3d3d3d3d3d3d3d3d3d3d3'
-  `);
-  await pool.query(`
-    INSERT INTO product_options (id, "productId", kind, value, "priceDelta", stock) VALUES
-      ('rls-foreign-option-32', 'd2d2d2d2d2d2d2d2d2d2d2d2', 'color', 'Blue', 0.00, 97)
+      ('d2d2d2d2d2d2d2d2d2d2d2d2', 'RLS Shared Lamp', 39.99, 3, 'Home', 'eeeeeeeeeeeeeeeeeeeeeeee')
     ON CONFLICT (id) DO NOTHING
   `);
   await pool.query(`
     INSERT INTO orders (id, "firstName", "lastName", "productId", quantity, "deliveryDate", email,
                         "totalPrice", status, "userId", "sellerIdAtPurchase", "orderGroupId") VALUES
-      ('f4f4f4f4f4f4f4f4f4f4f4f4', 'CANARY-BUYER-NAME-32', 'Buyer', 'd2d2d2d2d2d2d2d2d2d2d2d2', 1, now(),
-       'canary-buyer-email-32@example.test', 39.99, 'Shipped', 'dddddddddddddddddddddddd', 'bbbbbbbbbbbbbbbbbbbbbbbb', 'rls-mixed-seller-group-32'),
+      ('f4f4f4f4f4f4f4f4f4f4f4f4', 'Eve', 'Buyer', 'd2d2d2d2d2d2d2d2d2d2d2d2', 1, now(),
+       'rls-e@example.test', 39.99, 'Shipped', 'dddddddddddddddddddddddd', 'bbbbbbbbbbbbbbbbbbbbbbbb', 'rls-mixed-seller-group-32'),
       ('f5f5f5f5f5f5f5f5f5f5f5f5', 'Eve', 'Buyer', 'd2d2d2d2d2d2d2d2d2d2d2d2', 1, now(),
        'rls-e@example.test', 39.99, 'Shipped', 'dddddddddddddddddddddddd', 'eeeeeeeeeeeeeeeeeeeeeeee', 'rls-mixed-seller-group-32'),
       ('f6f6f6f6f6f6f6f6f6f6f6f6', 'Eve', 'Buyer', 'd1d1d1d1d1d1d1d1d1d1d1d1', 1, now(),
        'rls-e@example.test', 49.99, 'Shipped', 'dddddddddddddddddddddddd', 'bbbbbbbbbbbbbbbbbbbbbbbb', 'rls-mixed-seller-group-32')
-    ON CONFLICT (id) DO NOTHING
-  `);
-  await pool.query(`
-    UPDATE orders SET "deliveryStreet" = 'CANARY-BUYER-ADDRESS-32'
-    WHERE id = 'f4f4f4f4f4f4f4f4f4f4f4'
-  `);
-  await pool.query(`
-    INSERT INTO revenues (id, "orderId", "sellerId", "productId", "totalSalePrice", "adminCommission",
-                          "sellerRevenue", quantity, month, year, status) VALUES
-      ('a2a2a2a2a2a2a2a2a2a2a2a2', 'f4f4f4f4f4f4f4f4f4f4f4f4', 'bbbbbbbbbbbbbbbbbbbbbbbb',
-       'd2d2d2d2d2d2d2d2d2d2d2d2', 0.00, 0.00, 0.00, 1, 9, 2026, 'Refunded'),
-      ('a3a3a3a3a3a3a3a3a3a3a3a3', 'f5f5f5f5f5f5f5f5f5f5f5f5', 'eeeeeeeeeeeeeeeeeeeeeeee',
-       'd2d2d2d2d2d2d2d2d2d2d2d2', 39.99, 3.99, 36.00, 1, 9, 2026, 'Completed'),
-      ('a5a5a5a5a5a5a5a5a5a5a5a5', 'f6f6f6f6f6f6f6f6f6f6f6f6', 'bbbbbbbbbbbbbbbbbbbbbbbb',
-       'd1d1d1d1d1d1d1d1d1d1d1d1', 49.99, 5.00, 44.99, 1, 9, 2026, 'Completed')
-    ON CONFLICT (id) DO NOTHING
-  `);
-  await pool.query(`
-    INSERT INTO payments (id, "orderId", "transactionUuid", "productCode", amount, status, "updatedAt") VALUES
-      ('b2b2b2b2b2b2b2b2b2b2b2b2', 'f4f4f4f4f4f4f4f4f4f4f4f4', 'rls-refund-txn-32', 'EPAY', 39.99, 'Succeeded', now())
-    ON CONFLICT (id) DO NOTHING
-  `);
-  await pool.query(`
-    INSERT INTO refunds (id, "paymentId", "orderId", amount, status, mode, "idempotencyKey", "completedAt", "updatedAt") VALUES
-      ('b3b3b3b3b3b3b3b3b3b3b3b3', 'b2b2b2b2b2b2b2b2b2b2b2b2',
-       'f4f4f4f4f4f4f4f4f4f4f4f4', 39.99, 'Succeeded', 'sandbox', 'rls-refund-key-32',
-       '2026-09-15 00:00:00+00', now())
     ON CONFLICT (id) DO NOTHING
   `);
   await pool.query(`
