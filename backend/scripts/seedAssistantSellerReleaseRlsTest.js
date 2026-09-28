@@ -4,7 +4,8 @@ if (process.env.RUN_POSTGRES_INTEGRATION !== "true") throw new Error("PostgreSQL
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 1 });
 try {
   await pool.query(`
-    UPDATE users SET "isVerified" = true WHERE id IN ('bbbbbbbbbbbbbbbbbbbbbbbb', 'eeeeeeeeeeeeeeeeeeeeeeee');
+    UPDATE users SET role = 'seller', "isVerified" = true
+    WHERE id IN ('bbbbbbbbbbbbbbbbbbbbbbbb', 'eeeeeeeeeeeeeeeeeeeeeeee');
     INSERT INTO users (id, "firstName", "lastName", email, role, "isVerified") VALUES
       ('ffffffffffffffffffffffff', 'Una', 'Seller', 'rls-unverified@example.test', 'seller', false)
     ON CONFLICT (id) DO NOTHING;
