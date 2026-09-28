@@ -23,7 +23,7 @@ try {
        'd2d2d2d2d2d2d2d2d2d2d2d2', 0.00, 0.00, 0.00, 1, 9, 2026, 'Refunded'),
       ('a3a3a3a3a3a3a3a3a3a3a3a3', 'f5f5f5f5f5f5f5f5f5f5f5f5', 'eeeeeeeeeeeeeeeeeeeeeeee',
        'd2d2d2d2d2d2d2d2d2d2d2d2', 39.99, 3.99, 36.00, 1, 9, 2026, 'Completed'),
-      ('a5a5a5a5a5a5a5a5a5a5a5', 'f6f6f6f6f6f6f6f6f6f6f6f6', 'bbbbbbbbbbbbbbbbbbbbbbbb',
+      ('a5a5a5a5a5a5a5a5a5a5a5a5', 'f6f6f6f6f6f6f6f6f6f6f6f6', 'bbbbbbbbbbbbbbbbbbbbbbbb',
        'd1d1d1d1d1d1d1d1d1d1d1d1', 49.99, 5.00, 44.99, 1, 9, 2026, 'Completed')
     ON CONFLICT (id) DO NOTHING;
     INSERT INTO payments (id, "orderId", "transactionUuid", "productCode", amount, status, "updatedAt") VALUES
