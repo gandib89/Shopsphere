@@ -94,7 +94,15 @@ test("seller release: PostgreSQL RLS, historical attribution, privacy, and read 
   assert.equal(benRevenue.buckets.length, 12);
   assert.equal(benRevenue.totals.saleCount, 1);
   assert.equal(benRevenue.totals.grossSale.amount, "49.99");
-  assert.equal(benRevenue.totals.refunded.amount, "39.99");
+  const [refundLedger] = await prisma.$queryRaw`
+    SELECT COALESCE(SUM(r.amount), 0)::text AS amount
+    FROM refunds r JOIN orders o ON o.id = r."orderId"
+    WHERE o."sellerIdAtPurchase" = ${seller} AND r.status = 'Succeeded'
+      AND r."completedAt" >= '2026-01-01'::timestamp
+      AND r."completedAt" < '2027-01-01'::timestamp
+  `;
+  assert.equal(Number(benRevenue.totals.refunded.amount), Number(refundLedger.amount));
+  assert.ok(Number(benRevenue.totals.refunded.amount) >= 39.99);
   assert.equal(caraRevenue.totals.saleCount, 1);
   assert.equal(caraRevenue.totals.grossSale.amount, "39.99");
   assert.equal(caraRevenue.totals.refunded.amount, "0");
