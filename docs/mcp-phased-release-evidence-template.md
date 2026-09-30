@@ -1,5 +1,7 @@
 # MCP phase release evidence record
 
+For the [solo-owned synthetic demo](mcp-demo-release-scope.md), the same accountable owner may approve every applicable role. Reference one owner approval with its date, scope, and evidence rather than requesting separate organizational signoffs. Record explicitly accepted demo limitations separately from test results; general approval does not establish missing technical proof.
+
 Copy into a **private** release-evidence system for issue #31, #32, #33, #34, #35, or #36. Make a separate record for each #35/#36 proposal cohort. Leave the decision **NO-GO** until every applicable row has a linked artifact and approval. See the [runbook](mcp-phased-release-runbook.md) for exact observations. Do not commit a filled record with sensitive data.
 
 ## Release identity and dependencies

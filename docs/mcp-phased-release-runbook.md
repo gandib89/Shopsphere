@@ -1,5 +1,7 @@
 # MCP private, draft, and proposal release gates
 
+For this solo-owned synthetic demo, apply the [owner-approved demo scope](mcp-demo-release-scope.md) and the current issue body. One owner may cover all approval roles; separate organizational approvers are not required. Preserve technical gates and record explicit demo exceptions as exceptions, never as passed tests. The completed #32 decisions do not automatically waive later phases' requirements.
+
 Use this runbook for issues [#31](https://github.com/gandib89/Shopsphere/issues/31) through [#36](https://github.com/gandib89/Shopsphere/issues/36). Copy the [evidence template](mcp-phased-release-evidence-template.md) into the private release record **once per issue and once per distinct proposal cohort**. These instructions define evidence to collect; they do not assert that any phase has passed. The [public pilot gate](mcp-public-pilot-runbook.md) for #30 must pass before any private read cohort is enabled.
 
 ## Release order
