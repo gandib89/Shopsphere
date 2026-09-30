@@ -28,3 +28,9 @@ After a controlled gate, restore the baseline cohort, revoke temporary grants, r
 - Local private-file deletion was rejected with `blocked by policy`. The private record and cleanup manifest report the outstanding manual removal. No alternate deletion mechanism was attempted.
 
 These #32 exceptions do not automatically waive requirements for #33–#36. Unattended operation or any real-user release requires a fresh decision and the applicable technical evidence.
+
+## Admin read projection decision
+
+On 2026-09-30 the owner approved suppressing application free text and customer return reasons for the #33 demo. Application display fields are empty strings; rejection and return reasons are null. The MCP output contract enforces those values. Support-detail audits retain purpose presence and length only, including unsuccessful calls, so arbitrary purpose content cannot enter durable audit input. The first-party UI remains the place to inspect text. Recommendation helpers sharing these minimized projections render their existing `unknown` fallback; this does not enable recommendation flags or release #34.
+
+Promotion usage reads count rows in PostgreSQL instead of materializing redeemer identifiers. The composite `(promoCodeId, userId)` primary key makes this the same exact distinct-user count.

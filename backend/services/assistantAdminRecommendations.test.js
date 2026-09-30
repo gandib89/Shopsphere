@@ -160,7 +160,8 @@ test("seller review resolves the opaque reference by re-deriving it over the bou
   // Exactly one bounded read for a hit on the first page.
   assert.deepEqual(calls, ["user.findMany"]);
   assert.ok(output.recommendation.includes(REF));
-  assert.ok(output.recommendation.includes("Ada's Gadgets"));
+  assert.ok(!output.recommendation.includes("Ada's Gadgets"));
+  assert.ok(output.recommendation.includes("unknown"));
   assert.ok(output.recommendation.includes("Application status: pending"));
   assert.ok(output.recommendation.includes("Submit seller details for verification."));
   assert.deepEqual(output.citations, [{ sourceId: "faqs.json#12", sourceVersion: ASSISTANT_POLICY_VERSION }]);
@@ -281,7 +282,8 @@ test("return review resolves through the exact fixed return-queue membership rul
   assert.deepEqual(calls, ["order.findFirst"]);
   assert.ok(output.recommendation.includes("SP-2026-0007"));
   assert.ok(output.recommendation.includes("Return Requested"));
-  assert.ok(output.recommendation.includes("The device arrived with a cracked case."));
+  assert.ok(!output.recommendation.includes("The device arrived with a cracked case."));
+  assert.ok(output.recommendation.includes("unknown"));
   assert.ok(output.recommendation.includes("Return image attached: yes"));
   assert.ok(!output.recommendation.includes("uploads"), "the image path must never appear");
   assert.ok(output.recommendation.includes("You can return any product within 7 days"));  assert.deepEqual(output.citations, [{ sourceId: "faqs.json#1", sourceVersion: ASSISTANT_POLICY_VERSION }]);

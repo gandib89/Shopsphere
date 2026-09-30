@@ -708,12 +708,12 @@ const ListSellerApplicationsInputSchema = z
 const SellerApplicationSchema = z
   .object({
     sellerReference: z.string().regex(/^seller-[0-9a-f]{12}$/),
-    shopName: z.string().max(200),
-    shopDescription: z.string().max(2000),
+    shopName: z.literal(""),
+    shopDescription: z.literal(""),
     status: z.enum(["pending", "approved", "rejected"]),
     requestDate: z.iso.datetime().max(100).nullable(),
     decisionDate: z.iso.datetime().max(100).nullable(),
-    rejectionReason: z.string().min(1).max(500).nullable(),
+    rejectionReason: z.null(),
   })
   .strict();
 
@@ -1302,7 +1302,7 @@ const GetOrderExceptionDetailOutputSchema = z
       shippedAt: z.iso.datetime().max(100).nullable(),
       deliveredAt: z.iso.datetime().max(100).nullable(),
       cancelledAt: z.iso.datetime().max(100).nullable(),
-      returnReason: z.string().max(1000).nullable(),
+      returnReason: z.null(),
       refundReleasedAt: z.iso.datetime().max(100).nullable(),
     }).strict(),
   })
@@ -1314,7 +1314,7 @@ const AdminReturnQueueRowSchema = z
     orderNumber: z.string().min(1).max(100).nullable(),
     status: AdminReturnStatusSchema,
     returnRequestedAt: z.iso.datetime().max(100),
-    returnReason: z.string().max(1000).nullable(),
+    returnReason: z.null(),
     buyerReference: z.string().min(1).max(100).nullable(),
     sellerReference: z.string().min(1).max(100).nullable(),
     hasReturnImage: z.boolean(),

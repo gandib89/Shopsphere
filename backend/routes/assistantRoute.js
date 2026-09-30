@@ -1101,6 +1101,7 @@ privateOperation({
   scope: "support:read",
   rolloutFlag: "MCP_TOOL_GET_ORDER_EXCEPTION_DETAIL_ENABLED",
   inputSchema: z.object({ orderId, purpose: z.string().min(10).max(500) }).strict(),
+  auditInput: ({ orderId, purpose }) => ({ orderId, purposeProvided: Boolean(purpose), purposeLength: Math.min(String(purpose ?? "").length, 500) }),
   run: (input, ctx) => getOrderExceptionDetail(input, ctx),
   observe: (output, input) => orderExceptionDetailObserve(output, input),
 });

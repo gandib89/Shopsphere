@@ -266,7 +266,7 @@ test("admin support queues stay fixed and redacted through the RLS layer", { ski
   }));
   assert.deepEqual(returns.returns.map(({ orderId }) => orderId), [Q_RETURN_REQUESTED]);
   assert.equal(returns.returns[0].hasReturnImage, true);
-  assert.equal(returns.returns[0].returnReason, "Arrived with a cracked screen");
+  assert.equal(returns.returns[0].returnReason, null);
 
   // Detail: queued order resolves; non-queued, quarantined, and missing ids
   // are indistinguishable.

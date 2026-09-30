@@ -135,8 +135,6 @@ test("application list scopes rows to seller applications and selects only appli
     "createdAt",
     "id",
     "isVerified",
-    "shopDescription",
-    "shopName",
     "verificationApprovedDate",
     "verificationRejectionReason",
     "verificationRequestDate",
@@ -206,7 +204,7 @@ test("application output carries the opaque reference and derives status with de
   assert.equal(approved.rejectionReason, null);
   assert.equal(rejected.status, "rejected");
   assert.equal(rejected.decisionDate, null);
-  assert.equal(rejected.rejectionReason, "Shop documents did not match the registered business name");
+  assert.equal(rejected.rejectionReason, null);
   // No raw account ids and no private contact fields ever leave the service.
   const serialized = JSON.stringify(output);
   assert.ok(!serialized.includes(SELLER));
@@ -216,20 +214,22 @@ test("application output carries the opaque reference and derives status with de
   }
 });
 
-test("shop display fields and rejection reasons are sliced to the published bounds", async () => {
+test("application free text is suppressed even when it contains secrets or PII", async () => {
   const client = {
     user: {
       findMany: async () => [applicationRow({
-        shopName: "N".repeat(300),
-        shopDescription: "D".repeat(3000),
-        verificationRejectionReason: "R".repeat(1000),
+        shopName: "private@example.test",
+        shopDescription: "CANARY-PRIVATE-SECRET",
+        verificationRejectionReason: "Bearer CANARY-PRIVATE-SECRET",
       })],
     },
   };
   const output = await listSellerApplications({ status: "rejected" }, { client, principal: principal(), cursorSecret: SECRET });
-  assert.equal(output.applications[0].shopName.length, 200);
-  assert.equal(output.applications[0].shopDescription.length, 2000);
-  assert.equal(output.applications[0].rejectionReason.length, 500);
+  assert.equal(output.applications[0].shopName, "");
+  assert.equal(output.applications[0].shopDescription, "");
+  assert.equal(output.applications[0].rejectionReason, null);
+  assert.ok(!JSON.stringify(output).includes("CANARY-PRIVATE-SECRET"));
+  assert.ok(!JSON.stringify(output).includes("private@example.test"));
 });
 
 test("application pages are bounded and the cursor is minted only when a page overflows", async () => {
