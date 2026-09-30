@@ -52,9 +52,9 @@ const fakeClient = ({ promos = [], promo = undefined, usageGroups = [] } = {}) =
       },
     },
     promoCodeUsage: {
-      groupBy: async (args) => {
-        calls.push({ model: "promoCodeUsage", method: "groupBy", args });
-        return usageGroups;
+      count: async (args) => {
+        calls.push({ model: "promoCodeUsage", method: "count", args });
+        return usageGroups.length;
       },
     },
   };
@@ -164,9 +164,9 @@ test("usage summary is aggregate-only and never reads usage rows back", async ()
   });
   const output = await getPromotionUsageSummary({ promoCodeId: PROMO_ID }, { client, principal: adminPrincipal() });
   const groupBy = calls.find((call) => call.model === "promoCodeUsage");
-  assert.ok(groupBy, "usage count must go through groupBy");
-  assert.equal(groupBy.method, "groupBy");
-  assert.deepEqual(groupBy.args.by, ["userId"]);
+  assert.ok(groupBy, "usage count must be a scalar database count");
+  assert.equal(groupBy.method, "count");
+  assert.equal(groupBy.args.by, undefined);
   assert.deepEqual(groupBy.args.where, { promoCodeId: PROMO_ID });
   const findFirst = calls.find((call) => call.method === "findFirst");
   assert.deepEqual(
@@ -182,7 +182,7 @@ test("usage summary is aggregate-only and never reads usage rows back", async ()
   assert.equal(output.validFrom, "2026-09-01T00:00:00.000Z");
   assert.equal(output.validUntil, "2026-12-31T00:00:00.000Z");
   // Aggregate-only: no findMany/findFirst on the usages table, ever.
-  assert.ok(!calls.some((call) => call.model === "promoCodeUsage" && call.method !== "groupBy"));
+  assert.ok(!calls.some((call) => call.model === "promoCodeUsage" && call.method !== "count"));
   assertReadOnly(calls);
   // No per-user redemption data leaves the service.
   const serialized = JSON.stringify(output);

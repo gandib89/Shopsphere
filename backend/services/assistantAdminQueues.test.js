@@ -263,10 +263,16 @@ test("return rows expose image presence, never the image path", async () => {
   assert.ok(!serialized.includes(".png"));
 });
 
-test("return reasons are bounded user-authored text", async () => {
-  const { client } = captureClient([queueRow({ returnReason: "x".repeat(5000) })]);
+test("return reasons cannot disclose embedded customer PII or secrets", async () => {
+  const marker = "private@example.test Bearer CANARY-RETURN-SECRET";
+  const { capture, client } = captureClient([queueRow({ returnReason: marker })]);
   const output = await listReturnQueue({}, ctx(client));
-  assert.equal(output.returns[0].returnReason.length, 1000);
+  assert.equal(output.returns[0].returnReason, null);
+  assert.equal(capture.select.returnReason, undefined);
+  assert.ok(!JSON.stringify(output).includes(marker));
+  const detail = await getOrderExceptionDetail({ orderId: "order-1", purpose: "Support case review" }, ctx(captureClient([detailRow({ returnReason: marker })]).client));
+  assert.equal(detail.order.returnReason, null);
+  assert.ok(!JSON.stringify(detail).includes(marker));
   const empty = await listReturnQueue({}, ctx(captureClient([queueRow({ returnReason: null })]).client));
   assert.equal(empty.returns[0].returnReason, null);
 });
@@ -296,7 +302,7 @@ test("detail returns the minimized row with money, quantity, and reason", async 
   assert.equal(output.order.quantity, 2);
   assert.deepEqual(output.order.totalPrice, { amount: "100", currency: "NPR" });
   assert.deepEqual(output.order.adminCommission, { amount: "5", currency: "NPR" });
-  assert.equal(output.order.returnReason, "Arrived with a cracked screen");
+  assert.equal(output.order.returnReason, null);
   assert.deepEqual(
     Object.keys(output.order),
     [
@@ -346,15 +352,15 @@ test("detail purpose is validated as bounded admin text", async () => {
   await assert.doesNotReject(run("x".repeat(500)));
 });
 
-test("purpose surfaces in the audit observe metadata, bounded", () => {
+test("purpose content is excluded from audit observe metadata", () => {
   const observed = orderExceptionDetailObserve(
     { order: { orderId: "order-1" } },
     { purpose: "p".repeat(600) },
   );
   assert.equal(observed.rowCount, 1);
   assert.deepEqual(observed.resourceIds, ["order-1"]);
-  assert.equal(observed.auditMetadata.purpose.length, 500);
-  assert.equal(observed.auditMetadata.purpose, "p".repeat(500));
+  assert.deepEqual(observed.auditMetadata, { purposeProvided: true, purposeLength: 500 });
+  assert.ok(!JSON.stringify(observed).includes("p".repeat(20)));
 });
 
 test("cursors are bound to the admin principal, operation, and query", async () => {

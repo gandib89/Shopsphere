@@ -19,9 +19,6 @@ const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
 const MIN_YEAR = 2000;
 const MAX_YEAR = 2100;
-const MAX_SHOP_NAME = 200;
-const MAX_SHOP_DESCRIPTION = 2000;
-const MAX_REJECTION_REASON = 500;
 
 const { decode: decodeApplicationCursor, encode: encodeApplicationCursor } = createCursorCodec({
   operation: "sellers.listApplications",
@@ -159,8 +156,6 @@ const sellerReference = (userId) => (userId
 // reset tokens, and home-address columns are absent by construction.
 const applicationSelect = {
   id: true,
-  shopName: true,
-  shopDescription: true,
   isVerified: true,
   verificationRequestDate: true,
   verificationApprovedDate: true,
@@ -172,14 +167,13 @@ const minimizeApplication = (row) => {
   const status = applicationStatus(row);
   return {
     sellerReference: sellerReference(row.id),
-    shopName: row.shopName?.slice?.(0, MAX_SHOP_NAME) ?? "",
-    shopDescription: row.shopDescription?.slice?.(0, MAX_SHOP_DESCRIPTION) ?? "",
+    // Owner-approved demo: user-authored text stays in the first-party UI.
+    shopName: "",
+    shopDescription: "",
     status,
     requestDate: row.verificationRequestDate?.toISOString?.() ?? null,
     decisionDate: status === "approved" ? row.verificationApprovedDate?.toISOString?.() ?? null : null,
-    rejectionReason: status === "rejected"
-      ? row.verificationRejectionReason?.slice?.(0, MAX_REJECTION_REASON) ?? null
-      : null,
+    rejectionReason: null,
   };
 };
 

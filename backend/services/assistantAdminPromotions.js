@@ -160,18 +160,17 @@ export const getPromotionUsageSummary = async (
     },
   });
   if (!promo) throw notFound();
-  // Aggregate-only: one group per distinct redeemer. The per-user rows are
-  // counted, never returned — findMany/findFirst on promo_code_usages is
-  // deliberately absent, and the column grant backs only these two columns.
-  const redeemerGroups = await client.promoCodeUsage.groupBy({
-    by: ["userId"],
+  // The composite primary key (promoCodeId, userId) makes one row one
+  // distinct redeemer. Count in PostgreSQL: never materialize user identifiers
+  // or an unbounded array in the application. RLS still binds this operation.
+  const distinctUsers = await client.promoCodeUsage.count({
     where: { promoCodeId: promo.id },
   });
   return {
     promoCodeId: promo.id,
     code: promo.code?.slice(0, 50),
     totalRedemptions: promo.usedCount,
-    distinctUsers: redeemerGroups.length,
+    distinctUsers,
     active: promo.isActive,
     validFrom: promo.validFrom.toISOString(),
     validUntil: promo.validUntil?.toISOString?.() ?? null,

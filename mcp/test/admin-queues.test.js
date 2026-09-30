@@ -56,7 +56,7 @@ const detailOrder = {
   shippedAt: null,
   deliveredAt: null,
   cancelledAt: null,
-  returnReason: "Arrived with a cracked screen",
+  returnReason: null,
   refundReleasedAt: null,
 };
 
@@ -65,7 +65,7 @@ const returnRow = {
   orderNumber: "SP-2026-0001",
   status: "Return Approved",
   returnRequestedAt: "2026-09-12T10:00:00.000Z",
-  returnReason: "Arrived with a cracked screen",
+  returnReason: null,
   buyerReference: "buyer-0123456789ab",
   sellerReference: "seller-0123456789ab",
   hasReturnImage: true,
@@ -151,6 +151,7 @@ test("exception queue output pins the exact stored status strings", () => {
 test("detail output carries the minimized order and rejects PII-shaped extras", () => {
   const output = byName.get_order_exception_detail.outputSchema;
   assert.ok(output.safeParse({ order: detailOrder }).success);
+  assert.ok(!output.safeParse({ order: { ...detailOrder, returnReason: "CANARY-PRIVATE@example.test" } }).success);
   assert.ok(!output.safeParse({ order: { ...detailOrder, email: "buyer@example.test" } }).success);
   assert.ok(!output.safeParse({ order: { ...detailOrder, deliveryStreet: "1 Main St" } }).success);
   assert.ok(!output.safeParse({ order: { ...detailOrder, returnImage: "uploads/returns/x.png" } }).success);

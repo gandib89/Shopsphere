@@ -87,8 +87,8 @@ test("seller application output is a bounded minimized projection with opaque re
   const tool = toolRegistry.find((candidate) => candidate.name === "list_seller_applications");
   const application = {
     sellerReference: "seller-0123456789ab",
-    shopName: "Ben's Shop",
-    shopDescription: "Handmade goods",
+    shopName: "",
+    shopDescription: "",
     status: "pending",
     requestDate: "2026-08-01T08:00:00.000Z",
     decisionDate: null,
@@ -96,6 +96,9 @@ test("seller application output is a bounded minimized projection with opaque re
   };
   const output = { applications: Array.from({ length: 50 }, () => application), nextCursor: null };
   assert.ok(tool.outputSchema.safeParse(output).success);
+  for (const field of ["shopName", "shopDescription", "rejectionReason"]) {
+    assert.ok(!tool.outputSchema.safeParse({ applications: [{ ...application, [field]: "CANARY-PRIVATE@example.test" }], nextCursor: null }).success);
+  }
   assert.ok(!tool.outputSchema.safeParse({ ...output, applications: Array.from({ length: 51 }, () => application) }).success);
   // Strictness: no identity, contact, evidence, or raw-account fields.
   assert.ok(!tool.outputSchema.safeParse({

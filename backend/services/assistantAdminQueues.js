@@ -19,7 +19,6 @@ const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
 const MAX_INTERVAL_MS = 90 * 24 * 60 * 60 * 1000;
 const MAX_ORDER_NUMBER_CHARS = 100;
-const MAX_RETURN_REASON_CHARS = 1000;
 const MAX_PURPOSE_CHARS = 500;
 
 // Exact stored server status strings (storefront writes these with spaces).
@@ -117,14 +116,12 @@ const detailSelect = {
   quantity: true,
   totalPrice: true,
   adminCommission: true,
-  returnReason: true,
 };
 
 // returnImage is read to compute the hasReturnImage boolean only; the stored
 // upload path is dropped inside the mapper and never serialized.
 const returnSelect = {
   ...queueSelect,
-  returnReason: true,
   returnImage: true,
 };
 
@@ -170,7 +167,7 @@ const minimizeDetail = (row) => ({
   shippedAt: iso(row.shippedAt),
   deliveredAt: iso(row.deliveredAt),
   cancelledAt: iso(row.cancelledAt),
-  returnReason: boundedText(row.returnReason, MAX_RETURN_REASON_CHARS),
+  returnReason: null,
   refundReleasedAt: iso(row.refundReleasedAt),
 });
 
@@ -181,7 +178,7 @@ const minimizeReturnRow = (row) => {
     orderNumber: boundedText(row.orderNumber, MAX_ORDER_NUMBER_CHARS),
     status: row.status,
     returnRequestedAt: iso(row.returnRequestedAt),
-    returnReason: boundedText(row.returnReason, MAX_RETURN_REASON_CHARS),
+    returnReason: null,
     buyerReference: buyerReference(row.userId),
     sellerReference: sellerReference(row.sellerIdAtPurchase),
     hasReturnImage: Boolean(row.returnImage),
@@ -290,7 +287,6 @@ export const findReturnQueueOrder = async ({ orderId } = {}, { client, now = new
       orderNumber: true,
       status: true,
       returnRequestedAt: true,
-      returnReason: true,
       returnImage: true,
     },
   });
@@ -300,18 +296,17 @@ export const findReturnQueueOrder = async ({ orderId } = {}, { client, now = new
     orderNumber: boundedText(row.orderNumber, MAX_ORDER_NUMBER_CHARS),
     status: row.status,
     returnRequestedAt: iso(row.returnRequestedAt),
-    returnReason: boundedText(row.returnReason, MAX_RETURN_REASON_CHARS),
+    returnReason: null,
     hasReturnImage: Boolean(row.returnImage),
   };
 };
 
-// The purpose is admin-supplied bounded text and the explicit "why" of this
-// access. It is threaded through the route's observe() seam into the durable
-// audit event's redacted input metadata (never into the tool response).
+// The owner-approved demo retains purpose presence and length only. Arbitrary
+// purpose content can carry customer PII or credentials and must not be audited.
 export const orderExceptionDetailObserve = (output, input) => ({
   resourceIds: [output.order.orderId],
   rowCount: 1,
-  auditMetadata: { purpose: String(input?.purpose ?? "").slice(0, MAX_PURPOSE_CHARS) },
+  auditMetadata: { purposeProvided: Boolean(input?.purpose), purposeLength: Math.min(String(input?.purpose ?? "").length, MAX_PURPOSE_CHARS) },
 });
 
 export const getOrderExceptionDetail = async (
