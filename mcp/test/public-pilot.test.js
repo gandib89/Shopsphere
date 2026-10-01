@@ -151,7 +151,7 @@ test("bounded public initialization remains stable under a concurrent load sampl
   assert.ok(bodies.every((body) => Buffer.byteLength(body, "utf8") <= 64 * 1024));
 });
 
-test("a public backend outage degrades to a safe tool error and leaves transport health live", async (t) => {
+test("a backend and audit outage fails closed and leaves transport health live", async (t) => {
   const events = [];
   const unavailableBackend = {
     async call() {
@@ -171,10 +171,11 @@ test("a public backend outage degrades to a safe tool error and leaves transport
   const client = await connect(url, "pilot-degraded-test");
   t.after(() => client.close());
 
-  const result = await client.callTool({ name: "search_products", arguments: { q: "macbook" } });
-  assert.equal(result.isError, true);
-  assert.doesNotMatch(JSON.stringify(result), /postgresql|private|secret|database/i);
-  assert.ok(Buffer.byteLength(JSON.stringify(result), "utf8") < 4096);
+  await assert.rejects(client.callTool({ name: "search_products", arguments: { q: "macbook" } }), (error) => {
+    assert.equal(error.data?.status, 503);
+    assert.equal(error.data?.text, JSON.stringify({ error: "Audit service unavailable" }));
+    return true;
+  });
   assert.ok(events.some(({ tool, outcome }) => tool === "search_products" && outcome === "error"));
 
   const health = await fetch(new URL("/health", url));

@@ -12,6 +12,7 @@ import {
   POLICY_VERSION,
   PROTOCOL_VERSION,
   SUPPORTED_PROTOCOL_VERSIONS,
+  toolRegistry,
 } from "./toolRegistry.js";
 
 const jsonResponse = (status, body) =>
@@ -402,11 +403,47 @@ export const createMcpHttpServer = ({
           method: request.method,
           headers: requestHeaders,
         });
+        const protocolStartedAt = Date.now();
         const mcpResponse = versionError ?? (await requestScope.run(
           { requestId, auth: authContext, subjectToken: suppliedToken },
           () => handler.fetch(mcpRequest, { parsedBody: body }),
         ));
         const response = await enforceResponseLimit(mcpResponse, maxResponseBytes, body);
+        // The SDK handles discovery and rejects unregistered calls before a
+        // tool callback runs. Persist their actual bounded protocol outcome,
+        // rather than treating identity resolution as evidence of that result.
+        if (messages.some((message) => ["tools/list", "tools/call"].includes(message?.method))) {
+          const serialized = await response.clone().text();
+          const payloads = serialized.startsWith("data:") || serialized.includes("\ndata:")
+            ? serialized.split("\n").filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trim())
+            : [serialized];
+          let results;
+          try { results = payloads.filter(Boolean).flatMap((value) => JSON.parse(value)); }
+          catch { results = []; }
+          try {
+            for (const message of messages.filter((entry) => ["tools/list", "tools/call"].includes(entry?.method))) {
+              const result = results.find((entry) => entry?.id === message.id);
+              const failed = response.status >= 400 || !result || Boolean(result.error || result.result?.isError);
+              const tool = message.method === "tools/call"
+                ? toolRegistry.find((entry) => entry.name === message.params?.name)?.name ?? null : null;
+              await persistAudit({
+                requestId,
+                operation: message.method === "tools/list" ? "transport.discovery" : "transport.dispatch",
+                tool,
+                authorizationOutcome: failed ? "denied" : "allowed",
+                outcome: failed ? "denied" : "success",
+                failureReason: failed ? (result?.error ? "protocol_error" : "tool_error") : null,
+                returnedFields: Object.keys(result?.result ?? {}).sort().slice(0, 50),
+                rowCount: Array.isArray(result?.result?.tools) ? result.result.tools.length : null,
+                responseDigest: crypto.createHash("sha256").update(serialized).digest("base64url"),
+                responseBytes: Buffer.byteLength(serialized),
+                latencyMs: Date.now() - protocolStartedAt,
+              }, { requestId, auth: authContext, subjectToken: suppliedToken });
+            }
+          } catch {
+            return withCors(withRequestId(jsonResponse(503, { error: "Audit service unavailable" }), requestId), origin);
+          }
+        }
         const headers = new Headers(response.headers);
         if (sessionStore && isInitialize && response.status >= 200 && response.status < 300) {
           headers.set("mcp-session-id", await sessionStore.create(authContext));
