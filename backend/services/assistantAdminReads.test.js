@@ -266,6 +266,10 @@ test("application cursors are bound to the admin principal and fail closed witho
   const client = { user: { findMany: async () => rows } };
   const first = await listSellerApplications({ limit: 1 }, { client, principal: principal(), cursorSecret: SECRET });
   assert.ok(first.nextCursor);
+  assert.match(first.nextCursor, /^c1\./);
+  const publicPosition = Buffer.from(first.nextCursor.split(".")[1], "base64url").toString("utf8");
+  assert.ok(!publicPosition.includes(rows[0].id));
+  assert.throws(() => JSON.parse(publicPosition));
   await assert.rejects(
     listSellerApplications({ cursor: first.nextCursor, limit: 1 }, { client, principal: principal("admin", "ffffffffffffffffffffffff"), cursorSecret: SECRET }),
     { statusCode: 404 },
@@ -278,6 +282,23 @@ test("application cursors are bound to the admin principal and fail closed witho
     listSellerApplications({ limit: 1 }, { client, principal: principal(), cursorSecret: "too-short" }),
     { statusCode: 503 },
   );
+});
+
+test("confidential application cursor still applies the exact pagination position", async () => {
+  const rows = [
+    applicationRow({ id: "111111111111111111111111", createdAt: new Date("2026-08-02T10:00:00Z") }),
+    applicationRow({ id: "222222222222222222222222", createdAt: new Date("2026-08-01T10:00:00Z") }),
+  ];
+  const seen = [];
+  const client = { user: { findMany: async (args) => { seen.push(args); return seen.length === 1 ? rows : [rows[1]]; } } };
+  const first = await listSellerApplications({ limit: 1 }, { client, principal: principal(), cursorSecret: SECRET });
+  const second = await listSellerApplications({ limit: 1, cursor: first.nextCursor }, { client, principal: principal(), cursorSecret: SECRET });
+  assert.deepEqual(seen[1].where.OR, [
+    { createdAt: { lt: rows[0].createdAt } },
+    { createdAt: rows[0].createdAt, id: { lt: rows[0].id } },
+  ]);
+  assert.equal(second.applications[0].sellerReference, sellerReferenceFor(rows[1].id));
+  assert.equal(second.nextCursor, null);
 });
 
 test("application list demands an admin principal", async () => {

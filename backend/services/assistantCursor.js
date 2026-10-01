@@ -13,7 +13,7 @@ const SORT = "createdAt-desc,id-desc";
 
 const notFound = () => Object.assign(new Error("Resource not found"), { statusCode: 404, code: "not_found" });
 
-export const createCursorCodec = ({ operation }) => {
+export const createCursorCodec = ({ operation, confidential = false }) => {
   const fingerprint = (principal, query) => crypto.createHash("sha256").update(JSON.stringify({
     subject: principal.subject,
     role: principal.role,
@@ -28,13 +28,28 @@ export const createCursorCodec = ({ operation }) => {
   const decode = (cursor, principal, query, secret) => {
     if (!cursor) return null;
     if (!secret || secret.length < 32) throw Object.assign(new Error("Cursor service unavailable"), { statusCode: 503 });
-    const [encoded, signature, extra] = cursor.split(".");
-    if (!encoded || !signature || extra) throw notFound();
-    const expected = crypto.createHmac("sha256", secret).update(encoded).digest();
-    const actual = Buffer.from(signature, "base64url");
-    if (actual.length !== expected.length || !crypto.timingSafeEqual(actual, expected)) throw notFound();
     try {
-      const payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+      let plaintext;
+      if (confidential) {
+        const parts = cursor.split(".");
+        const [format, encoded] = parts;
+        if (parts.length !== 2 || format !== "c1" || !encoded) throw notFound();
+        const packed = Buffer.from(encoded, "base64url");
+        if (packed.length <= 28 || packed.toString("base64url") !== encoded) throw notFound();
+        const key = crypto.createHash("sha256").update(secret).digest();
+        const decipher = crypto.createDecipheriv("aes-256-gcm", key, packed.subarray(0, 12));
+        decipher.setAAD(Buffer.from(operation));
+        decipher.setAuthTag(packed.subarray(12, 28));
+        plaintext = Buffer.concat([decipher.update(packed.subarray(28)), decipher.final()]).toString("utf8");
+      } else {
+        const [encoded, signature, extra] = cursor.split(".");
+        if (!encoded || !signature || extra) throw notFound();
+        const expected = crypto.createHmac("sha256", secret).update(encoded).digest();
+        const actual = Buffer.from(signature, "base64url");
+        if (actual.length !== expected.length || !crypto.timingSafeEqual(actual, expected)) throw notFound();
+        plaintext = Buffer.from(encoded, "base64url").toString("utf8");
+      }
+      const payload = JSON.parse(plaintext);
       if (
         payload.version !== CURSOR_VERSION
         || payload.principal !== fingerprint(principal, query)
@@ -50,13 +65,24 @@ export const createCursorCodec = ({ operation }) => {
 
   const encode = (row, principal, query, secret, state = null) => {
     if (!secret || secret.length < 32) throw Object.assign(new Error("Cursor service unavailable"), { statusCode: 503 });
-    const encoded = Buffer.from(JSON.stringify({
+    const plaintext = JSON.stringify({
       version: CURSOR_VERSION,
       principal: fingerprint(principal, query),
       createdAt: row.createdAt.toISOString(),
       id: row.id,
       state,
-    })).toString("base64url");
+    });
+    if (confidential) {
+      // Account identifiers are not approved application fields. Signing alone
+      // leaves cursor positions readable; GCM authenticates and conceals them.
+      const key = crypto.createHash("sha256").update(secret).digest();
+      const nonce = crypto.randomBytes(12);
+      const cipher = crypto.createCipheriv("aes-256-gcm", key, nonce);
+      cipher.setAAD(Buffer.from(operation));
+      const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+      return `c1.${Buffer.concat([nonce, cipher.getAuthTag(), encrypted]).toString("base64url")}`;
+    }
+    const encoded = Buffer.from(plaintext).toString("base64url");
     return `${encoded}.${crypto.createHmac("sha256", secret).update(encoded).digest("base64url")}`;
   };
 

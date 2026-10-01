@@ -22,6 +22,7 @@ const MAX_YEAR = 2100;
 
 const { decode: decodeApplicationCursor, encode: encodeApplicationCursor } = createCursorCodec({
   operation: "sellers.listApplications",
+  confidential: true,
 });
 
 const badInput = (message) => Object.assign(new Error(message), { statusCode: 400, code: "invalid_input" });
