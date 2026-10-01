@@ -121,23 +121,33 @@ export const createBackendClient = ({ origin, token, exchangeToken, cloudRunIdTo
         throw Object.assign(new Error("Delegated authorization is unavailable"), { statusCode: 401 });
       }
       const delegatedToken = await exchangeToken(context.subjectToken, context.auth.scopes);
-      const response = await fetchImpl(new URL("/api/v1/assistant/authorization-context", base), {
-        method: "POST",
-        redirect: "error",
-        signal: AbortSignal.timeout(timeoutMs),
-        headers: {
-          authorization: `Bearer ${delegatedToken}`,
-          "x-assistant-api-token": token,
-          "content-type": "application/json",
-          ...await cloudRunHeaders(),
-          ...(context.requestId ? { "x-request-id": context.requestId } : {}),
-        },
-        body: "{}",
-      });
+      let response;
+      try {
+        response = await fetchImpl(new URL("/api/v1/assistant/authorization-context", base), {
+          method: "POST",
+          redirect: "error",
+          signal: AbortSignal.timeout(timeoutMs),
+          headers: {
+            authorization: `Bearer ${delegatedToken}`,
+            "x-assistant-api-token": token,
+            "content-type": "application/json",
+            ...await cloudRunHeaders(),
+            ...(context.requestId ? { "x-request-id": context.requestId } : {}),
+          },
+          body: "{}",
+        });
+      } catch {
+        throw Object.assign(new Error("Delegated authorization dependency unavailable"), { statusCode: 503 });
+      }
       if (!response.ok) {
         throw Object.assign(new Error("Delegated authorization failed"), { statusCode: response.status });
       }
-      const live = await response.json();
+      let live;
+      try {
+        live = await response.json();
+      } catch {
+        throw Object.assign(new Error("Delegated authorization dependency unavailable"), { statusCode: 503 });
+      }
       return { ...context, auth: { ...context.auth, ...live } };
     },
     async call(name, input, context = {}) {
