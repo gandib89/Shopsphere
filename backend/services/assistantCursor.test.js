@@ -44,3 +44,40 @@ test("shared cursor codec fails closed without its signing secret", () => {
     { statusCode: 503 },
   );
 });
+
+const applicationCodec = createCursorCodec({ operation: "sellers.listApplications", confidential: true });
+const applicationPrincipal = { subject: "admin-account", role: "admin", clientId: "client-1", grantId: "grant-1" };
+const applicationRow = { id: "private-seller-account-id", createdAt: row.createdAt };
+
+test("confidential application cursors conceal account positions and use fresh nonces", () => {
+  const first = applicationCodec.encode(applicationRow, applicationPrincipal, query, SECRET);
+  const second = applicationCodec.encode(applicationRow, applicationPrincipal, query, SECRET);
+  assert.notEqual(first, second);
+  assert.equal(applicationCodec.decode(first, applicationPrincipal, query, SECRET).id, applicationRow.id);
+  const publicBytes = Buffer.from(first.split(".")[1], "base64url");
+  assert.equal(publicBytes.includes(Buffer.from(applicationRow.id)), false);
+  assert.throws(() => JSON.parse(publicBytes.toString("utf8")));
+});
+
+test("confidential application cursors reject tampering, old plaintext and every binding mismatch", () => {
+  const cursor = applicationCodec.encode(applicationRow, applicationPrincipal, query, SECRET);
+  for (const mismatch of [
+    { ...applicationPrincipal, subject: "another-admin" },
+    { ...applicationPrincipal, role: "user" },
+    { ...applicationPrincipal, clientId: "another-client" },
+    { ...applicationPrincipal, grantId: "another-grant" },
+  ]) assert.throws(() => applicationCodec.decode(cursor, mismatch, query, SECRET), { statusCode: 404 });
+  assert.throws(() => applicationCodec.decode(cursor, applicationPrincipal, { ...query, limit: 1 }, SECRET), { statusCode: 404 });
+  const otherOperation = createCursorCodec({ operation: "other.operation", confidential: true });
+  assert.throws(() => otherOperation.decode(cursor, applicationPrincipal, query, SECRET), { statusCode: 404 });
+  assert.throws(() => applicationCodec.decode(cursor, applicationPrincipal, query, `${SECRET}rotated`), { statusCode: 404 });
+  const packed = Buffer.from(cursor.split(".")[1], "base64url");
+  packed[packed.length - 1] ^= 1;
+  for (const malformed of [`c1.${packed.toString("base64url")}`, `${cursor}=`, `${cursor}.`, `${cursor}..`, "c1.AAA", "c1."]) {
+    assert.throws(() => applicationCodec.decode(malformed, applicationPrincipal, query, SECRET), { statusCode: 404 });
+  }
+  const oldCodec = createCursorCodec({ operation: "sellers.listApplications" });
+  const old = oldCodec.encode(applicationRow, applicationPrincipal, query, SECRET);
+  assert.throws(() => applicationCodec.decode(old, applicationPrincipal, query, SECRET), { statusCode: 404 });
+  assert.throws(() => applicationCodec.decode(cursor, applicationPrincipal, query, "short"), { statusCode: 503 });
+});
