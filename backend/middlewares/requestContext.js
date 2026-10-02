@@ -14,12 +14,17 @@ export const requestContext = (req, res, next) => {
   req.assistantSignal = abortController.signal;
   res.setHeader("X-Request-Id", requestId);
 
+  // Assistant callers may put private text in the query or an unknown path.
+  // Classify before mounted routers change req.path; never log those strings.
+  const assistantPrefix = "/api/v1/assistant";
+  const requestPath = req.path.toLowerCase();
+  const isAssistantRequest = requestPath === assistantPrefix || requestPath.startsWith(`${assistantPrefix}/`);
   const startedAt = Date.now();
   res.on("finish", () => {
     logger.info("request", {
       requestId,
       method: req.method,
-      path: req.originalUrl,
+      path: isAssistantRequest ? assistantPrefix : req.originalUrl,
       statusCode: res.statusCode,
       durationMs: Date.now() - startedAt,
       userId: req.user?.id,
