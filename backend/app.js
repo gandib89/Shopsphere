@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { errorMiddleware } from "./middlewares/error.js";
 import { requestContext } from "./middlewares/requestContext.js";
+import { assistantParserErrorHandler } from "./middlewares/assistantParserError.js";
 import healthRouter from "./routes/healthRoute.js";
 import authRouter from "./routes/authRoute.js";
 import productRouter from "./routes/productRoute.js";
@@ -68,11 +69,12 @@ app.use((req, res, next) => {
     next();
 });
 
+app.use(requestContext);
 app.use('/api/v1/assistant', express.json({ limit: '32kb' }), express.urlencoded({ extended: true, limit: '32kb' }));
+app.use('/api/v1/assistant', assistantParserErrorHandler);
 app.use(express.json());
 app.use(express.urlencoded({extended: true }));
 app.use(cookieParser());
-app.use(requestContext);
 app.use(healthRouter);
 app.use(mcpOAuthRouter);
 app.use('/api/v1/assistant', assistantRouter);

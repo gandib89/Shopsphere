@@ -283,6 +283,7 @@ export const createMcpHttpServer = ({
           operation,
           authorizationOutcome,
           outcome,
+          input: {},
           returnedFields: [],
           resourceIds: [],
           responseDigest: null,
@@ -384,7 +385,18 @@ export const createMcpHttpServer = ({
         let body;
         if (request.method === "POST") {
           const parsed = await parseBody(request, maxRequestBytes);
-          if (parsed.error) return withCors(withRequestId(parsed.error, requestId), origin);
+          if (parsed.error) {
+            try {
+              await auditIngress({
+                operation: "transport.request",
+                outcome: "request_rejected",
+                failureReason: parsed.error.status === 413 ? "request_too_large" : "invalid_json",
+              });
+            } catch {
+              return withCors(withRequestId(jsonResponse(503, { error: "Audit service unavailable" }), requestId), origin);
+            }
+            return withCors(withRequestId(parsed.error, requestId), origin);
+          }
           body = parsed.body;
         }
 
