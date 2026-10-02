@@ -3,7 +3,7 @@
 //
 // Guarantees (mirroring the ticket's acceptance criteria):
 // - Copy is composed ONLY from caller-supplied facts and one seller-owned
-//   product's public-safe fields (name, category, description, option
+//   product's public-safe fields (name, category, bounded option
 //   kinds/values). No stock counts, competitor data, or archived-state
 //   details are read, and the templates invent no condition, warranty, or
 //   policy claims — the description always ends with a fixed pointer to the
@@ -63,17 +63,16 @@ const productSourceSelect = {
   id: true,
   name: true,
   category: true,
-  description: true,
-  options: { select: { kind: true, value: true } },
+  options: { select: { kind: true, value: true }, take: HIGHLIGHTS_MAX, orderBy: { id: "asc" } },
 };
 
-const loadOwnedProduct = async (client, principal, sourceProductId) => {
+const loadOwnedProduct = async (client, principal, sourceProductId, { sourceOnly = false } = {}) => {
   if (!sourceProductId || typeof sourceProductId !== "string" || sourceProductId.length > ID_MAX) {
     throw notFound();
   }
   const row = await client.product.findFirst({
     where: { id: sourceProductId, sellerId: principal.subject },
-    select: productSourceSelect,
+    select: sourceOnly ? { id: true } : productSourceSelect,
   });
   if (!row) throw notFound();
   return row;
@@ -83,7 +82,7 @@ const loadOwnedProduct = async (client, principal, sourceProductId) => {
 // names the owned product; the only generated sentence is the fixed policy
 // pointer.
 const composeCopy = ({ product, facts }) => {
-  const productName = boundedText(facts?.productName ?? product?.name ?? "Untitled listing", PRODUCT_NAME_MAX);
+  const productName = boundedText(facts?.productName ?? product?.name ?? "unknown", PRODUCT_NAME_MAX);
   const category = product?.category ? boundedText(product.category, CATEGORY_MAX) : null;
   const keyFeatures = (Array.isArray(facts?.keyFeatures) ? facts.keyFeatures : [])
     .slice(0, KEY_FEATURES_MAX)
@@ -181,7 +180,7 @@ export const saveListingDraft = async (
   // same generic 404 as everywhere else.
   let ownedSource = null;
   if (sourceProductId !== undefined) {
-    ownedSource = await loadOwnedProduct(client, principal, sourceProductId);
+    ownedSource = await loadOwnedProduct(client, principal, sourceProductId, { sourceOnly: true });
   }
 
   const persisted = {
@@ -210,7 +209,7 @@ export const saveListingDraft = async (
 
   // Inherited provenance must still belong to this seller at save time.
   if (!ownedSource && existing.sourceProductId) {
-    ownedSource = await loadOwnedProduct(client, principal, existing.sourceProductId);
+    ownedSource = await loadOwnedProduct(client, principal, existing.sourceProductId, { sourceOnly: true });
   }
   // Claim the current parent atomically before creating a child. The route's
   // actor transaction rolls this transition back if creation or audit fails.

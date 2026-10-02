@@ -126,8 +126,10 @@ test("draft copy sources from an owned product through the seller predicate", as
   const output = await draftListingCopy({ sourceProductId: "prod-1" }, { client, principal: principal(), now });
   assert.deepEqual(where, { id: "prod-1", sellerId: SELLER });
   // Public-safe fields only: no stock counts, no archived state details.
-  assert.deepEqual(Object.keys(select).sort(), ["category", "description", "id", "name", "options"]);
+  assert.deepEqual(Object.keys(select).sort(), ["category", "id", "name", "options"]);
   assert.deepEqual(Object.keys(select.options.select), ["kind", "value"]);
+  assert.equal(select.options.take, 10, "source rows must be bounded in the database query");
+  assert.deepEqual(select.options.orderBy, { id: "asc" }, "the bounded source is deterministic");
   assert.ok(output.title.includes("RLS Lamp"));
   assert.ok(output.description.includes("color: Red"));
   assert.ok(!JSON.stringify(output).match(/quantity|stock|isArchived/i));
@@ -240,6 +242,19 @@ test("retries and concurrent saves cannot fork a claimed draft version", async (
   assert.equal(outcomes.find(({ status }) => status === "rejected").reason.statusCode, 404);
   await assert.rejects(run(), { statusCode: 404 });
   assert.equal(creates, 1);
+});
+
+test("save provenance reads only the owned product id and never option or description content", async () => {
+  const projections = [];
+  const { client } = recordingClient({ product: { findFirst: async (args) => { projections.push(args.select); return { id: "prod-1" }; } } });
+  await saveListingDraft({ title: "T", description: "D", sourceProductId: "prod-1" }, { client, principal: principal(), now });
+  assert.deepEqual(projections, [{ id: true }]);
+});
+
+test("missing listing facts remain explicitly unknown", async () => {
+  const { client } = recordingClient();
+  const output = await draftListingCopy({ facts: {} }, { client, principal: principal(), now });
+  assert.equal(output.title, "unknown");
 });
 
 test("versioning rejects a source product that no longer belongs to the seller", async () => {
