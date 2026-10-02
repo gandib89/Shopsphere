@@ -330,6 +330,7 @@ router.post(
         actorId: req.delegation.sub,
         role: req.delegation.role,
         operation: "notifications.listMine",
+        grantId: req.delegation.grantId,
         signal: req.assistantSignal,
       }, (tx) => listMyNotifications(parsed.data, {
         client: tx,
@@ -376,7 +377,7 @@ router.post(
 // user-authored content that must never be echoed into audits or logs.
 // observe(output, input) may return auditMetadata merged into the audited
 // redacted input.
-const privateOperation = ({ path, tool, operation, roles, scope, rolloutFlag, verifiedSeller = false, inputSchema, run, observe, middlewares = [], auditInput }) => {
+const privateOperation = ({ path, tool, operation, roles, scope, rolloutFlag, verifiedSeller = false, inputSchema, run, observe, middlewares = [], auditInput, atomicAudit = false }) => {
   const auditEventInput = (data) => (auditInput ? auditInput(data) : data);
   router.post(
     path,
@@ -401,8 +402,10 @@ const privateOperation = ({ path, tool, operation, roles, scope, rolloutFlag, ve
           actorId: req.delegation.sub,
           role: req.delegation.role,
           operation,
+          grantId: req.delegation.grantId,
           signal: req.assistantSignal,
-        }, (tx) => run(parsed.data, {
+        }, async (tx) => {
+          const result = await run(parsed.data, {
           client: tx,
           principal: {
             subject: req.delegation.sub,
@@ -412,7 +415,27 @@ const privateOperation = ({ path, tool, operation, roles, scope, rolloutFlag, ve
           },
           cursorSecret: process.env.ASSISTANT_CURSOR_SECRET,
           now: new Date(),
-        }));
+          });
+          if (atomicAudit) {
+            const observed = observe?.(result, parsed.data) ?? {};
+            try {
+              await recordAssistantAudit(auditContext(req, {
+                policyVersion: ASSISTANT_POLICY_VERSION,
+                operation, tool,
+                input: auditEventInput(parsed.data),
+                response: result,
+                resourceIds: observed.resourceIds ?? [],
+                rowCount: observed.rowCount ?? null,
+                authorizationOutcome: "allowed", outcome: "success",
+                latencyMs: Date.now() - startedAt,
+              }), tx, { writeOnly: true });
+            } catch {
+              throw Object.assign(new Error("Audit service is unavailable"), { statusCode: 503, code: "audit_unavailable" });
+            }
+          }
+          return result;
+        });
+        if (atomicAudit) return res.json(output);
         const observed = observe?.(output, parsed.data) ?? {};
         const { resourceIds = [], rowCount = null, auditMetadata = null } = observed;
         // Observe-provided audit metadata (e.g. the detail tool's support
@@ -435,7 +458,7 @@ const privateOperation = ({ path, tool, operation, roles, scope, rolloutFlag, ve
           tool,
           input: auditEventInput(parsed.data),
           status,
-          code: status === 404 ? "not_found" : status === 400 ? "invalid_input" : status === 409 ? (error?.code ?? "conflict") : "operation_unavailable",
+          code: status === 404 ? "not_found" : status === 400 ? "invalid_input" : status === 409 ? (error?.code ?? "conflict") : error?.code === "audit_unavailable" ? "audit_unavailable" : "operation_unavailable",
           startedAt,
         });
       }
@@ -667,7 +690,7 @@ privateOperation({
 // never a live Product, notification, or storefront route. Isolation carries
 // BOTH sellerId and grantId in every service predicate (RLS is defense in
 // depth), unverified sellers may draft, and the draft limiter bounds this
-// heavier operation class to 10/minute and 100/day per subject+client.
+// heavier operation class to 10/minute and 100/day per subject.
 const draftCopyInput = z.object({
   sourceProductId: z.string().min(1).max(100).optional(),
   facts: z.object({
@@ -692,6 +715,7 @@ privateOperation({
   inputSchema: draftCopyInput,
   middlewares: [enforceListingDraftLimit()],
   run: (input, ctx) => draftListingCopy(input, ctx),
+  auditInput: ({ sourceProductId }) => ({ sourceProductId }),
   observe: () => ({ resourceIds: [], rowCount: 1 }),
 });
 
@@ -711,6 +735,8 @@ privateOperation({
   }).strict(),
   middlewares: [enforceListingDraftLimit()],
   run: (input, ctx) => saveListingDraft(input, ctx),
+  auditInput: ({ draftId, sourceProductId }) => ({ draftId, sourceProductId }),
+  atomicAudit: true,
   observe: (output) => ({ resourceIds: [output.draftId], rowCount: output.version > 1 ? 2 : 1 }),
 });
 
@@ -804,6 +830,7 @@ router.post(
         actorId: req.delegation.sub,
         role: req.delegation.role,
         operation,
+        grantId: req.delegation.grantId,
         signal: req.assistantSignal,
       }, (tx) => proposeCartChange(parsed.data, {
         client: tx,
@@ -1125,7 +1152,7 @@ privateOperation({
 // tool only returns draft text for the buyer to review. The buyer picks the
 // owned order and the bounded topic; no recipient, channel, or send affordance
 // exists in the contract. The draft rate class carries stricter route-scoped
-// limits (10/minute, 100/day per subject+client, fail-closed) on top of the
+// limits (10/minute, 100/day per subject, fail-closed) on top of the
 // shared distributed limit, and the user-authored `notes` field is excluded
 // from audit rows and logs.
 const draftSupportInput = z.object({
@@ -1193,7 +1220,7 @@ privateOperation({
 // resolve to the identical generic 404, absent facts render as literal
 // "unknown", and every draft is bounded to 4000 characters with a truncation
 // flag. The draft rate class carries stricter route-scoped limits (10/minute,
-// 100/day per subject+client, fail-closed) on top of the shared distributed
+// 100/day per subject, fail-closed) on top of the shared distributed
 // limit, and the return draft's user-authored `purpose` rides through
 // observe() into the durable audit metadata exactly like the queue detail
 // tool — it never appears in a response.
@@ -1224,6 +1251,11 @@ privateOperation({
   inputSchema: z.object({ orderId, purpose: z.string().min(10).max(500) }).strict(),
   middlewares: [createRecommendationLimit()],
   run: (input, ctx) => draftReturnReviewRecommendation(input, ctx),
+  auditInput: ({ orderId, purpose, purposeProvided, purposeLength }) => ({
+    orderId,
+    purposeProvided: purposeProvided ?? Boolean(purpose),
+    purposeLength: purposeLength ?? Math.min(String(purpose ?? "").length, 500),
+  }),
   observe: (output, input) => returnReviewObserve(output, input),
 });
 

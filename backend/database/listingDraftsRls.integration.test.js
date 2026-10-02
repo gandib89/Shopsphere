@@ -6,6 +6,9 @@ import test from "node:test";
 import { assistantPrisma } from "./assistantPrisma.js";
 import { withAssistantActor } from "./assistantTransaction.js";
 import { prisma } from "./prismaClient.js";
+import { saveListingDraft } from "../services/assistantListingDrafts.js";
+import { recordAssistantAudit } from "../services/assistantAudit.js";
+import crypto from "node:crypto";
 
 const enabled = process.env.RUN_POSTGRES_INTEGRATION === "true";
 
@@ -21,13 +24,13 @@ const sellerActor = (operation, grantId = GRANT) => ({
   actorId: SELLER,
   role: "seller",
   operation,
-  // grantId is an application-level claim; the actor GUC carries the subject.
   grantId,
 });
 
 test("listing_drafts RLS isolates drafts by subject and operation", { skip: !enabled }, async (t) => {
+  const ownedChildIds = [];
   t.after(async () => {
-    await prisma.listingDraft.deleteMany({ where: { id: { in: [DRAFT, RIVAL_DRAFT] } } });
+    await prisma.listingDraft.deleteMany({ where: { id: { in: [DRAFT, RIVAL_DRAFT, ...ownedChildIds] } } });
     await prisma.product.deleteMany({ where: { id: PRODUCT } });
     await prisma.user.deleteMany({ where: { id: { in: [SELLER, RIVAL] } } });
     await assistantPrisma.$disconnect();
@@ -108,9 +111,21 @@ test("listing_drafts RLS isolates drafts by subject and operation", { skip: !ena
   const ownDrafts = await withAssistantActor(sellerActor("listings.listDrafts"), (tx) =>
     tx.listingDraft.findMany({ select: { id: true, title: true } }));
   assert.deepEqual(ownDrafts.map(({ id }) => id), [DRAFT]);
-  const rivalDrafts = await withAssistantActor({ ...sellerActor("listings.listDrafts"), actorId: RIVAL }, (tx) =>
+  const rivalDrafts = await withAssistantActor({ ...sellerActor("listings.listDrafts", OTHER_GRANT), actorId: RIVAL }, (tx) =>
     tx.listingDraft.findMany({ select: { id: true } }));
   assert.deepEqual(rivalDrafts.map(({ id }) => id), [RIVAL_DRAFT]);
+  // No application grant predicate: PostgreSQL itself denies the same owner's
+  // draft to another or absent grant, and connection reuse clears the GUC.
+  for (const grantId of [OTHER_GRANT, ""]) {
+    assert.deepEqual(await withAssistantActor(sellerActor("listings.listDrafts", grantId), (tx) =>
+      tx.listingDraft.findMany({ where: { id: DRAFT }, select: { id: true } })), []);
+    const update = await withAssistantActor(sellerActor("listings.saveDraft", grantId), (tx) =>
+      tx.listingDraft.updateMany({ where: { id: DRAFT }, data: { status: "Superseded" } }));
+    assert.equal(update.count, 0);
+  }
+  assert.deepEqual(await assistantPrisma.listingDraft.findMany({ select: { id: true } }), []);
+  await assert.rejects(withAssistantActor(sellerActor("listings.saveDraft", OTHER_GRANT), (tx) =>
+    tx.listingDraft.create({ data: { id: "cececececececececececece", sellerId: SELLER, grantId: GRANT, title: "Wrong grant", description: "Denied" } })), /row-level security|permission denied/i);
   assert.deepEqual(await withAssistantActor(sellerActor("notifications.listMine"), (tx) =>
     tx.listingDraft.findMany({ select: { id: true } })), []);
   assert.deepEqual(await withAssistantActor({ ...sellerActor("listings.listDrafts"), role: "user" }, (tx) =>
@@ -173,6 +188,48 @@ test("listing_drafts RLS isolates drafts by subject and operation", { skip: !ena
   // Restore the fixture state.
   await prisma.listingDraft.update({ where: { id: DRAFT }, data: { status: "Draft" } });
 
+  // Competing pooled transactions claim exactly one current version. A retry
+  // of the superseded parent cannot create another child.
+  const auditTrace = `listing-grant-integration-${crypto.randomUUID()}`;
+  const save = () => withAssistantActor(sellerActor("listings.saveDraft"), async (tx) => {
+    const result = await saveListingDraft({ draftId: DRAFT, title: "Next version", description: "Still unpublished" }, {
+      client: tx, principal: { subject: SELLER, grantId: GRANT },
+    });
+    const audit = await recordAssistantAudit({ traceId: auditTrace, operation: "listings.saveDraft", subjectId: SELLER, grantId: GRANT, outcome: "success", response: result }, tx, { writeOnly: true });
+    assert.equal(audit.count, 1);
+    return result;
+  });
+  const results = await Promise.allSettled([save(), save()]);
+  for (const result of results) if (result.status === "fulfilled") ownedChildIds.push(result.value.draftId);
+  assert.equal(ownedChildIds.length, 1);
+  assert.equal(results.find(({ status }) => status === "rejected").reason.statusCode, 404);
+  await assert.rejects(save(), { statusCode: 404 });
+  const children = await prisma.listingDraft.findMany({ where: { supersedesId: DRAFT } });
+  assert.equal(children.length, 1);
+  assert.equal(children[0].version, 2);
+  const successAudits = await prisma.assistantAuditEvent.findMany({ where: { traceId: auditTrace } });
+  assert.equal(successAudits.length, 1);
+  assert.ok(successAudits[0].responseDigest);
+  // Retain the successful audit: integration cleanup never deletes history.
+  // Failed child insertion rolls back the parent's claim.
+  await prisma.listingDraft.update({ where: { id: DRAFT }, data: { status: "Draft" } });
+  await assert.rejects(withAssistantActor(sellerActor("listings.saveDraft"), async (tx) => {
+    await tx.listingDraft.updateMany({ where: { id: DRAFT, status: "Draft" }, data: { status: "Superseded" } });
+    await tx.listingDraft.create({ data: { id: DRAFT, sellerId: SELLER, grantId: GRANT, title: "Duplicate", description: "Fails" } });
+  }));
+  assert.equal((await prisma.listingDraft.findUnique({ where: { id: DRAFT } })).status, "Draft");
+  // A real durable-audit INSERT failure must roll back both a fresh child and
+  // its parent claim. The invalid operation exceeds the PostgreSQL varchar.
+  const beforeFailedAudit = await prisma.listingDraft.count({ where: { supersedesId: DRAFT } });
+  const failedTrace = `listing-audit-failure-${crypto.randomUUID()}`;
+  await assert.rejects(withAssistantActor(sellerActor("listings.saveDraft"), async (tx) => {
+    await saveListingDraft({ draftId: DRAFT, title: "Must roll back", description: "Audit failure" }, { client: tx, principal: { subject: SELLER, grantId: GRANT } });
+    await recordAssistantAudit({ traceId: failedTrace, operation: "x".repeat(101), outcome: "success" }, tx, { writeOnly: true });
+  }));
+  assert.equal(await prisma.listingDraft.count({ where: { supersedesId: DRAFT } }), beforeFailedAudit);
+  assert.equal((await prisma.listingDraft.findUnique({ where: { id: DRAFT } })).status, "Draft");
+  assert.equal(await prisma.assistantAuditEvent.count({ where: { traceId: failedTrace } }), 0);
+
   // Draft copy may read the seller's own product through the additive
   // listings.draftCopy policies — and only the seller's own rows.
   const ownProducts = await withAssistantActor(sellerActor("listings.draftCopy"), (tx) =>
@@ -191,8 +248,7 @@ test("listing_drafts RLS isolates drafts by subject and operation", { skip: !ena
   assert.deepEqual(rivalProducts, []);
   await withAssistantActor(sellerActor("listings.draftCopy"), (tx) =>
     tx.product.findFirst({ where: { id: PRODUCT, sellerId: SELLER }, select: { name: true } }));
-  // grantId is not a database column: isolation per grant stays at the
-  // service layer, keyed on the transaction-local actor GUCs.
+  // The stored grant column participates in the restrictive RLS policy.
   const [columns] = await assistantPrisma.$queryRawUnsafe(`
     SELECT count(*)::int AS grants FROM information_schema.columns
     WHERE table_name = 'listing_drafts' AND column_name = 'grantId'

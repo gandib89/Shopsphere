@@ -183,13 +183,11 @@ export const draftSellerReviewRecommendation = async (
   return draftOutput({ lines, policy, now });
 };
 
-// The purpose is admin-supplied bounded text and the explicit "why" of this
-// access. It is threaded through the route's observe() seam into the durable
-// audit event's redacted input metadata (never into the tool response).
+// Record purpose presence and bounded length, never user-authored content.
 export const returnReviewObserve = (output, input) => ({
   resourceIds: [input?.orderId].filter((value) => typeof value === "string" && value.length > 0),
   rowCount: 1,
-  auditMetadata: { purpose: String(input?.purpose ?? "").slice(0, MAX_PURPOSE_CHARS) },
+  auditMetadata: { purposeProvided: Boolean(input?.purpose), purposeLength: Math.min(String(input?.purpose ?? "").length, MAX_PURPOSE_CHARS) },
 });
 
 export const draftReturnReviewRecommendation = async (

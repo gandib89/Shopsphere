@@ -132,4 +132,28 @@ For the final matrix pass, provide `MCP_SELLER_MATRIX_PROOFS` as a private JSON 
 
 ## Rollback and re-entry
 
+### Draft gate preflight (#34)
+
+Run `npm run draft:matrix` in `mcp`. It derives the eight current draft tools
+from the registry and checks exact roles/scopes and independent draft flags with
+proposal flags disabled. The result remains `pending_runtime`: registry success
+does not substitute for hosted authorization, PostgreSQL/RLS, privacy, quota,
+fault, observation, rollback, or cleanup evidence.
+
+All current draft generators use deterministic templates; they make no external
+model-provider calls. Provider-specific outage, token, and spend checks are
+inapplicable to this implementation. Record that code provenance rather than
+claiming a mocked or hosted provider test. Tool and infrastructure budgets remain
+applicable: all eight routes share 10 calls/minute and 100 calls/day per subject,
+regardless of client, grant, role, or draft family.
+
+Apply the grant-isolation migration before enabling draft persistence. Draft
+transactions set `shopsphere.grant_id`; absent or different grants cannot access
+stored drafts even when an application owner predicate is omitted. Versioning
+claims an active parent once, and the saved version and sanitized success audit
+commit together. Audit failure must roll back both storage changes. Hosted checks
+must verify those behaviors, rotated-client/grant quotas, and sanitized quota
+denial correlation. Listing facts/content and return-purpose text must never
+appear in audit inputs, including failed operations.
+
 Disable the affected per-tool flags and stop cohort admission immediately; use the global MCP switch if isolation is uncertain. Revoke affected grants/tokens and terminate private sessions. Expire pending proposals for affected cohorts, but preserve audits and committed commerce data. Verify disabled tools disappear from discovery, forged dispatch is denied, and normal storefront paths remain healthy. Record trigger, operator, UTC timestamps, changed flags/cohort, revocations, observed impact, request/audit links, and follow-up owner. Restore only after the affected gate is repeated and approved; do not treat a code revert as proof that data or previous execution was reversed.

@@ -168,6 +168,7 @@ export const authorizeAssistantOperation = (policy = {}, client = assistantPrism
       return auditedDenial(req, res, result.status, result.code, "Assistant operation is not available", policy.operation);
     }
     req.assistantAccount = result.account;
+    req.assistantOperation = policy.operation;
     return next();
   } catch {
     return auditedDenial(req, res, 503, "account_check_unavailable", "Account check is unavailable", policy.operation);
