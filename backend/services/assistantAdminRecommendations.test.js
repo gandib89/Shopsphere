@@ -311,7 +311,7 @@ test("return review: foreign and missing orders are the identical generic not-fo
   assert.deepEqual(foreignClient.calls, ["order.findFirst"]);
 });
 
-test("return review validates the audited purpose before reading and bounds it into audit metadata", async () => {
+test("return review validates purpose before reading and audits only presence and bounded length", async () => {
   const { client, calls } = captureClient({ "order.findFirst": () => orderRow() });
   const ctx = { client, principal: adminPrincipal(), policySource, now };
   const tooShort = await rejectionOf(draftReturnReviewRecommendation({ orderId: ORDER_ID, purpose: "short" }, ctx));
@@ -330,8 +330,9 @@ test("return review validates the audited purpose before reading and bounds it i
   );
   assert.equal(observed.rowCount, 1);
   assert.deepEqual(observed.resourceIds, [ORDER_ID]);
-  assert.equal(observed.auditMetadata.purpose.length, MAX_PURPOSE_CHARS);
-  assert.ok(observed.auditMetadata.purpose.startsWith("AUDIT-MARKER"));
+  assert.equal(observed.auditMetadata.purposeLength, MAX_PURPOSE_CHARS);
+  assert.equal(observed.auditMetadata.purposeProvided, true);
+  assert.ok(!JSON.stringify(observed).includes("AUDIT-MARKER"));
   // The purpose is audit metadata only — it never rides back in the response.
   assert.ok(!JSON.stringify(observed).includes("y".repeat(600)));
 });
@@ -541,7 +542,7 @@ const callLimit = async (middleware, { subject = ADMIN } = {}) => {
   return { nexted, status, body, headers };
 };
 
-test("recommendation limits allow traffic under 10/minute and 100/day per subject+client", async () => {
+test("recommendation limits allow traffic under 10/minute and 100/day per subject", async () => {
   const middleware = createRecommendationLimit({ redis: fakeRedis(), now: () => 1_760_000_000_000 });
   for (let index = 0; index < 10; index += 1) {
     const result = await callLimit(middleware);
@@ -575,7 +576,7 @@ test("recommendation limits return 429 rate_limited past the daily window", asyn
   assert.equal(result.body.code, "rate_limited");
 });
 
-test("recommendation limits key per subject+client", async () => {
+test("recommendation limits key per subject", async () => {
   const middleware = createRecommendationLimit({ redis: fakeRedis(), now: () => 1_760_000_000_000 });
   for (let index = 0; index < 10; index += 1) await callLimit(middleware, { subject: ADMIN });
   const otherSubject = await callLimit(middleware, { subject: "eeeeeeeeeeeeeeeeeeeeeeee" });

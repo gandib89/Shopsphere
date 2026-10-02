@@ -196,10 +196,11 @@ test("saving with a draftId versions the draft without mutating the old content"
   let updateArgs;
   let findWhere;
   const { client, calls } = recordingClient({
+    product: { findFirst: async () => productRow() },
     listingDraft: {
       findFirst: async (args) => { findWhere = args.where; return draftRow({ id: "draft-1", version: 3 }); },
       create: async (args) => { createData = args.data; return draftRow(); },
-      update: async (args) => { updateArgs = args; return draftRow({ status: "Superseded" }); },
+      updateMany: async (args) => { updateArgs = args; return { count: 1 }; },
     },
   });
   const output = await saveListingDraft({
@@ -211,7 +212,7 @@ test("saving with a draftId versions the draft without mutating the old content"
   assert.equal(output.version, 4);
   assert.equal(output.status, "Draft");
   // Load predicate isolates subject AND grant.
-  assert.deepEqual(findWhere, { id: "draft-1", sellerId: SELLER, grantId: GRANT });
+  assert.deepEqual(findWhere, { id: "draft-1", sellerId: SELLER, grantId: GRANT, status: "Draft" });
   // New row is a fresh version superseding the old one.
   assert.equal(createData.version, 4);
   assert.equal(createData.supersedesId, "draft-1");
@@ -219,7 +220,35 @@ test("saving with a draftId versions the draft without mutating the old content"
   // The old row's content is never rewritten — only the supersede status.
   assert.deepEqual(Object.keys(updateArgs.data).sort(), ["status", "updatedAt"]);
   assert.equal(updateArgs.data.status, "Superseded");
-  assert.deepEqual(calls.filter(([model]) => model === "product").map(([, method]) => method), []);
+  assert.deepEqual(updateArgs.where, findWhere);
+  assert.deepEqual(calls.filter(([model]) => model === "product").map(([, method]) => method), ["findFirst"]);
+});
+
+test("retries and concurrent saves cannot fork a claimed draft version", async () => {
+  let claimed = false;
+  let creates = 0;
+  const { client } = recordingClient({
+    listingDraft: {
+      findFirst: async () => draftRow({ sourceProductId: null }),
+      updateMany: async () => { if (claimed) return { count: 0 }; claimed = true; return { count: 1 }; },
+      create: async () => { creates += 1; return draftRow(); },
+    },
+  });
+  const run = () => saveListingDraft({ draftId: "draft-1", title: "T", description: "D" }, { client, principal: principal(), now });
+  const outcomes = await Promise.allSettled([run(), run()]);
+  assert.equal(outcomes.filter(({ status }) => status === "fulfilled").length, 1);
+  assert.equal(outcomes.find(({ status }) => status === "rejected").reason.statusCode, 404);
+  await assert.rejects(run(), { statusCode: 404 });
+  assert.equal(creates, 1);
+});
+
+test("versioning rejects a source product that no longer belongs to the seller", async () => {
+  const { client, calls } = recordingClient({
+    listingDraft: { findFirst: async () => draftRow() },
+    product: { findFirst: async () => null },
+  });
+  await assert.rejects(saveListingDraft({ draftId: "draft-1", title: "T", description: "D" }, { client, principal: principal(), now }), { statusCode: 404 });
+  assert.deepEqual(calls.filter(([, method]) => ["updateMany", "create"].includes(method)), []);
 });
 
 test("cross-grant and foreign drafts are an identical not-found", async () => {
@@ -255,7 +284,7 @@ test("saving never mutates a Product, notification, or any non-draft model", asy
     listingDraft: {
       findFirst: async () => draftRow({ id: "draft-1", version: 1 }),
       create: async () => draftRow(),
-      update: async () => draftRow({ status: "Superseded" }),
+      updateMany: async () => ({ count: 1 }),
     },
   });
   await saveListingDraft({ title: "T", description: "D" }, { client, principal: principal(), now });
@@ -267,7 +296,7 @@ test("saving never mutates a Product, notification, or any non-draft model", asy
   );
   assert.deepEqual([...mutatedModels], ["listingDraft"]);
   const methods = calls.filter(([model]) => model === "listingDraft").map(([, method]) => method);
-  assert.deepEqual(methods, ["create", "findFirst", "create", "update"]);
+  assert.deepEqual(methods, ["create", "findFirst", "updateMany", "create"]);
 });
 
 test("unverified sellers can draft: no isVerified predicate or account lookup exists", async () => {

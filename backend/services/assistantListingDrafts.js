@@ -203,10 +203,22 @@ export const saveListingDraft = async (
   }
 
   const existing = await client.listingDraft.findFirst({
-    where: { id: draftId, sellerId: principal.subject, grantId: principal.grantId },
+    where: { id: draftId, sellerId: principal.subject, grantId: principal.grantId, status: "Draft" },
     select: { id: true, version: true, sourceProductId: true },
   });
   if (!existing) throw notFound();
+
+  // Inherited provenance must still belong to this seller at save time.
+  if (!ownedSource && existing.sourceProductId) {
+    ownedSource = await loadOwnedProduct(client, principal, existing.sourceProductId);
+  }
+  // Claim the current parent atomically before creating a child. The route's
+  // actor transaction rolls this transition back if creation or audit fails.
+  const claimed = await client.listingDraft.updateMany({
+    where: { id: existing.id, sellerId: principal.subject, grantId: principal.grantId, status: "Draft" },
+    data: { status: "Superseded", updatedAt: now },
+  });
+  if (claimed.count !== 1) throw notFound();
 
   const nextVersion = existing.version + 1;
   const createdId = newDraftId();
@@ -220,12 +232,6 @@ export const saveListingDraft = async (
       createdAt: now,
       updatedAt: now,
     },
-  });
-  // Supersede-only mutation: status flips, content never changes (and the
-  // runtime role has no UPDATE grant on the content columns anyway).
-  await client.listingDraft.update({
-    where: { id: existing.id },
-    data: { status: "Superseded", updatedAt: now },
   });
   return { draftId: createdId, version: nextVersion, status: "Draft", savedAt: now.toISOString() };
 };

@@ -305,7 +305,7 @@ const callLimit = async (middleware, { subject = BUYER } = {}) => {
   return { nexted, status, body, headers };
 };
 
-test("draft limits allow traffic under 10/minute and 100/day per subject+client", async () => {
+test("draft limits allow traffic under 10/minute and 100/day per subject", async () => {
   const middleware = createDraftSupportLimit({ redis: fakeRedis(), now: () => 1_760_000_000_000 });
   for (let index = 0; index < 10; index += 1) {
     const result = await callLimit(middleware);
@@ -340,7 +340,7 @@ test("draft limits return 429 rate_limited past the daily window", async () => {
   assert.equal(result.body.code, "rate_limited");
 });
 
-test("draft limits key per subject+client", async () => {
+test("draft limits key per subject", async () => {
   const middleware = createDraftSupportLimit({ redis: fakeRedis(), now: () => 1_760_000_000_000 });
   for (let index = 0; index < 10; index += 1) await callLimit(middleware, { subject: BUYER });
   const otherSubject = await callLimit(middleware, { subject: RIVAL });

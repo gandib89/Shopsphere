@@ -31,10 +31,9 @@ export const responseEvidence = (response) => {
   };
 };
 
-export const recordAssistantAudit = async (event, client = prisma) => {
+export const recordAssistantAudit = async (event, client = prisma, { writeOnly = false } = {}) => {
   const evidence = event.response === undefined ? {} : responseEvidence(event.response);
-  return client.assistantAuditEvent.create({
-    data: {
+  const data = {
       id: crypto.randomUUID(),
       traceId: event.traceId || crypto.randomUUID(),
       layer: event.layer || "express",
@@ -56,8 +55,13 @@ export const recordAssistantAudit = async (event, client = prisma) => {
       rowCount: event.rowCount ?? null,
       latencyMs: Math.max(0, Math.trunc(event.latencyMs || 0)),
       failureReason: event.failureReason || null,
-    },
-  });
+    };
+  // Restricted transactions have INSERT permission only. createMany avoids
+  // RETURNING private audit columns while keeping draft storage and its audit
+  // in the same database transaction.
+  return writeOnly
+    ? client.assistantAuditEvent.createMany({ data })
+    : client.assistantAuditEvent.create({ data });
 };
 
 export const auditContext = (req, overrides = {}) => ({

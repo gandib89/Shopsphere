@@ -175,6 +175,8 @@ jobs:
       - run: node --test database/assistantAdminPromotionsRls.integration.test.js
       - run: node --test database/listingDraftsRls.integration.test.js
       - run: node --test services/assistantRedis.integration.test.js
+      - name: Verify shared drafting quotas against Redis
+        run: node --test services/assistantDraftLimits.test.js
       - run: node scripts/seedAssistantSellerReleaseRlsTest.js
       - run: node --test database/assistantSellerReleaseRls.integration.test.js
       - name: Verify MCP session isolation against Redis

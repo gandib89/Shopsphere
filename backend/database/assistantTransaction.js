@@ -9,7 +9,7 @@ const operationPattern = /^[A-Za-z][A-Za-z0-9_.]{0,99}$/;
 const abortError = () => Object.assign(new Error("Assistant operation cancelled"), { name: "AbortError" });
 
 export const withAssistantActor = async (
-  { actorId, role, operation, timeoutMs = 5_000, signal } = {},
+  { actorId, role, operation, grantId = "", timeoutMs = 5_000, signal } = {},
   run,
   client = assistantPrisma,
 ) => {
@@ -17,6 +17,9 @@ export const withAssistantActor = async (
     throw new Error("Invalid assistant actor context");
   }
   if (typeof run !== "function") throw new Error("Assistant transaction callback is required");
+  if (typeof grantId !== "string" || grantId.length > 200 || /[\x00-\x1f\x7f]/.test(grantId)) {
+    throw new Error("Invalid assistant grant context");
+  }
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 30_000) {
     throw new Error("Invalid assistant transaction timeout");
   }
@@ -25,6 +28,7 @@ export const withAssistantActor = async (
   return client.$transaction(async (tx) => {
     await tx.$executeRaw(Prisma.sql`SELECT set_config('shopsphere.actor_id', ${actorId}, true)`);
     await tx.$executeRaw(Prisma.sql`SELECT set_config('shopsphere.actor_role', ${role}, true)`);
+    await tx.$executeRaw(Prisma.sql`SELECT set_config('shopsphere.grant_id', ${grantId}, true)`);
     await tx.$executeRaw(Prisma.sql`SELECT set_config('shopsphere.operation', ${operation}, true)`);
     await tx.$executeRaw(Prisma.sql`SELECT set_config('statement_timeout', ${String(timeoutMs)}, true)`);
     if (signal?.aborted) throw abortError();
