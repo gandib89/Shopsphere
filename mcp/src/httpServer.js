@@ -283,7 +283,6 @@ export const createMcpHttpServer = ({
           operation,
           authorizationOutcome,
           outcome,
-          input: {},
           returnedFields: [],
           resourceIds: [],
           responseDigest: null,
