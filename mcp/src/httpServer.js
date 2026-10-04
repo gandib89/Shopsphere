@@ -325,7 +325,7 @@ export const createMcpHttpServer = ({
         else if (!safeEqual(suppliedToken, accessToken)) throw Object.assign(new Error("Unauthorized"), { statusCode: 401 });
         if (authContextResolver) {
           authPhase = "authorization context";
-          const resolved = await authContextResolver({ auth: authContext, subjectToken: suppliedToken });
+          const resolved = await authContextResolver({ auth: authContext, subjectToken: suppliedToken, requestId });
           authContext = resolved.auth;
         }
       } catch (error) {
