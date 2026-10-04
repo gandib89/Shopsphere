@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import test from "node:test";
 import { createMcpHttpServer } from "../src/httpServer.js";
+import { createBackendClient } from "../src/backendClient.js";
+import { remoteAuditInput } from "../../backend/routes/assistantRoute.js";
 import { ACCESS_TOKEN, ALL_FLAGS, fakeBackendClient } from "./support/fakeBackend.js";
 import { close, listen } from "./support/httpServer.js";
 
@@ -22,9 +24,23 @@ const rawRequest = (url, body, { chunked = false } = {}) => new Promise((resolve
   else req.end(body);
 });
 
-const setup = async (t, recordAudit) => {
+const setup = async (t, recordAudit, options = {}) => {
+  // Exercise the real wire serializer and production backend validator. A
+  // permissive recordAudit fake previously accepted fields the endpoint rejects.
+  const receiver = http.createServer(async (req, res) => {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const event = remoteAuditInput.safeParse(JSON.parse(Buffer.concat(chunks).toString()));
+    if (!event.success) { res.writeHead(400); res.end(); return; }
+    try { await recordAudit(event.data); res.writeHead(204); }
+    catch { res.writeHead(503); }
+    res.end();
+  });
+  const receiverUrl = await listen(receiver);
+  t.after(() => close(receiver));
+  const client = createBackendClient({ origin: receiverUrl.origin, token: "synthetic-workload" });
   const server = createMcpHttpServer({ enabled: true, accessToken: ACCESS_TOKEN, flags: ALL_FLAGS,
-    maxRequestBytes: limit, backendClient: { ...fakeBackendClient, recordAudit } });
+    maxRequestBytes: limit, backendClient: { ...fakeBackendClient, recordAudit: client.recordAudit }, ...options });
   const url = await listen(server);
   t.after(() => close(server));
   return url;
@@ -53,7 +69,7 @@ test("actual MCP parser accepts exactly 32 KiB and durably audits both oversized
     assert.equal(event.outcome, "request_rejected");
     assert.equal(event.authorizationOutcome, "denied");
     assert.equal(event.failureReason, "request_too_large");
-    assert.deepEqual(event.input, {});
+    assert.equal(Object.hasOwn(event, "input"), false);
   }
   assert.equal(JSON.stringify(events).includes(canary), false);
 });
@@ -69,8 +85,21 @@ test("malformed MCP JSON receives a traced durable audit without raw body or par
   assert.equal(events[0].failureReason, "invalid_json");
   assert.equal(events[0].operation, "transport.request");
   assert.equal(events[0].outcome, "request_rejected");
-  assert.deepEqual(events[0].input, {});
+  assert.equal(Object.hasOwn(events[0], "input"), false);
   assert.equal(JSON.stringify(events).includes(canary), false);
+});
+
+test("the disabled kill switch persists its audit through the strict backend contract", async (t) => {
+  const events = [];
+  const url = await setup(t, async (event) => events.push(event), { enabled: false });
+  const response = await rawRequest(url, "{}");
+  assert.equal(response.status, 503);
+  assert.deepEqual(JSON.parse(response.text), { error: "MCP is disabled" });
+  assert.equal(events.length, 1);
+  assert.equal(events[0].operation, "transport.request");
+  assert.equal(events[0].failureReason, "kill_switch");
+  assert.equal(events[0].traceId, "parser-trace");
+  assert.equal(Object.hasOwn(events[0], "input"), false);
 });
 
 for (const body of ["{" + canary, "{}".padEnd(limit + 1, " ")]) {

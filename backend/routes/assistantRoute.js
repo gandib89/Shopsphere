@@ -98,7 +98,7 @@ const notificationInput = z.object({
   limit: z.number().int().min(1).max(50).optional(),
 }).strict();
 export const profileSummaryInput = z.object({}).strict();
-const remoteAuditInput = z.object({
+export const remoteAuditInput = z.object({
   traceId: z.string().min(1).max(100).optional(),
   subjectId: z.string().max(24).nullable().optional(),
   role: z.string().max(20).nullable().optional(),
