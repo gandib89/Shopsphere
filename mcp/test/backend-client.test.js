@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createServer } from "node:http";
 
 import { createBackendClient } from "../src/backendClient.js";
 import { createMcpHttpServer } from "../src/httpServer.js";
@@ -88,6 +89,48 @@ test("local backend calls do not request a Cloud Run identity token", async () =
 });
 
 const authorizationContext = { subjectToken: "synthetic-token", auth: { scopes: ["platform:read"] } };
+
+for (const suppliedTrace of ["authorization-limit-trace", "invalid private trace"]) {
+  test(`HTTP authorization limit denial shares the validated ingress trace (${suppliedTrace})`, async (t) => {
+    const requests = [];
+    const upstream = createServer(async (req, res) => {
+      let body = "";
+      for await (const chunk of req) body += chunk;
+      requests.push({ path: req.url, trace: req.headers["x-request-id"], body });
+      if (req.url.endsWith("/audit")) {
+        res.writeHead(204).end();
+      } else {
+        res.writeHead(503, { "content-type": "application/json" });
+        res.end(JSON.stringify({ success: false, code: "limit_unavailable" }));
+      }
+    });
+    const origin = await listen(upstream); t.after(() => close(upstream));
+    const auth = { sub: "synthetic-user", scopes: ["support:draft"] };
+    const client = createBackendClient({ origin, token: "synthetic-workload", exchangeToken: async () => "synthetic-delegated" });
+    const server = createMcpHttpServer({ enabled: true, backendClient: client,
+      tokenVerifier: async () => auth, authContextResolver: (context) => client.resolveAuthorization(context) });
+    const url = await listen(server); t.after(() => close(server));
+    const response = await fetch(url, { method: "POST", headers: {
+      authorization: "Bearer synthetic-subject", "content-type": "application/json", "x-request-id": suppliedTrace,
+    }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} }) });
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), { error: "OAuth issuer unavailable" });
+    const trace = response.headers.get("x-request-id");
+    if (suppliedTrace.includes(" ")) assert.notEqual(trace, suppliedTrace);
+    else assert.equal(trace, suppliedTrace);
+    assert.ok(trace);
+    const resolution = requests.find((r) => r.path.endsWith("/authorization-context"));
+    const audit = requests.find((r) => r.path.endsWith("/audit"));
+    assert.equal(resolution.trace, trace);
+    assert.equal(audit.trace, trace);
+    const event = JSON.parse(audit.body);
+    assert.equal(event.traceId, trace);
+    assert.equal(event.operation, "authorization.resolve");
+    assert.equal(event.failureReason, "issuer_or_grant_unavailable");
+    assert.equal(event.authorizationOutcome, "denied");
+    assert.equal(audit.body.includes("synthetic-subject"), false);
+  });
+}
 const authorizationClient = (fetchImpl) => createBackendClient({
   origin: "http://backend:4000", token: "synthetic-workload", exchangeToken: async () => "synthetic-delegated", fetchImpl,
 });
