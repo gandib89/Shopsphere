@@ -1,3 +1,5 @@
+process.env.PROPOSAL_EXECUTION_ENABLED = "true";
+
 // First-party execution tests for the #29 fulfillment proposal branch:
 // cross-seller 404, unverified-seller 403 with no transition, staleness on
 // order change, exactly-once, CAS conflict rollback, pending-payment

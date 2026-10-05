@@ -1,3 +1,5 @@
+process.env.PROPOSAL_EXECUTION_ENABLED = "true";
+
 // #28: first-party execution of inventory.adjust proposals. Complements (never
 // edits) proposalExecution.test.js and the #24/#25/#26/#27 branch files:
 // ownership + live verification reauthorization, the product updatedAt

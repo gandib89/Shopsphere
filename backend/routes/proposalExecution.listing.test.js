@@ -1,3 +1,5 @@
+process.env.PROPOSAL_EXECUTION_ENABLED = "true";
+
 // First-party execution tests for the #26 listing proposal branches:
 // cross-owner 404, unverified-seller 403, staleness on draft supersede and
 // product change, concurrent exactly-once, no notification/draft writes

@@ -1,3 +1,5 @@
+process.env.PROPOSAL_EXECUTION_ENABLED = "true";
+
 // #27: first-party execution of product.set_price / product.set_discount
 // proposals. Complements (never edits) proposalExecution.test.js and the
 // #24/#25 branch files: stepped-up password re-confirmation, verification and

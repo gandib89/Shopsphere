@@ -157,3 +157,20 @@ denial correlation. Listing facts/content and return-purpose text must never
 appear in audit inputs, including failed operations.
 
 Disable the affected per-tool flags and stop cohort admission immediately; use the global MCP switch if isolation is uncertain. Revoke affected grants/tokens and terminate private sessions. Expire pending proposals for affected cohorts, but preserve audits and committed commerce data. Verify disabled tools disappear from discovery, forged dispatch is denied, and normal storefront paths remain healthy. Record trigger, operator, UTC timestamps, changed flags/cohort, revocations, observed impact, request/audit links, and follow-up owner. Restore only after the affected gate is repeated and approved; do not treat a code revert as proof that data or previous execution was reversed.
+
+## Browser proposal execution switch
+
+`PROPOSAL_EXECUTION_ENABLED` belongs to the backend, independently of the MCP
+proposal creation flags. Missing, false, or malformed values return bounded
+`503 proposal_execution_disabled` from authenticated `POST
+/api/v1/proposals/:id/execute` before a proposal lookup or transaction, including
+replay requests. Review/list routes remain authenticated and available. Only the
+exact value `true` permits the existing execution authorization and validations.
+
+For reads/drafts-only releases, set `PROPOSAL_EXECUTION_ENABLED=false` and keep
+all proposal creation/publication tool flags off on both MCP and backend. A
+global MCP rollback must also disable this backend switch if browser execution
+was enabled. Changing deployed configuration requires a new revision; this
+switch does not cancel an execution already admitted before the change.
+Enable execution only with the applicable #35/#36 release evidence and cohort
+approval. The switch itself does not satisfy those security gates.
