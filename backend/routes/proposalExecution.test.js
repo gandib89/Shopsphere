@@ -1,3 +1,5 @@
+process.env.PROPOSAL_EXECUTION_ENABLED = "true";
+
 import assert from "node:assert/strict";
 import test from "node:test";
 import express from "express";
@@ -505,4 +507,50 @@ test("remove_item execution deletes exactly the stored line and keeps the rest",
   assert.equal(cart.items[0].id, "item-2");
   assert.equal(cart.version, 1);
   assert.equal(client.state.cartMutations, 1);
+});
+
+test("proposal execution is disabled by default without changing the reviewed proposal", async (t) => {
+  const previous = process.env.PROPOSAL_EXECUTION_ENABLED;
+  delete process.env.PROPOSAL_EXECUTION_ENABLED;
+  t.after(() => {
+    if (previous === undefined) delete process.env.PROPOSAL_EXECUTION_ENABLED;
+    else process.env.PROPOSAL_EXECUTION_ENABLED = previous;
+  });
+  const client = createFakeClient(createState());
+  seedCart(client.state);
+  seedProposal(client.state);
+  const server = await listen(client);
+  t.after(() => close(server));
+  const before = await (await fetch(`${baseUrl(server)}/prop-1`)).json();
+  const response = await fetch(`${baseUrl(server)}/prop-1/execute`, { method: "POST" });
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), {
+    code: "proposal_execution_disabled",
+    message: "Proposal execution is disabled",
+  });
+  assert.deepEqual(await (await fetch(`${baseUrl(server)}/prop-1`)).json(), before);
+  assert.equal(client.state.cartMutations, 0);
+  assert.equal(client.state.outbox.length, 0);
+});
+test("execution rejects false and malformed rollout values, including after an enabled request", async (t) => {
+  const previous = process.env.PROPOSAL_EXECUTION_ENABLED;
+  t.after(() => { process.env.PROPOSAL_EXECUTION_ENABLED = previous; });
+  const client = createFakeClient(createState());
+  seedCart(client.state);
+  seedProposal(client.state);
+  const server = await listen(client);
+  t.after(() => close(server));
+  process.env.PROPOSAL_EXECUTION_ENABLED = "true";
+  const enabled = await fetch(`${baseUrl(server)}/prop-1/execute`, { method: "POST" });
+  assert.equal(enabled.status, 200);
+  const before = await (await fetch(`${baseUrl(server)}/prop-1`)).json();
+  for (const value of ["false", "", "TRUE", "1", " true "]) {
+    process.env.PROPOSAL_EXECUTION_ENABLED = value;
+    const response = await fetch(`${baseUrl(server)}/prop-1/execute`, { method: "POST" });
+    assert.equal(response.status, 503, `must deny ${JSON.stringify(value)}`);
+    assert.equal((await response.json()).code, "proposal_execution_disabled");
+  }
+  assert.deepEqual(await (await fetch(`${baseUrl(server)}/prop-1`)).json(), before);
+  assert.equal(client.state.cartMutations, 1);
+  assert.equal(client.state.outbox.length, 1);
 });

@@ -666,6 +666,13 @@ export const listMyProposals = async (req, res, client = prisma) => {
 };
 
 export const executeProposal = async (req, res, client = prisma) => {
+  // Independent of MCP creation flags: browser execution must also fail closed.
+  if (process.env.PROPOSAL_EXECUTION_ENABLED !== "true") {
+    return res.status(503).json({
+      code: "proposal_execution_disabled",
+      message: "Proposal execution is disabled",
+    });
+  }
   const now = new Date();
   const userId = req.user.id;
   try {

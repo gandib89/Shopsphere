@@ -1,3 +1,5 @@
+process.env.PROPOSAL_EXECUTION_ENABLED = "true";
+
 // #24: first-party execution of order.cancel proposals. Complements (never
 // edits) proposalExecution.test.js with the order.cancel branch: exactly-once
 // cancellation, staleness, stock restore semantics, and the absolute absence

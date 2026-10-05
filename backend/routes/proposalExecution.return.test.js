@@ -1,3 +1,5 @@
+process.env.PROPOSAL_EXECUTION_ENABLED = "true";
+
 // First-party execution tests for buyer return proposals (#25), extending the
 // #22 execution suite's fake-client pattern with orders, refund/payment
 // guards, and the policy-grounded revalidation path.
