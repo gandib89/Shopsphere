@@ -1,0 +1,56 @@
+# Overlay for a single EC2 host. Run from the repo root:
+#   docker compose -f docker-compose.yml -f deploy/aws/compose.yml --env-file deploy/aws/.env up -d --build
+# Caddy is the only service with published ports; it terminates TLS for both hostnames.
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - frontend
+      - keycloak
+      - mcp
+    environment:
+      SHOP_HOST: ${SHOP_HOST:?set SHOP_HOST}
+      AUTH_HOST: ${AUTH_HOST:?set AUTH_HOST}
+      MCP_PUBLIC_HOST: ${MCP_PUBLIC_HOST:?set MCP_PUBLIC_HOST}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/aws/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+
+  keycloak:
+    command: start --import-realm --http-enabled=true --hostname-strict=false --proxy-headers=xforwarded
+    environment:
+      KC_HOSTNAME: https://${AUTH_HOST}
+      # Admin console is reachable only through an SSH tunnel to this loopback port.
+      KC_HOSTNAME_ADMIN: http://localhost:8080
+      JAVA_OPTS_KC_HEAP: -XX:MaxRAMPercentage=25
+    ports: !override
+      - "127.0.0.1:8080:8080"
+
+  postgres:
+    environment:
+      POSTGRES_PASSWORD: ${APP_DB_PASSWORD:?set APP_DB_PASSWORD}
+
+  backend:
+    environment:
+      FRONTEND_URL: https://${SHOP_HOST}
+      DATABASE_URL: postgresql://shopsphere:${APP_DB_PASSWORD}@postgres:5432/shopsphere?schema=public
+      ASSISTANT_DATABASE_URL: postgresql://shopsphere_assistant_runtime:${ASSISTANT_DB_PASSWORD}@postgres:5432/shopsphere?schema=public
+      ASSISTANT_PRIVATE_DATABASE_URL: postgresql://shopsphere_assistant_private_runtime:${ASSISTANT_PRIVATE_DB_PASSWORD}@postgres:5432/shopsphere?schema=public
+      MCP_OAUTH_ISSUER: https://${AUTH_HOST}/realms/shopsphere
+
+  mcp:
+    environment:
+      MCP_OAUTH_ISSUER: https://${AUTH_HOST}/realms/shopsphere
+      MCP_RESOURCE_URL: https://${MCP_PUBLIC_HOST}/mcp
+      MCP_ALLOWED_ORIGINS: https://${SHOP_HOST}
+    ports: !reset []
+
+  frontend:
+    ports: !reset []
+
+volumes:
+  caddy_data:
