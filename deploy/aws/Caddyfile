@@ -1,0 +1,16 @@
+{$SHOP_HOST} {
+	reverse_proxy frontend:80
+}
+
+{$MCP_PUBLIC_HOST} {
+	reverse_proxy mcp:4100
+}
+
+# Only the public realm endpoints leave the box; the Keycloak admin console stays internal.
+{$AUTH_HOST} {
+	@public path /realms/shopsphere /realms/shopsphere/* /resources/* /.well-known/oauth-authorization-server/realms/shopsphere
+	handle @public {
+		reverse_proxy keycloak:8080
+	}
+	respond 404
+}

@@ -13,5 +13,7 @@ backend/recommendation/output/
 .impeccable/
 backend/config/config.env
 AGENTS.md
-.claude
+.claude/*
+!.claude/skills/
 docs/agents
+deploy/aws/.env
